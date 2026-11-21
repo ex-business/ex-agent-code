@@ -6,6 +6,9 @@ import ExAgent.App as Design
 Item {
     id: root
     required property string text
+    property string messageId: ""
+    property int blockIndex: 0
+    property var selectionManager: null
     property Flickable selectionView: null
     signal linkActivated(string link)
     // 导入记录常带结束换行，只规范展示边缘，不改写资源原文或消息存储。
@@ -26,6 +29,9 @@ Item {
             id: messageText
             x: 16; y: 12
             width: parent.width - 32
+            messageId: root.messageId
+            blockIndex: root.blockIndex
+            selectionManager: root.selectionManager
             selectionView: root.selectionView
             text: root.presentation.html
             textFormat: TextEdit.RichText

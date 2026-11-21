@@ -9,6 +9,7 @@ ColumnLayout {
     id: root
     required property var blocks
     required property ChatController controller
+    required property string messageId
     property var outerWheel: null
     signal linkActivated(string link)
     spacing: 14
@@ -17,15 +18,16 @@ ColumnLayout {
         delegate: Loader {
             id: blockLoader
             required property var modelData
+            required property int index
             Layout.fillWidth: true
             sourceComponent: modelData.kind === 1 ? code : prose
             Component {
                 id: prose
-                Design.MarkdownText { block: blockLoader.modelData; selectionView: root.outerWheel ? root.outerWheel.view : null; onLinkActivated: (link) => root.linkActivated(link) }
+                Design.MarkdownText { block: blockLoader.modelData; messageId: root.messageId; blockIndex: blockLoader.index; selectionManager: root.outerWheel ? root.outerWheel.selectionManager : null; selectionView: root.outerWheel ? root.outerWheel.view : null; onLinkActivated: (link) => root.linkActivated(link) }
             }
             Component {
                 id: code
-                Design.CodeBlock { code: blockLoader.modelData.text; language: blockLoader.modelData.language; controller: root.controller; outerWheel: root.outerWheel }
+                Design.CodeBlock { code: blockLoader.modelData.text; messageId: root.messageId; blockIndex: blockLoader.index; language: blockLoader.modelData.language; controller: root.controller; outerWheel: root.outerWheel }
             }
         }
     }

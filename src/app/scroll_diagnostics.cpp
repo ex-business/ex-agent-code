@@ -13,6 +13,9 @@
 #include <QMouseEvent>
 #include <QCursor>
 #include <algorithm>
+#ifdef Q_OS_MACOS
+#include "platform/macos/inactive_hover.h"
+#endif
 
 ScrollDiagnostics::ScrollDiagnostics(QQuickWindow *window) : QObject(window)
 {
@@ -30,6 +33,11 @@ ScrollDiagnostics::~ScrollDiagnostics() { save(); }
 bool ScrollDiagnostics::eventFilter(QObject *, QEvent *event)
 {
     if (event->type() == QEvent::MouseMove || event->type() == QEvent::HoverMove) {
+        if (event->type() == QEvent::HoverMove && !qobject_cast<QQuickWindow *>(parent())->isActive()) {
+            std::lock_guard guard(m_mutex);
+            ++m_inactiveHoverCount;
+            m_dirty = true;
+        }
         // 在 Quick 完成命中和光标切换后采样，保留形状变化，避免焦点恢复后的箭头覆盖证据。
         if (!m_cursorPending) {
             m_cursorPending = true;
@@ -85,9 +93,16 @@ void ScrollDiagnostics::presented()
 }
 void ScrollDiagnostics::save()
 {
+#ifdef Q_OS_MACOS
+    const int systemCursor = macSystemCursorShape();
+    {
+        std::lock_guard guard(m_mutex);
+        if (systemCursor != m_lastSystemCursor) { m_lastSystemCursor = systemCursor; m_dirty = true; }
+    }
+#endif
     QJsonArray inputs, cursorShapes;
     std::vector<double> intervals, latency, dragLatency, wheelLatency;
-    int inputCount;
+    int inputCount, inactiveHoverCount;
     {
         std::lock_guard guard(m_mutex);
         if (!m_dirty) return;
@@ -95,6 +110,7 @@ void ScrollDiagnostics::save()
         inputs = m_inputs; intervals = m_intervals; latency = m_latency; inputCount = m_inputCount;
         dragLatency = m_dragLatency; wheelLatency = m_wheelLatency;
         cursorShapes = m_cursorShapes;
+        inactiveHoverCount = m_inactiveHoverCount;
     }
     const auto statistics = [this](std::vector<double> samples) {
         std::sort(samples.begin(), samples.end());
@@ -115,6 +131,10 @@ void ScrollDiagnostics::save()
         {"frameBudgetMs", m_budget}, {"inputCount", inputCount}, {"frameIntervals", statistics(intervals)},
         {"cursorShape", qobject_cast<QQuickWindow *>(parent()) ? int(qobject_cast<QQuickWindow *>(parent())->cursor().shape()) : int(Qt::ArrowCursor)},
         {"cursorShapes", cursorShapes},
+        {"inactiveHoverCount", inactiveHoverCount},
+#ifdef Q_OS_MACOS
+        {"systemCursorShape", systemCursor},
+#endif
         {"inputToFrame", statistics(latency)}, {"dragInputToFrame", statistics(dragLatency)},
         {"wheelInputToFrame", statistics(wheelLatency)}, {"inputs", inputs}, {"frameIntervalsMs", frameIntervals}}).toJson());
     file.commit();

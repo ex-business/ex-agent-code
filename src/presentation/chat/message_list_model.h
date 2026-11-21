@@ -36,6 +36,7 @@ public:
     void appendText(const QString &messageId, const QString &delta);
     Q_INVOKABLE void toggleExpanded(int row);
     void setDark(bool dark);
+    QStringList selectionBlocks(int row) const;
 
 signals:
     void countChanged();

@@ -9,6 +9,7 @@
 #include <QStyleHints>
 #ifdef Q_OS_MACOS
 #include "platform/macos/window_chrome.h"
+#include "platform/macos/inactive_hover.h"
 #endif
 
 int main(int argc, char *argv[])
@@ -39,6 +40,7 @@ int main(int argc, char *argv[])
     if (!engine.rootObjects().isEmpty()) {
         if (auto *window = qobject_cast<QQuickWindow *>(engine.rootObjects().first())) {
             configureMacWindowChrome(window);
+            installMacInactiveHover(window);
             new PixelScrollFilter(window);
         }
     }

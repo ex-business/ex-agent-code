@@ -23,6 +23,8 @@ private:
     QJsonArray m_inputs;
     QJsonArray m_cursorShapes;
     bool m_cursorPending = false;
+    int m_inactiveHoverCount = 0;
+    int m_lastSystemCursor = -2;
     std::vector<double> m_intervals;
     std::vector<double> m_latency;
     std::vector<double> m_dragLatency;

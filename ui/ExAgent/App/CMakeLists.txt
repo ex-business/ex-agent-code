@@ -11,6 +11,7 @@ qt_add_qml_module(ex_agent_workbench
         components/ComposerToolbar.qml components/MessageActions.qml
         components/UserMessageBubble.qml
         components/SelectionSurface.qml components/SelectableText.qml components/SendButton.qml
+        components/ChatScrollView.qml components/ChatSelectionLayer.qml components/ChatSelectionPart.qml
         components/SelectionAutoScroll.qml
         components/WorkspaceTabs.qml components/WorkbenchTitleBar.qml components/FilePreview.qml
         components/ChatMenu.qml

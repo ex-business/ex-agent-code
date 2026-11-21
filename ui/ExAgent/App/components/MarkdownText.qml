@@ -6,12 +6,18 @@ import ExAgent.App as Design
 Item {
     id: root
     required property var block
+    property string messageId: ""
+    property int blockIndex: 0
+    property var selectionManager: null
     property Flickable selectionView: null
     signal linkActivated(string link)
     implicitHeight: prose.implicitHeight
     Design.SelectableText {
         id: prose
         width: parent.width
+        messageId: root.messageId
+        blockIndex: root.blockIndex
+        selectionManager: root.selectionManager
         selectionView: root.selectionView
         text: root.block.html || ""
         textFormat: TextEdit.RichText

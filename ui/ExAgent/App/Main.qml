@@ -5,7 +5,6 @@ import QtQuick.Layouts
 import ExAgent.App as Design
 import ExAgent.Chat
 import QtCore as Core
-import QtQml.Models
 
 ApplicationWindow {
     id: window
@@ -110,151 +109,12 @@ ApplicationWindow {
                     onPromptSelected: (prompt) => composer.setPrompt(prompt)
                     onPreviewRequested: window.controller.showPreview()
                 }
-                ListView {
+                Design.ChatScrollView {
                     id: transcript
-                    objectName: "messageList"
-                    property bool pixelWheelEnabled: true
-                    signal pixelScrollStarted()
                     anchors.fill: parent
-                    visible: window.controller.messages.count > 0
-                    clip: true
-                    pixelAligned: true
-                    reuseItems: true
-                    cacheBuffer: Math.min(height, 600)
-                    spacing: 5
-                    topMargin: 24
-                    bottomMargin: 15
-                    boundsBehavior: Flickable.StopAtBounds
-                    acceptedButtons: Qt.NoButton
-                    model: window.controller.messages
-                    property bool followingEnd: true
-                    property bool loadingOlder: false
-                    property int jumpTarget: -1
-                    function seekFraction(fraction: real) {
-                        transcriptWheel.stop()
-                        followingEnd = false
-                        jumpTarget = Math.round(fraction * Math.max(0, window.controller.messages.totalCount - 1))
-                        jumpPage.restart()
-                    }
-                    Timer {
-                        id: jumpPage
-                        interval: 16
-                        onTriggered: {
-                            const first = window.controller.messages.totalCount - window.controller.messages.count
-                            if (transcript.jumpTarget < first && window.controller.messages.hasOlder) {
-                                if (window.controller.messages.loadOlder() > 0) { restart(); return }
-                            }
-                            transcript.forceLayout()
-                            transcript.positionViewAtIndex(Math.max(0, transcript.jumpTarget - (window.controller.messages.totalCount - window.controller.messages.count)), ListView.Beginning)
-                            transcript.jumpTarget = -1
-                        }
-                    }
-                    Design.SmoothWheel {
-                        id: transcriptWheel
-                        view: transcript
-                        onScrollingStarted: transcript.followingEnd = false
-                        onScrollingSettled: {
-                            if (transcriptScrollBar.pressed) return
-                            if (transcript.atYEnd) transcript.followingEnd = true
-                            if (transcript.contentY - transcript.originY < 120) transcript.loadPreviousPage()
-                        }
-                    }
-                    function loadPreviousPage() {
-                        if (loadingOlder || jumpTarget >= 0 || transcriptScrollBar.pressed || transcriptWheel.animating || !window.controller.messages.hasOlder) return
-                        loadingOlder = true
-                        followingEnd = false
-                        const row = Math.max(0, indexAt(width / 2, contentY + 2))
-                        const item = itemAtIndex(row)
-                        const inset = item ? contentY - item.y : 0
-                        const added = window.controller.messages.loadOlder()
-                        forceLayout()
-                        positionViewAtIndex(row + added, ListView.Beginning)
-                        const retained = itemAtIndex(row + added)
-                        if (retained) contentY = retained.y + inset
-                        Qt.callLater(() => { transcript.loadingOlder = false })
-                    }
-                    header: Item {
-                        width: transcript.width
-                        height: window.controller.messages.hasOlder ? 48 : 0
-                        Button {
-                            id: olderMessagesButton
-                            anchors.centerIn: parent
-                            visible: window.controller.messages.hasOlder
-                            text: "加载更早的消息 · 还有 " + (window.controller.messages.totalCount - window.controller.messages.count) + " 条"
-                            flat: true
-                            onClicked: transcript.loadPreviousPage()
-                            contentItem: Text { text: olderMessagesButton.text; color: Design.Theme.secondary; font.pixelSize: 12 }
-                            background: Rectangle { radius: 8; color: olderMessagesButton.hovered ? Design.Theme.hover : "transparent" }
-                        }
-                    }
-                    onMovementStarted: followingEnd = false
-                    onMovementEnded: {
-                        if (!transcriptScrollBar.pressed && atYEnd) followingEnd = true
-                        if (!transcriptScrollBar.pressed && !transcriptWheel.animating && contentY - originY < 120 && window.controller.messages.hasOlder) loadPreviousPage()
-                    }
-                    ScrollBar.vertical: ScrollBar {
-                        id: transcriptScrollBar
-                        width: 6
-                        policy: ScrollBar.AsNeeded
-                        // cancelFlick 会同步触发 movementEnded，必须最后再关闭自动贴底。
-                        onPressedChanged: if (pressed) { transcriptWheel.stop(); transcript.followingEnd = false }
-                    }
-                    function revealLatest() {
-                        followingEnd = true
-                        Qt.callLater(() => transcript.positionViewAtEnd())
-                    }
-                    onCountChanged: { if (followingEnd) Qt.callLater(() => transcript.positionViewAtEnd()) }
-                    onContentHeightChanged: {
-                        // 富文本完成布局后再贴齐底部，避免误显示“回到最新消息”。
-                        if (followingEnd) latestLayout.restart()
-                    }
-                    Timer {
-                        id: latestLayout
-                        interval: 0
-                        onTriggered: if (transcript.followingEnd) { transcript.forceLayout(); transcript.positionViewAtEnd() }
-                    }
-                    // 不同消息类型分别复用，避免工具记录把已创建的长回复控件反复替换掉。
-                    delegate: DelegateChooser {
-                        role: "messageKind"
-                        DelegateChoice { roleValue: 1; delegate: MessageRow {} }
-                        DelegateChoice { roleValue: 2; delegate: MessageRow {} }
-                        DelegateChoice { roleValue: 3; delegate: MessageRow {} }
-                        DelegateChoice { roleValue: 4; delegate: MessageRow {} }
-                    }
-                    component MessageRow: Item {
-                        id: messageRow
-                        required property int index
-                        required property int messageKind
-                        required property string content
-                        required property string messageTitle
-                        required property int messageStatus
-                        required property bool expanded
-                        required property var contentBlocks
-                        required property var changedFiles
-                        required property var activity
-                        required property var attachments
-                        width: ListView.view.width
-                        height: messageView.implicitHeight
-                        Design.MessageDelegate {
-                            id: messageView
-                            width: Math.min(messageRow.width - 48, 760)
-                            anchors.horizontalCenter: parent.horizontalCenter
-                            controller: window.controller
-                            outerWheel: transcriptWheel
-                            rowIndex: messageRow.index
-                            messageKind: messageRow.messageKind
-                            content: messageRow.content
-                            messageTitle: messageRow.messageTitle
-                            messageStatus: messageRow.messageStatus
-                            expanded: messageRow.expanded
-                            contentBlocks: messageRow.contentBlocks
-                            changedFiles: messageRow.changedFiles
-                            activity: messageRow.activity
-                            attachments: messageRow.attachments
-                            onFileRequested: (path) => { window.filesVisible = true; workspaceController.open(path) }
-                            onImageRequested: (image) => imagePreview.openImage(image)
-                        }
-                    }
+                    controller: window.controller
+                    onFileRequested: (path) => { window.filesVisible = true; workspaceController.open(path) }
+                    onImageRequested: (image) => imagePreview.openImage(image)
                 }
                 Design.ChatOverview {
                     anchors.left: parent.left
@@ -330,10 +190,7 @@ ApplicationWindow {
         target: window.controller
         function onSessionChanged() {
             // 定位任务属于原会话，切换后不能继续加载另一段历史。
-            jumpPage.stop()
-            transcript.jumpTarget = -1
-            transcriptWheel.stop()
-            transcript.revealLatest()
+            transcript.resetForSession()
         }
     }
 }

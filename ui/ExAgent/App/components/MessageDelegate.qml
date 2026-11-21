@@ -7,6 +7,7 @@ import ExAgent.Chat
 Item {
     id: root
     required property ChatController controller
+    required property string messageId
     required property int rowIndex
     required property int messageKind
     required property string content
@@ -40,23 +41,24 @@ Item {
         id: userBody
         ColumnLayout {
             spacing: 8
-            Design.UserMessageBubble { Layout.fillWidth: true; text: root.content; selectionView: root.outerWheel ? root.outerWheel.view : null; onLinkActivated: (link) => root.openLink(link) }
+            Design.UserMessageBubble { Layout.fillWidth: true; text: root.content; messageId: root.messageId; selectionManager: root.outerWheel ? root.outerWheel.selectionManager : null; selectionView: root.outerWheel ? root.outerWheel.view : null; onLinkActivated: (link) => root.openLink(link) }
             Design.MessageAttachments { visible: root.attachments.length > 0; Layout.fillWidth: true; attachments: root.attachments; onImageRequested: (image) => root.imageRequested(image) }
         }
     }
 
     Component {
         id: noticeBody
-        Design.MessageContent { blocks: root.contentBlocks; controller: root.controller; outerWheel: root.outerWheel; onLinkActivated: (link) => root.openLink(link) }
+        Design.MessageContent { blocks: root.contentBlocks; messageId: root.messageId; controller: root.controller; outerWheel: root.outerWheel; onLinkActivated: (link) => root.openLink(link) }
     }
 
     Component {
         id: filesBody
-        Design.ChangedFilesCard { files: root.changedFiles; onFileRequested: (path) => root.fileRequested(path) }
+        Design.ChangedFilesCard { files: root.changedFiles; messageId: root.messageId; selectionManager: root.outerWheel ? root.outerWheel.selectionManager : null; onFileRequested: (path) => root.fileRequested(path) }
     }
     Component {
         id: toolBody
         Design.ToolActivityRow {
+            messageId: root.messageId
             activity: root.activity
             attachments: root.attachments
             title: root.messageTitle
@@ -73,7 +75,7 @@ Item {
         id: assistantBody
         ColumnLayout {
             spacing: 14
-            Design.MessageContent { Layout.fillWidth: true; blocks: root.contentBlocks; controller: root.controller; outerWheel: root.outerWheel; onLinkActivated: (link) => root.openLink(link) }
+            Design.MessageContent { Layout.fillWidth: true; blocks: root.contentBlocks; messageId: root.messageId; controller: root.controller; outerWheel: root.outerWheel; onLinkActivated: (link) => root.openLink(link) }
             Design.MessageAttachments { visible: root.attachments.length > 0; Layout.fillWidth: true; attachments: root.attachments; onImageRequested: (image) => root.imageRequested(image) }
             Design.MessageActions {
                 text: root.content

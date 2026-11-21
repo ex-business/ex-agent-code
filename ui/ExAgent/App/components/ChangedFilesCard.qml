@@ -7,6 +7,8 @@ import ExAgent.App as Design
 Rectangle {
     id: root
     required property var files
+    property string messageId: ""
+    property var selectionManager: null
     property bool expanded: true
     property bool showAll: false
     // 虚拟列表复用卡片时清除上一条消息的展开与滚动状态。
@@ -37,6 +39,7 @@ Rectangle {
                 id: file
                 HoverHandler { cursorShape: Qt.PointingHandCursor }
                 required property var modelData
+                required property int index
                 width: fileList.width
                 height: 35
                 implicitHeight: 35
@@ -45,7 +48,7 @@ Rectangle {
                 background: Rectangle { radius: 5; color: file.hovered ? Design.Theme.hover : "transparent" }
                 contentItem: RowLayout {
                     spacing: 6
-                    Text { text: file.modelData.path; Layout.fillWidth: true; elide: Text.ElideMiddle; color: Design.Theme.secondary; font.pixelSize: 13 }
+                    Design.SelectableText { text: file.modelData.path; textFormat: TextEdit.PlainText; wrapMode: TextEdit.NoWrap; messageId: root.messageId; blockIndex: file.index; selectionManager: root.selectionManager; Layout.fillWidth: true; clip: true; color: Design.Theme.secondary; font.pixelSize: 13; onTapped: root.fileRequested(file.modelData.path) }
                     Text { visible: typeof file.modelData.added === "number"; text: "+" + (file.modelData.added || 0); color: "#00a43c"; font.pixelSize: 12 }
                     Text { visible: typeof file.modelData.removed === "number"; text: "−" + (file.modelData.removed || 0); color: "#e94b54"; font.pixelSize: 12 }
                 }

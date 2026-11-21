@@ -7,6 +7,7 @@ Item {
     property real stepSize: 72
     property int orientation: Qt.Vertical
     property var outerWheel: null
+    property var selectionManager: outerWheel ? outerWheel.selectionManager : null
     readonly property bool animating: view.moving || observer.active
     signal scrollingStarted()
     signal scrollingSettled()

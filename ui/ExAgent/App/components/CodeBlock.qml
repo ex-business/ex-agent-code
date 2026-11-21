@@ -11,6 +11,9 @@ Rectangle {
     property string language: ""
     required property ChatController controller
     property var outerWheel: null
+    property string messageId: ""
+    property int blockIndex: 0
+    readonly property var selectionManager: outerWheel ? outerWheel.selectionManager : null
     property int maximumCodeHeight: 330
     readonly property int lineHeight: 22
     readonly property int viewportHeight: Math.min(maximumCodeHeight, Math.max(lineHeight, lines.lineCount * lineHeight) + 24)
@@ -22,6 +25,12 @@ Rectangle {
     border.color: Design.Theme.border
     clip: true
     activeFocusOnTab: true
+    function selectCode() {
+        if (selectionManager) {
+            SelectionCoordinator.activate(selectionManager.document)
+            selectionManager.document.select(messageId, blockIndex, 0, messageId, blockIndex, code.length)
+        } else lines.selectAll()
+    }
     function clearSelection() { lines.select(lines.selectionCursor, lines.selectionCursor) }
     readonly property int selectionLength: lines.selectionLength
     function selectedContent() { return lines.selectedText }
@@ -36,11 +45,15 @@ Rectangle {
         if (x < codeView.contentX + 15) codeView.contentX = Math.max(0, x - 15)
         else if (x > codeView.contentX + codeView.width - 20) codeView.contentX = x - codeView.width + 20
     }
-    onActiveFocusChanged: if (activeFocus) SelectionCoordinator.activate(root)
-    onSelectionLengthChanged: SelectionCoordinator.changed(root)
+    onActiveFocusChanged: if (activeFocus && !selectionManager) SelectionCoordinator.activate(root)
+    onSelectionLengthChanged: if (!selectionManager) SelectionCoordinator.changed(root)
     function copySelection() { if (lines.selectionLength > 0) { controller.copyText(lines.selectedText); copyTimer.restart() } }
-    Shortcut { sequence: StandardKey.SelectAll; enabled: root.activeFocus; onActivated: lines.selectAll() }
+    Shortcut { sequence: StandardKey.SelectAll; enabled: root.activeFocus; onActivated: root.selectCode() }
+    Keys.onShortcutOverride: (event) => { if (root.selectionManager && event.matches(StandardKey.Copy)) event.accepted = true }
     Keys.onPressed: (event) => {
+        if (root.selectionManager && event.matches(StandardKey.Copy)) {
+            root.selectionManager.copySelection(); event.accepted = true; return
+        }
         if (![Qt.Key_Left, Qt.Key_Right, Qt.Key_Up, Qt.Key_Down, Qt.Key_Home, Qt.Key_End].includes(event.key)) return
         let key = event.key
         const command = Qt.platform.os === "osx" && (event.modifiers & Qt.ControlModifier)
@@ -48,6 +61,11 @@ Rectangle {
         if (command && key === Qt.Key_Right) key = Qt.Key_End
         lines.moveCursor(key, (event.modifiers & Qt.ShiftModifier) !== 0,
                          (event.modifiers & (Qt.platform.os === "osx" ? Qt.AltModifier : Qt.ControlModifier)) !== 0, metrics.font)
+        if (root.selectionManager) {
+            SelectionCoordinator.activate(root.selectionManager.document)
+            root.selectionManager.document.select(root.messageId, root.blockIndex, lines.selectionAnchor,
+                                                   root.messageId, root.blockIndex, lines.selectionCursor)
+        }
         revealCursor()
         event.accepted = true
     }
@@ -60,6 +78,18 @@ Rectangle {
         language: root.language
         code: root.code
         dark: Design.Theme.dark
+    }
+    Design.ChatSelectionPart {
+        id: selectionPart
+        manager: root.selectionManager
+        target: selectionMouse
+        scrollView: codeView
+        messageId: root.messageId
+        blockIndex: root.blockIndex
+        textLength: root.code.length
+        positionFor: (x, y) => selectionMouse.hitPosition(x, y, true)
+        rangeFor: (position, unit) => lines.rangeAt(position, unit)
+        projectRange: (start, end) => lines.select(start, end)
     }
     FontMetrics { id: metrics; font.family: Design.Theme.monoFont; font.pixelSize: 13 }
     Item {
@@ -78,7 +108,7 @@ Rectangle {
             Design.IconButton {
                 iconName: "select"
                 tooltip: "全选代码"
-                onClicked: { root.forceActiveFocus(); lines.selectAll() }
+                onClicked: { root.forceActiveFocus(); root.selectCode() }
             }
             Design.IconButton {
                 visible: lines.selectionLength > 0
@@ -125,12 +155,9 @@ Rectangle {
             Accessible.name: "代码选择区域"
             Accessible.focusable: true
             Accessible.description: "已选择 " + lines.selectionLength + " 个字符；支持跨行选择、全选与复制"
+            documentPart: selectionPart
             selectionAnchor: lines.selectionAnchor
-            cursorFor: (x, y) => {
-                const point = codeView.mapToItem(codeView.contentItem, x, y)
-                const row = Math.floor(point.y / root.lineHeight)
-                return lines.textAtPixel(row, point.x - 15, metrics.font) ? Qt.IBeamCursor : Qt.ArrowCursor
-            }
+            // 代码视口整体可拖选，空格与缩进处也保持选择光标。
             function hitPosition(x, y, nearestCursor) {
                 const p = codeView.mapToItem(codeView.contentItem, x, Math.max(0, Math.min(codeView.height - 1, y)))
                 const rowIndex = Math.max(0, Math.min(lines.lineCount - 1, Math.floor(p.y / root.lineHeight)))
@@ -138,22 +165,20 @@ Rectangle {
             }
             positionFor: (x, y, nearest) => hitPosition(x, y, nearest)
             rangeFor: (position, unit) => lines.rangeAt(position, unit)
-            applySelection: (start, end) => { SelectionCoordinator.activate(root); lines.select(start, end) }
-            onFocusRequested: { codeView.cancelFlick(); SelectionCoordinator.activate(root); root.forceActiveFocus() }
+            applySelection: (start, end) => { if (!root.selectionManager) SelectionCoordinator.activate(root); lines.select(start, end) }
+            onFocusRequested: { codeView.cancelFlick(); if (!root.selectionManager) SelectionCoordinator.activate(root); root.forceActiveFocus() }
             onContextRequested: (x, y) => codeMenu.popup(selectionMouse, x, y)
         }
-        Design.SelectionAutoScroll { surface: selectionMouse; view: codeView; horizontal: true }
-        Rectangle {
-            // 只读代码仍显示键盘定位点，Shift 扩选后端点始终保持可见。
-            parent: codeView.contentItem
-            x: 15 + root.caret.x
-            y: root.caret.row * root.lineHeight
-            width: 1
-            height: root.lineHeight
-            color: Design.Theme.text
-            visible: root.activeFocus && lines.selectionLength === 0
-            z: 1
+        Design.SelectionAutoScroll {
+            selectionItem: selectionMouse
+            view: root.selectionManager && (selectionMouse.scenePointer.y < selectionMouse.mapToItem(null, 0, -24).y
+                  || selectionMouse.scenePointer.y > selectionMouse.mapToItem(null, 0, selectionMouse.height + 24).y) ? null : codeView
+            horizontal: true
+            scenePointer: selectionMouse.scenePointer
+            dragging: selectionMouse.selectingDrag && (selectionMouse.pressedButtons & Qt.LeftButton) !== 0
+            onExtendRequested: (x, y) => selectionMouse.extend(x, y)
         }
+        // 只读代码仅展示选区，不绘制编辑器式插入竖线；键盘定位仍用于扩选和滚动。
         // 每行都是固定高度的可回收 delegate，超出视口的行不创建富文本对象。
         component CodeRow: Item {
             id: row
@@ -205,8 +230,9 @@ Rectangle {
     Timer { id: copyTimer; interval: 1800 }
     Design.ContextMenu {
         id: codeMenu
+        Design.ContextMenuItem { text: "复制所选聊天内容"; visible: root.selectionManager !== null; enabled: root.selectionManager && root.selectionManager.document.selectionLength > 0; onTriggered: root.selectionManager.copySelection() }
         Design.ContextMenuItem { text: "复制所选代码"; enabled: lines.selectionLength > 0; onTriggered: root.copySelection() }
-        Design.ContextMenuItem { text: "全选代码"; onTriggered: { root.forceActiveFocus(); lines.selectAll() } }
+        Design.ContextMenuItem { text: "全选代码"; onTriggered: { root.forceActiveFocus(); root.selectCode() } }
         Design.ContextMenuItem { text: "复制完整代码"; onTriggered: root.controller.copyText(root.code) }
     }
 }

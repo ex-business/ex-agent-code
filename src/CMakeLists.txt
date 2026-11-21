@@ -16,10 +16,13 @@ qt_add_qml_module(ex_agent_chat
         presentation/code/syntax_highlighter.h presentation/code/syntax_highlighter.cpp
         presentation/text/text_selection_rules.h presentation/text/text_selection_rules.cpp
         presentation/text/markdown_formatter.h presentation/text/markdown_formatter.cpp
+        presentation/text/selection_scroll_clock.h presentation/text/selection_scroll_clock.cpp
+        presentation/text/chat_selection_tracker.h presentation/text/chat_selection_tracker.cpp
+        presentation/text/chat_selection_document.h presentation/text/chat_selection_document.cpp
         presentation/text/selection_coordinator.h presentation/text/selection_coordinator.cpp
         presentation/workspace/workspace_controller.h presentation/workspace/workspace_controller.cpp
 )
-target_link_libraries(ex_agent_chat PUBLIC ex_agent_domain Qt6::Gui Qt6::Qml)
+target_link_libraries(ex_agent_chat PUBLIC ex_agent_domain Qt6::Gui Qt6::Qml Qt6::Quick)
 target_include_directories(ex_agent_chat PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}"
     PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/application/chat" "${CMAKE_CURRENT_SOURCE_DIR}/presentation/chat" "${CMAKE_CURRENT_SOURCE_DIR}/presentation/code")
 target_compile_options(ex_agent_chat PRIVATE -Wall -Wextra -Wpedantic)
@@ -31,7 +34,7 @@ target_link_libraries(ex-agent-code PRIVATE ex_agent_chat ex_agent_chatplugin Qt
 if(APPLE)
     target_sources(ex_agent_chat PRIVATE platform/macos/word_boundaries.cpp)
     target_link_libraries(ex_agent_chat PRIVATE "-framework CoreFoundation")
-    target_sources(ex-agent-code PRIVATE platform/macos/window_chrome.mm)
+    target_sources(ex-agent-code PRIVATE platform/macos/window_chrome.mm platform/macos/inactive_hover.mm)
     target_link_libraries(ex-agent-code PRIVATE "-framework AppKit")
 endif()
 set_target_properties(ex-agent-code PROPERTIES

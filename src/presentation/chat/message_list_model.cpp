@@ -3,6 +3,7 @@
 #include <utility>
 #include "presentation/text/markdown_formatter.h"
 #include <QRegularExpression>
+#include <QTextDocument>
 
 namespace exagent {
 
@@ -85,6 +86,43 @@ QHash<int, QByteArray> MessageListModel::roleNames() const
             {TitleRole, "messageTitle"}, {StatusRole, "messageStatus"}, {ExpandedRole, "expanded"},
             {BlocksRole, "contentBlocks"}, {TimeRole, "timeLabel"}, {FilesRole, "changedFiles"},
             {ActivityRole, "activity"}, {AttachmentsRole, "attachments"}};
+}
+
+QStringList MessageListModel::selectionBlocks(int row) const
+{
+    if (row < 0 || row >= count()) return {};
+    const auto &message = m_messages.at(m_firstLoaded + row);
+    if (message.role == MessageRole::User) {
+        auto text = message.content;
+        text.remove(QRegularExpression("[\\r\\n]+$"));
+        QTextDocument document;
+        document.setHtml(MarkdownFormatter().userPresentation(text, QFont()).value("html").toString());
+        return {document.toRawText()};
+    }
+    if (message.role == MessageRole::Tool) {
+        if (message.title == QStringLiteral("文件修改")) {
+            QStringList paths;
+            for (const auto &entry : data(index(row), FilesRole).toList()) paths.append(entry.toMap().value("path").toString());
+            return paths;
+        }
+        const auto kind = message.activity.value("kind").toInt();
+        const auto summary = message.activity.value("summary").toString();
+        QStringList blocks{!summary.isEmpty() ? summary : kind == 3 ? QStringLiteral("已查看 %1 张图像").arg(message.attachments.size())
+            : message.title.startsWith(QStringLiteral("运行命令")) && message.status == MessageStatus::Complete ? QStringLiteral("已") + message.title : message.title};
+        if (message.expanded && !message.content.isEmpty()) blocks.append(message.content);
+        return blocks;
+    }
+    QStringList result;
+    for (const auto &entry : data(index(row), BlocksRole).toList()) {
+        const auto block = entry.toMap();
+        if (block.value("kind").toInt() == 1) result.append(block.value("text").toString());
+        else {
+            QTextDocument document;
+            document.setHtml(block.value("html").toString());
+            result.append(document.toRawText());
+        }
+    }
+    return result;
 }
 
 void MessageListModel::replace(QList<ChatMessage> messages)
