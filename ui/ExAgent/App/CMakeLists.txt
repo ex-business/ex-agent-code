@@ -8,6 +8,15 @@ qt_add_qml_module(ex_agent_workbench
         components/Icon.qml components/IconButton.qml
         components/ContextMenu.qml components/ContextMenuItem.qml
         components/Sidebar.qml components/Composer.qml
+        components/ComposerToolbar.qml components/MessageActions.qml
+        components/UserMessageBubble.qml
+        components/SelectionSurface.qml components/SelectableText.qml components/SendButton.qml
+        components/WorkspaceTabs.qml components/WorkbenchTitleBar.qml components/FilePreview.qml
+        components/ChatMenu.qml
+        components/MarkdownText.qml
+        components/ToolActivityRow.qml components/MessageAttachments.qml
+        components/ImagePreview.qml components/ChangesSummary.qml
+        components/MessageContent.qml
         components/MessageDelegate.qml components/CodeBlock.qml
         components/EmptyState.qml
         components/ChangedFilesCard.qml components/NavigationRail.qml

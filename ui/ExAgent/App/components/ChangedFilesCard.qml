@@ -6,34 +6,63 @@ import ExAgent.App as Design
 
 Rectangle {
     id: root
+    required property var files
     property bool expanded: true
-    implicitHeight: expanded ? 154 : 40
+    property bool showAll: false
+    // 虚拟列表复用卡片时清除上一条消息的展开与滚动状态。
+    onFilesChanged: {
+        expanded = true
+        showAll = false
+        fileList.contentY = 0
+    }
+    signal fileRequested(string path)
+    implicitHeight: column.implicitHeight + 20
     radius: 13
     color: Design.Theme.background
     border.color: Design.Theme.border
     ColumnLayout {
-        anchors.fill: parent
-        anchors.margins: 12
+        id: column
+        x: 12; y: 10; width: parent.width - 24
         spacing: 0
-        Repeater {
-            model: root.expanded ? [
-                { path: "ui/ExAgent/App/Main.qml", added: "+3", removed: "−2" },
-                { path: "ui/ExAgent/App/components/CodeBlock.qml", added: "+2", removed: "−2" },
-                { path: "聊天界面实现记录.md", added: "+15", removed: "−1" }
-            ] : []
-            delegate: RowLayout {
+        ListView {
+            id: fileList
+            Layout.fillWidth: true
+            Layout.preferredHeight: Math.min(280, count * 35)
+            clip: true
+            reuseItems: true
+            acceptedButtons: Qt.NoButton
+            model: root.expanded ? root.showAll ? root.files : root.files.slice(0, 3) : []
+            ScrollBar.vertical: ScrollBar { width: 4; policy: ScrollBar.AsNeeded }
+            delegate: Button {
+                id: file
+                HoverHandler { cursorShape: Qt.PointingHandCursor }
                 required property var modelData
-                Layout.fillWidth: true
-                Layout.preferredHeight: 35
-                Text { text: parent.modelData.path; Layout.fillWidth: true; elide: Text.ElideMiddle; color: Design.Theme.secondary; font.pixelSize: 13 }
-                Text { text: parent.modelData.added; color: "#00a43c"; font.pixelSize: 12 }
-                Text { text: parent.modelData.removed; color: "#e94b54"; font.pixelSize: 12 }
+                width: fileList.width
+                height: 35
+                implicitHeight: 35
+                Accessible.name: "查看文件 " + modelData.path
+                onClicked: root.fileRequested(modelData.path)
+                background: Rectangle { radius: 5; color: file.hovered ? Design.Theme.hover : "transparent" }
+                contentItem: RowLayout {
+                    spacing: 6
+                    Text { text: file.modelData.path; Layout.fillWidth: true; elide: Text.ElideMiddle; color: Design.Theme.secondary; font.pixelSize: 13 }
+                    Text { visible: typeof file.modelData.added === "number"; text: "+" + (file.modelData.added || 0); color: "#00a43c"; font.pixelSize: 12 }
+                    Text { visible: typeof file.modelData.removed === "number"; text: "−" + (file.modelData.removed || 0); color: "#e94b54"; font.pixelSize: 12 }
+                }
             }
         }
         Button {
+            visible: root.expanded && !root.showAll && root.files.length > 3
+            HoverHandler { cursorShape: Qt.PointingHandCursor }
+            text: "再显示 " + (root.files.length - 3) + " 个文件"
+            flat: true
+            onClicked: root.showAll = true
+        }
+        Button {
             id: toggle
-            text: root.expanded ? "收起文件  ⌃" : "展开文件  ⌄"
-            Accessible.name: text + "（展示样例）"
+            HoverHandler { cursorShape: Qt.PointingHandCursor }
+            text: root.expanded ? "收起文件  ⌃" : "展开 " + root.files.length + " 个文件  ⌄"
+            Accessible.name: text
             onClicked: root.expanded = !root.expanded
             background: Item {}
             contentItem: Text { text: toggle.text; color: Design.Theme.text; font.pixelSize: 13 }

@@ -17,11 +17,13 @@ Rectangle {
         spacing: 0
         RowLayout {
             Layout.fillWidth: true; Layout.leftMargin: 8; Layout.bottomMargin: 10
-            Text { text: "ChatGPT ⌄"; color: Design.Theme.text; font.pixelSize: 18; font.weight: Font.DemiBold; Layout.fillWidth: true }
+            Text { text: "ChatGPT ⌄"; color: Design.Theme.text; font.pixelSize: 18; font.weight: Font.Medium; Layout.fillWidth: true }
+            Design.IconButton { implicitWidth: 26; iconName: "bell"; tooltip: "通知样式展示，尚未连接" }
             Design.IconButton { iconName: "search"; tooltip: "搜索聊天"; onClicked: { searchInput.visible = !searchInput.visible; if (searchInput.visible) searchInput.forceActiveFocus() } }
         }
         Button {
             id: newChat
+            HoverHandler { cursorShape: Qt.PointingHandCursor }
             Accessible.name: "新聊天"
             Layout.fillWidth: true; implicitHeight: 33
             onClicked: root.controller.newSession()
@@ -31,7 +33,15 @@ Rectangle {
                 Text { text: "新聊天"; color: Design.Theme.text; font.pixelSize: 14; Layout.fillWidth: true }
             }
         }
-        Text { Layout.leftMargin: 8; Layout.topMargin: 5; Layout.bottomMargin: 17; text: "💜 你的 Dot"; color: Design.Theme.text; font.pixelSize: 14 }
+        RowLayout {
+            Layout.fillWidth: true; Layout.leftMargin: 8; Layout.topMargin: 5; Layout.bottomMargin: 17
+            Text { text: "💜 你的 Dot"; color: Design.Theme.text; font.pixelSize: 14; Layout.fillWidth: true }
+            Rectangle {
+                visible: Number(root.controller.navigationInfo.unreadCount || 0) > 0
+                implicitWidth: 20; implicitHeight: 20; radius: 10; color: Design.Theme.dark ? "#484848" : "#d5d5d5"
+                Text { anchors.centerIn: parent; text: root.controller.navigationInfo.unreadCount || 0; color: Design.Theme.text; font.pixelSize: 11 }
+            }
+        }
         TextField {
             id: searchInput
             visible: false
@@ -60,6 +70,7 @@ Rectangle {
                 visible: height > 0
                 Button {
                     id: projectButton
+                    HoverHandler { cursorShape: Qt.PointingHandCursor; enabled: projectButton.enabled }
                     anchors.fill: parent
                     enabled: entry.modelData.kind !== 0
                     leftPadding: entry.modelData.kind === 3 || entry.modelData.kind === 4 ? 31 : 8
@@ -82,6 +93,7 @@ Rectangle {
                     model: root.controller.sessions
                     delegate: Button {
                         id: localSession
+                        HoverHandler { cursorShape: Qt.PointingHandCursor }
                         required property string sessionTitle
                         required property string sessionId
                         width: projects.width; height: 31

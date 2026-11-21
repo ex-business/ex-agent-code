@@ -4,6 +4,8 @@
 #include <QTimer>
 #include <algorithm>
 #include <QFontMetricsF>
+#include "presentation/text/text_selection_rules.h"
+#include <QTextBoundaryFinder>
 
 namespace exagent {
 namespace {
@@ -118,6 +120,8 @@ void CodeLineModel::rebuildIndex()
 }
 
 QString CodeLineModel::selectedText() const { return m_code.mid(qMin(m_anchor, m_cursor), qAbs(m_cursor - m_anchor)); }
+// 界面只查询选区长度，点击复制时才分配完整选区字符串。
+int CodeLineModel::selectionLength() const { return qAbs(m_cursor - m_anchor); }
 int CodeLineModel::selectionAnchor() const { return m_anchor; }
 int CodeLineModel::selectionCursor() const { return m_cursor; }
 
@@ -136,7 +140,7 @@ int CodeLineModel::positionAt(int row, int displayColumn) const
     return line.offset + raw;
 }
 
-int CodeLineModel::positionAtPixel(int row, qreal x, const QFont &font) const
+int CodeLineModel::positionAtPixel(int row, qreal x, const QFont &font, bool nearestCursor) const
 {
     if (row < 0 || row >= m_lines.size()) return 0;
     const auto &line = m_lines[row];
@@ -151,7 +155,7 @@ int CodeLineModel::positionAtPixel(int row, qreal x, const QFont &font) const
         if (metrics.horizontalAdvance(display, middle) <= x) lower = middle;
         else upper = middle - 1;
     }
-    if (lower < display.size()) {
+    if (nearestCursor && lower < display.size()) {
         const auto left = metrics.horizontalAdvance(display, lower);
         const auto right = metrics.horizontalAdvance(display, lower + 1);
         if (x - left > (right - left) / 2) ++lower;
@@ -184,13 +188,48 @@ void CodeLineModel::select(int anchor, int cursor)
 void CodeLineModel::selectAll() { select(0, m_code.size()); }
 void CodeLineModel::selectWord(int position)
 {
-    position = qBound(0, position, static_cast<int>(m_code.size()));
-    int start = position;
-    int end = position;
-    const auto word = [](QChar c) { return c.isLetterOrNumber() || c == '_'; };
-    while (start > 0 && word(m_code[start - 1])) --start;
-    while (end < m_code.size() && word(m_code[end])) ++end;
-    select(start, end);
+    const auto range = rangeAt(position, 1);
+    select(range.value("start").toInt(), range.value("end").toInt());
+}
+
+QVariantMap CodeLineModel::rangeAt(int position, int unit) const
+{
+    if (m_lines.isEmpty()) return {{"start", 0}, {"end", 0}};
+    position = qBound(0, position, int(m_code.size()));
+    const auto found = std::upper_bound(m_lines.cbegin(), m_lines.cend(), position,
+        [](int value, const Line &line) { return value < line.offset; });
+    const auto &line = m_lines[qMax(0, int(found - m_lines.cbegin()) - 1)];
+    if (unit == 2) return {{"start", int(line.offset)}, {"end", qMin(int(m_code.size()), int(line.offset + line.length + 1))}};
+    // 选词只分析命中的一行，拖动大代码选区不重复扫描整份文件。
+    auto range = TextSelectionRules().range(m_code.mid(line.offset, line.length), position - line.offset, unit, true);
+    range["start"] = range["start"].toInt() + int(line.offset);
+    range["end"] = range["end"].toInt() + int(line.offset);
+    return range;
+}
+
+void CodeLineModel::moveCursor(int key, bool extend, bool byWord)
+{
+    if (m_lines.isEmpty()) return;
+    int target = m_cursor;
+    const auto found = std::upper_bound(m_lines.cbegin(), m_lines.cend(), m_cursor,
+        [](int value, const Line &line) { return value < line.offset; });
+    const int row = qMax(0, int(found - m_lines.cbegin()) - 1);
+    if (!extend && m_anchor != m_cursor && (key == Qt::Key_Left || key == Qt::Key_Right)) {
+        target = key == Qt::Key_Left ? qMin(m_anchor, m_cursor) : qMax(m_anchor, m_cursor);
+    } else if (key == Qt::Key_Home) target = m_lines[row].offset;
+    else if (key == Qt::Key_End) target = m_lines[row].offset + m_lines[row].length;
+    else if (key == Qt::Key_Up || key == Qt::Key_Down) {
+        int column = 0;
+        for (auto c : QStringView(m_code).mid(m_lines[row].offset, m_cursor - m_lines[row].offset)) column += c == '\t' ? 4 : 1;
+        target = positionAt(qBound(0, row + (key == Qt::Key_Up ? -1 : 1), int(m_lines.size()) - 1), column);
+    } else {
+        // 光标按字素移动，不能把 emoji 或代理对从中间截断。
+        QTextBoundaryFinder finder(byWord ? QTextBoundaryFinder::Word : QTextBoundaryFinder::Grapheme, m_code);
+        finder.setPosition(m_cursor);
+        target = key == Qt::Key_Left ? finder.toPreviousBoundary() : finder.toNextBoundary();
+        if (target < 0) target = key == Qt::Key_Left ? 0 : int(m_code.size());
+    }
+    select(extend ? m_anchor : target, target);
 }
 
 void CodeLineModel::queueMetrics() const

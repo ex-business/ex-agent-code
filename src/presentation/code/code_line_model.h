@@ -19,6 +19,7 @@ class CodeLineModel : public QAbstractListModel {
     Q_PROPERTY(int cachedLineCount READ cachedLineCount NOTIFY metricsChanged)
     Q_PROPERTY(int formattedLineCount READ formattedLineCount NOTIFY metricsChanged)
     Q_PROPERTY(QString selectedText READ selectedText NOTIFY selectionChanged)
+    Q_PROPERTY(int selectionLength READ selectionLength NOTIFY selectionChanged)
     Q_PROPERTY(int selectionAnchor READ selectionAnchor NOTIFY selectionChanged)
     Q_PROPERTY(int selectionCursor READ selectionCursor NOTIFY selectionChanged)
 public:
@@ -38,10 +39,13 @@ public:
     void setLanguage(const QString &language);
     void setDark(bool dark);
     QString selectedText() const;
+    int selectionLength() const;
     int selectionAnchor() const;
     int selectionCursor() const;
     Q_INVOKABLE int positionAt(int row, int displayColumn) const;
-    Q_INVOKABLE int positionAtPixel(int row, qreal x, const QFont &font) const;
+    Q_INVOKABLE int positionAtPixel(int row, qreal x, const QFont &font, bool nearestCursor = true) const;
+    Q_INVOKABLE QVariantMap rangeAt(int position, int unit) const;
+    Q_INVOKABLE void moveCursor(int key, bool extend, bool byWord);
     Q_INVOKABLE void select(int anchor, int cursor);
     Q_INVOKABLE void selectAll();
     Q_INVOKABLE void selectWord(int position);

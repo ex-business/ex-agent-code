@@ -2,66 +2,72 @@ pragma ComponentBehavior: Bound
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
+import ExAgent.Chat
 import ExAgent.App as Design
 
 Rectangle {
     id: root
+    required property WorkspaceController workspace
+    required property ChatController controller
+    property int mode: 0
+    property bool renderedMarkdown: true
     color: Design.Theme.background
-    property bool folderExpanded: false
+    Connections { target: root.workspace; function onPreviewChanged() { root.mode = root.workspace.activePath ? 1 : 0 } }
     ColumnLayout {
         anchors.fill: parent
         spacing: 0
-        Rectangle {
+        RowLayout {
             Layout.fillWidth: true
-            implicitHeight: 36
-            color: Design.Theme.sidebar
-            RowLayout {
-                anchors.fill: parent; anchors.leftMargin: 13; anchors.rightMargin: 12
-                Text { text: "▧  架构设计    ⌘1"; color: Design.Theme.muted; font.pixelSize: 11 }
-                Text { text: "▧  功能规划    ⌘2"; color: Design.Theme.muted; font.pixelSize: 11 }
-                Text { text: "▧  Main.qml"; color: Design.Theme.secondary; font.pixelSize: 11; Layout.fillWidth: true; elide: Text.ElideRight }
+            Layout.margins: 9
+            spacing: 5
+            Rectangle {
+                Layout.fillWidth: true
+                implicitHeight: 34; radius: 17
+                color: Design.Theme.background; border.color: Design.Theme.border
+                Text { anchors.fill: parent; anchors.leftMargin: 12; anchors.rightMargin: 12; verticalAlignment: Text.AlignVCenter; text: root.mode === 1 ? root.workspace.activePath.replace(/\//g, "  ›  ") : root.workspace.rootPath.replace(/\//g, "  ›  "); elide: Text.ElideLeft; color: Design.Theme.secondary; font.pixelSize: 12 }
             }
+            Design.IconButton { iconName: root.mode === 0 ? "file" : "folder"; tooltip: root.mode === 0 ? "查看文件预览" : "浏览工作区文件"; enabled: root.mode === 1 || root.workspace.activePath.length > 0; onClicked: root.mode = root.mode === 0 ? 1 : 0 }
+            Design.IconButton { visible: root.mode === 1 && root.workspace.language === "md"; iconName: "code"; tooltip: root.renderedMarkdown ? "查看源代码" : "查看格式化文档"; onClicked: root.renderedMarkdown = !root.renderedMarkdown }
         }
         Rectangle { Layout.fillWidth: true; implicitHeight: 1; color: Design.Theme.border }
-        Rectangle {
+        RowLayout {
+            visible: root.mode === 0
             Layout.fillWidth: true; Layout.margins: 9
-            implicitHeight: 34; radius: 17; color: Design.Theme.background; border.color: Design.Theme.border
-            Text { anchors.fill: parent; anchors.leftMargin: 12; verticalAlignment: Text.AlignVCenter; text: "Users  ›  tong  ›  Documents  ›  GitHub  ›  ex-agent-code.app"; elide: Text.ElideLeft; color: Design.Theme.secondary; font.pixelSize: 12 }
+            TextField {
+                id: filter
+                Layout.fillWidth: true; implicitHeight: 28
+                placeholderText: "筛选文件…"; font.pixelSize: 12; color: Design.Theme.text
+                leftPadding: 28
+                background: Rectangle { radius: 14; color: Design.Theme.background; border.color: Design.Theme.border; Design.Icon { x: 10; anchors.verticalCenter: parent.verticalCenter; name: "search"; width: 13; height: 13 } }
+            }
+            Design.IconButton { iconName: "refresh"; tooltip: "刷新文件列表"; onClicked: root.workspace.refresh() }
         }
-        Rectangle { Layout.fillWidth: true; implicitHeight: 1; color: Design.Theme.border }
-        TextField {
-            id: filter
-            Layout.fillWidth: true; Layout.margins: 9
-            implicitHeight: 28
-            placeholderText: "筛选文件…"; font.pixelSize: 12; color: Design.Theme.text
-            placeholderTextColor: Design.Theme.muted
-            leftPadding: 28
-            background: Rectangle {
-                radius: 14; color: Design.Theme.background; border.color: Design.Theme.border
-                Design.Icon { x: 10; anchors.verticalCenter: parent.verticalCenter; name: "search"; implicitWidth: 13; implicitHeight: 13 }
+        Text { visible: root.workspace.error.length > 0; Layout.fillWidth: true; Layout.margins: 12; text: root.workspace.error; wrapMode: Text.Wrap; color: Design.Theme.warning; font.pixelSize: 12 }
+        ListView {
+            id: files
+            visible: root.mode === 0
+            Layout.fillWidth: true; Layout.fillHeight: true
+            clip: true; reuseItems: true
+            model: root.workspace.entries
+            ScrollBar.vertical: ScrollBar { width: 5 }
+            delegate: Button {
+                id: entry
+                HoverHandler { cursorShape: Qt.PointingHandCursor }
+                required property var modelData
+                width: files.width
+                height: filter.text.length === 0 || modelData.path.toLowerCase().includes(filter.text.toLowerCase()) ? 29 : 0
+                visible: height > 0
+                leftPadding: 10 + modelData.depth * 16
+                Accessible.name: (modelData.directory ? "文件夹 " : "预览文件 ") + modelData.path
+                onClicked: root.workspace.open(modelData.path)
+                background: Rectangle { radius: 5; color: entry.hovered ? Design.Theme.hover : "transparent" }
+                contentItem: RowLayout {
+                    spacing: 6
+                    Design.Icon { name: entry.modelData.directory ? entry.modelData.expanded ? "down" : "right" : "file"; implicitWidth: 13; implicitHeight: 13 }
+                    Text { text: entry.modelData.name; Layout.fillWidth: true; elide: Text.ElideMiddle; font.pixelSize: 12; color: Design.Theme.text }
+                }
             }
         }
-        Button {
-            id: contents
-            Accessible.name: root.folderExpanded ? "收起 Contents" : "展开 Contents"
-            Layout.fillWidth: true; implicitHeight: 28
-            visible: filter.text.length === 0 || "contents".includes(filter.text.toLowerCase())
-            onClicked: root.folderExpanded = !root.folderExpanded
-            background: Rectangle { color: contents.hovered ? Design.Theme.hover : "transparent" }
-            contentItem: RowLayout {
-                Design.Icon { name: root.folderExpanded ? "down" : "right"; implicitWidth: 12; implicitHeight: 12 }
-                Text { text: "Contents"; font.pixelSize: 12; color: Design.Theme.text; Layout.fillWidth: true }
-            }
-        }
-        Repeater {
-            model: root.folderExpanded ? ["MacOS", "Resources", "Info.plist"] : []
-            delegate: Text {
-                required property string modelData
-                visible: filter.text.length === 0 || modelData.toLowerCase().includes(filter.text.toLowerCase())
-                Layout.leftMargin: 29; Layout.topMargin: 7
-                text: modelData; color: Design.Theme.secondary; font.pixelSize: 12
-            }
-        }
-        Item { Layout.fillHeight: true }
+        Design.FilePreview { visible: root.mode === 1; Layout.fillWidth: true; Layout.fillHeight: true; workspace: root.workspace; controller: root.controller; renderedMarkdown: root.renderedMarkdown }
     }
 }

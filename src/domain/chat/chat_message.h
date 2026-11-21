@@ -18,6 +18,9 @@ struct ChatMessage {
     MessageStatus status = MessageStatus::Complete;
     QDateTime createdAt = QDateTime::currentDateTimeUtc();
     bool expanded = false;
+    QVariantList files;
+    QVariantMap activity;
+    QVariantList attachments;
 };
 
 struct ChatSession {

@@ -1,7 +1,7 @@
 #include "message_list_model.h"
 
 #include <utility>
-#include <QTextDocument>
+#include "presentation/text/markdown_formatter.h"
 #include <QRegularExpression>
 
 namespace exagent {
@@ -48,10 +48,24 @@ QVariant MessageListModel::data(const QModelIndex &index, int role) const
     case TitleRole: return message.title;
     case StatusRole: return static_cast<int>(message.status);
     case ExpandedRole: return message.expanded;
+    case ActivityRole: return message.activity;
+    case AttachmentsRole: return message.attachments;
+    case FilesRole: {
+        if (!message.files.isEmpty()) return message.files;
+        QVariantList files;
+        if (message.role != MessageRole::Tool || message.title != QStringLiteral("文件修改")) return files;
+        static const QRegularExpression path("^[^\\n]+\\.(?:qml|cpp|h|mm|md|json|go|js|ts|tsx|jsx|py|txt)$");
+        // 兼容早期文本资源：只展示原记录列出的文件，不补造增删行数。
+        for (const auto &line : message.content.split('\n')) if (path.match(line.trimmed()).hasMatch()) {
+            files.append(QVariantMap{{"path", line.trimmed()}});
+            if (files.size() >= 500) break;
+        }
+        return files;
+    }
     case BlocksRole: {
-        if (message.role != MessageRole::Assistant) return QVariantList{};
+        if (message.role != MessageRole::Assistant && message.role != MessageRole::Notice) return QVariantList{};
         if (const auto *cached = m_blocksCache.object(message.id)) return *cached;
-        auto parsed = blocks(message.content);
+        auto parsed = MarkdownFormatter().format(message.content, m_dark);
         qsizetype bytes = 0;
         for (const auto &entry : parsed) {
             const auto block = entry.toMap();
@@ -69,7 +83,8 @@ QHash<int, QByteArray> MessageListModel::roleNames() const
 {
     return {{IdRole, "messageId"}, {KindRole, "messageKind"}, {ContentRole, "content"},
             {TitleRole, "messageTitle"}, {StatusRole, "messageStatus"}, {ExpandedRole, "expanded"},
-            {BlocksRole, "contentBlocks"}, {TimeRole, "timeLabel"}};
+            {BlocksRole, "contentBlocks"}, {TimeRole, "timeLabel"}, {FilesRole, "changedFiles"},
+            {ActivityRole, "activity"}, {AttachmentsRole, "attachments"}};
 }
 
 void MessageListModel::replace(QList<ChatMessage> messages)
@@ -130,48 +145,12 @@ void MessageListModel::toggleExpanded(int row)
     emit presentationChanged();
 }
 
-QVariantList MessageListModel::blocks(const QString &content)
+void MessageListModel::setDark(bool dark)
 {
-    QVariantList result;
-    qsizetype blockStart = 0;
-    qsizetype offset = 0;
-    QString language;
-    bool inCode = false;
-    const auto appendBlock = [&](qsizetype end) {
-        if (end <= blockStart) return;
-        auto text = content.mid(blockStart, end - blockStart);
-        if (text.endsWith('\n')) text.chop(1);
-        QString html;
-        if (!inCode) {
-            text = text.trimmed();
-            if (text.isEmpty()) return;
-            QTextDocument document;
-            document.setMarkdown(text);
-            html = document.toHtml();
-            // 统一表格留白与浅边框，避免历史 Markdown 使用默认的黑色网格。
-            html.replace(QRegularExpression("<table[^>]*>"), "<table border=\"1\" cellspacing=\"0\" cellpadding=\"8\" style=\"border-collapse:collapse; border-color:#d9dde3;\">");
-            html.replace(QRegularExpression("<body[^>]*>"), "<body>");
-            html.replace(QRegularExpression("margin-top:[^;]+;"), "margin-top:0px;");
-            html.replace(QRegularExpression("margin-bottom:[^;]+;"), "margin-bottom:5px;");
-            html.replace(QRegularExpression("(<(?:p|li)[^>]*style=\")"), "\\1line-height:145%; ");
-        }
-        result.append(QVariantMap{{"kind", inCode ? 1 : 0}, {"text", text},
-                                  {"html", html}, {"language", language}});
-    };
-    while (offset < content.size()) {
-        auto end = content.indexOf('\n', offset);
-        if (end < 0) end = content.size();
-        const auto line = QStringView(content).mid(offset, end - offset);
-        if (line.startsWith(u"```")) {
-            appendBlock(offset);
-            if (!inCode) language = line.mid(3).toString().trimmed();
-            inCode = !inCode;
-            blockStart = end + 1;
-        }
-        offset = end + 1;
-    }
-    appendBlock(content.size());
-    return result;
+    if (m_dark == dark) return;
+    m_dark = dark;
+    m_blocksCache.clear();
+    if (count() > 0) emit dataChanged(index(0), index(count() - 1), {BlocksRole});
 }
 
 } // namespace exagent

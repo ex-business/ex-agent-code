@@ -12,6 +12,14 @@ Item {
     // 由场景图绘制曲线，避免小尺寸 Canvas 位图被 Retina 放大后发虚。
     readonly property var paths: ({
         plus: "M12 5V19M5 12H19",
+        refresh: "M20 8A9 9 0 1 0 20 16M20 3V9H14",
+        minus: "M5 12H19",
+        activity: "M7 3A3 3 0 1 1 7 9A3 3 0 1 1 7 3M17 3A3 3 0 1 1 17 9A3 3 0 1 1 17 3M7 15A3 3 0 1 1 7 21A3 3 0 1 1 7 15M17 15A3 3 0 1 1 17 21A3 3 0 1 1 17 15M9 8L15 16M15 8L9 16",
+        image: "M4 7H17V20H4ZM7 7V3H21V16H17M4 17L8 12L12 16L14 13L17 17M13 10V10.1",
+        shield: "M12 3L20 6V12C20 17 16 20 12 22C8 20 4 17 4 12V6ZM12 8V13M12 17V17.1",
+        bell: "M5 17H19L17 14V9C17 3 7 3 7 9V14ZM10 21H14M18 3L21 5",
+        code: "M8 7L3 12L8 17M16 7L21 12L16 17M14 5L10 19",
+        feedback: "M3 10H7V20H3ZM7 11L11 4H14V10H19L18 20H7M21 4V12",
         select: "M4 9V4H9M15 4H20V9M20 15V20H15M9 20H4V15M8 8H16V16H8Z",
         arrow: "M12 19V5M6 11L12 5L18 11",
         down: "M7 10L12 15L17 10",

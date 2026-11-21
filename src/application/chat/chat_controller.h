@@ -24,7 +24,10 @@ class ChatController final : public QObject {
     Q_PROPERTY(QString storagePath READ storagePath CONSTANT)
     Q_PROPERTY(QVariantList resourceConversations READ resourceConversations NOTIFY resourcesChanged)
     Q_PROPERTY(QVariantList navigationEntries READ navigationEntries NOTIFY resourcesChanged)
+    Q_PROPERTY(QVariantMap navigationInfo READ navigationInfo NOTIFY resourcesChanged)
     Q_PROPERTY(QString resourcePath READ resourcePath CONSTANT)
+    Q_PROPERTY(QVariantMap changeSummary READ changeSummary NOTIFY sessionChanged)
+    Q_PROPERTY(int activityStatus READ activityStatus NOTIFY sessionChanged)
 public:
     explicit ChatController(QObject *parent = nullptr);
     MessageListModel *messages();
@@ -37,7 +40,10 @@ public:
     bool previewMode() const;
     QVariantList resourceConversations() const;
     QVariantList navigationEntries() const;
+    QVariantMap navigationInfo() const;
     QString resourcePath() const;
+    QVariantMap changeSummary() const { return m_preview ? m_changeSummary : QVariantMap{}; }
+    int activityStatus() const { return m_preview ? m_activityStatus : 0; }
     void setDraft(const QString &text);
     Q_INVOKABLE void newSession();
     Q_INVOKABLE void selectSession(const QString &id);
@@ -73,6 +79,8 @@ private:
     QString m_error;
     QString m_previewDraft;
     QString m_previewTitle;
+    QVariantMap m_changeSummary;
+    int m_activityStatus = 0;
     QTimer m_saveTimer;
 };
 

@@ -15,20 +15,38 @@ ApplicationWindow {
     minimumWidth: 740
     minimumHeight: 560
     visible: true
+    flags: Qt.Window | (Qt.platform.os === "osx" ? Qt.ExpandedClientAreaHint | Qt.NoTitleBarBackgroundHint : 0)
+    topPadding: 0
     title: "EX Agent Code"
     color: Design.Theme.background
     font.family: Design.Theme.font
     property bool sidebarVisible: true
     property bool filesVisible: true
+    WorkspaceController { id: workspaceController }
+    Design.ChatMenu { id: chatMenu; controller: window.controller }
+    Design.ImagePreview { id: imagePreview }
+    header: Design.WorkbenchTitleBar {
+        id: titleBar
+        windowHandle: window
+        workspace: workspaceController
+        sessionTitle: window.controller.sessionTitle
+        navigationWidth: 50 + (sidebar.visible ? sidebar.width + 8 : 0)
+        filesWidth: filePanel.visible ? filePanel.width + 8 : 0
+        onSidebarRequested: window.sidebarVisible = !window.sidebarVisible
+        onFilesRequested: window.filesVisible = !window.filesVisible
+        onMenuRequested: chatMenu.popup(titleBar, Math.max(0, titleBar.width - filesWidth - 220), titleBar.height)
+    }
     Core.Settings { id: layoutSettings; property var splitState }
     onClosing: layoutSettings.splitState = workspaceSplit.saveState()
     Component.onCompleted: {
         if (layoutSettings.splitState) workspaceSplit.restoreState(layoutSettings.splitState)
         controller.setDarkTheme(Design.Theme.dark)
-        controller.loadResourceConversation("webchat-go")
+        // 真实会话资源保存在本机；新安装没有资源时正常显示空聊天。
+        if (controller.resourceConversations.some(entry => entry.id === "webchat-go")) controller.loadResourceConversation("webchat-go")
     }
 
     Shortcut { sequence: StandardKey.New; onActivated: window.controller.newSession() }
+    Shortcut { sequence: StandardKey.Copy; enabled: SelectionCoordinator.hasSelection; onActivated: SelectionCoordinator.copy() }
     Shortcut { sequence: "Ctrl+B"; onActivated: window.sidebarVisible = !window.sidebarVisible }
     Shortcut {
         sequence: "Ctrl+K"
@@ -36,6 +54,7 @@ ApplicationWindow {
     }
     RowLayout {
         anchors.fill: parent
+        anchors.topMargin: titleBar.height
         spacing: 0
         Design.NavigationRail {
             Layout.preferredWidth: 50
@@ -52,6 +71,7 @@ ApplicationWindow {
                 Accessible.role: Accessible.Separator
                 Accessible.name: "调整面板宽度"
                 color: SplitHandle.pressed ? Design.Theme.selected : SplitHandle.hovered ? Design.Theme.hover : "transparent"
+                HoverHandler { cursorShape: Qt.SplitHCursor }
                 Rectangle { width: 1; height: parent.height; anchors.horizontalCenter: parent.horizontalCenter; color: Design.Theme.border }
             }
         Design.Sidebar {
@@ -67,49 +87,6 @@ ApplicationWindow {
             SplitView.fillWidth: true
             SplitView.minimumWidth: 360
             spacing: 0
-            Item {
-                Layout.fillWidth: true
-                implicitHeight: 36
-                RowLayout {
-                    anchors.fill: parent
-                    anchors.leftMargin: 15
-                    anchors.rightMargin: 16
-                    spacing: 9
-                    Design.IconButton {
-                        visible: !window.sidebarVisible
-                        iconName: "sidebar"; tooltip: "展开侧栏 · ⌘B"
-                        onClicked: window.sidebarVisible = true
-                    }
-                    Design.Icon { name: "folder"; implicitWidth: 15; implicitHeight: 15 }
-                    Text { text: window.controller.sessionTitle; color: Design.Theme.text; font.pixelSize: 12; elide: Text.ElideRight; Layout.fillWidth: true }
-                    Text { visible: window.controller.messages.totalCount > 30; text: window.controller.messages.count + " / " + window.controller.messages.totalCount; color: Design.Theme.muted; font.pixelSize: 10 }
-                    Design.IconButton { iconName: "sidebar"; tooltip: "显示或收起文件面板"; onClicked: window.filesVisible = !window.filesVisible }
-                    Design.IconButton {
-                        id: chatMenuButton
-                        iconName: "dots"; tooltip: "聊天操作"
-                        onClicked: chatMenu.popup(chatMenuButton, 0, chatMenuButton.height)
-                        Design.ContextMenu {
-                            id: chatMenu
-                            Design.ContextMenuItem { text: "新聊天"; onTriggered: window.controller.newSession() }
-                            Design.ContextMenuItem { text: "预览消息样式"; onTriggered: window.controller.showPreview() }
-                            Design.ContextMenuItem { text: "当前 ChatGPT 对话"; onTriggered: window.controller.showConversationPreview() }
-                            Design.ContextMenuItem { text: "长代码与历史展示"; onTriggered: window.controller.showLongPreview() }
-                            Design.ContextMenuItem { text: "长聊天展示 · 300 轮"; onTriggered: window.controller.showLargeChatPreview() }
-                            Repeater {
-                                model: window.controller.resourceConversations
-                                delegate: Design.ContextMenuItem {
-                                    required property var modelData
-                                    text: modelData.title + " · " + modelData.messageCount + " 条"
-                                    onTriggered: window.controller.loadResourceConversation(modelData.id)
-                                }
-                            }
-                            Design.ContextMenuItem { text: "复制本地会话文件路径"; onTriggered: window.controller.copyText(window.controller.storagePath) }
-                            MenuSeparator {}
-                            Design.ContextMenuItem { text: Design.Theme.dark ? "浅色主题" : "深色主题"; onTriggered: Design.Theme.dark = !Design.Theme.dark }
-                        }
-                    }
-                }
-            }
             Rectangle {
                 visible: window.controller.errorMessage.length > 0
                 Layout.fillWidth: true
@@ -147,8 +124,6 @@ ApplicationWindow {
                     spacing: 5
                     topMargin: 24
                     bottomMargin: 15
-                    // 参考图最后一条回复下方留白，历史消息仍使用原有虚拟列表。
-                    footer: Item { width: transcript.width; height: window.controller.previewMode && window.controller.sessionTitle === "评估用 Qt 开发 Codex 类 Agent" ? Math.max(180, transcript.height - 420) : 0 }
                     boundsBehavior: Flickable.StopAtBounds
                     acceptedButtons: Qt.NoButton
                     model: window.controller.messages
@@ -255,6 +230,9 @@ ApplicationWindow {
                         required property int messageStatus
                         required property bool expanded
                         required property var contentBlocks
+                        required property var changedFiles
+                        required property var activity
+                        required property var attachments
                         width: ListView.view.width
                         height: messageView.implicitHeight
                         Design.MessageDelegate {
@@ -270,6 +248,11 @@ ApplicationWindow {
                             messageStatus: messageRow.messageStatus
                             expanded: messageRow.expanded
                             contentBlocks: messageRow.contentBlocks
+                            changedFiles: messageRow.changedFiles
+                            activity: messageRow.activity
+                            attachments: messageRow.attachments
+                            onFileRequested: (path) => { window.filesVisible = true; workspaceController.open(path) }
+                            onImageRequested: (image) => imagePreview.openImage(image)
                         }
                     }
                 }
@@ -299,6 +282,24 @@ ApplicationWindow {
                     onClicked: transcript.revealLatest()
                 }
             }
+            Item {
+                visible: window.controller.activityStatus === 1
+                Layout.fillWidth: true
+                implicitHeight: 40
+                Rectangle {
+                    anchors.centerIn: parent
+                    width: 36; height: 32; radius: 16
+                    color: Design.Theme.background; border.color: Design.Theme.border
+                    Design.Icon { anchors.centerIn: parent; name: "dots"; width: 20; height: 20; color: Design.Theme.muted }
+                    Accessible.name: "正在处理"
+                }
+            }
+            Design.ChangesSummary {
+                visible: Number(window.controller.changeSummary.fileCount || 0) > 0
+                Layout.fillWidth: true
+                summary: window.controller.changeSummary
+                onFileRequested: (path) => { window.filesVisible = true; workspaceController.open(path) }
+            }
             Design.Composer {
                 id: composer
                 Layout.fillWidth: true
@@ -311,6 +312,9 @@ ApplicationWindow {
             }
         }
         Design.FilePanel {
+            id: filePanel
+            workspace: workspaceController
+            controller: window.controller
             visible: window.filesVisible && window.width >= 1100
             SplitView.preferredWidth: 600
             SplitView.minimumWidth: 260
@@ -324,6 +328,12 @@ ApplicationWindow {
     }
     Connections {
         target: window.controller
-        function onSessionChanged() { transcriptWheel.stop(); transcript.revealLatest() }
+        function onSessionChanged() {
+            // 定位任务属于原会话，切换后不能继续加载另一段历史。
+            jumpPage.stop()
+            transcript.jumpTarget = -1
+            transcriptWheel.stop()
+            transcript.revealLatest()
+        }
     }
 }

@@ -10,6 +10,7 @@
 #include <QStandardPaths>
 #include <QWheelEvent>
 #include <QMouseEvent>
+#include <QCursor>
 #include <algorithm>
 
 ScrollDiagnostics::ScrollDiagnostics(QQuickWindow *window) : QObject(window)
@@ -27,6 +28,10 @@ ScrollDiagnostics::ScrollDiagnostics(QQuickWindow *window) : QObject(window)
 ScrollDiagnostics::~ScrollDiagnostics() { save(); }
 bool ScrollDiagnostics::eventFilter(QObject *, QEvent *event)
 {
+    if (event->type() == QEvent::MouseMove || event->type() == QEvent::HoverMove) {
+        std::lock_guard guard(m_mutex);
+        m_dirty = true;
+    }
     const bool wheelInput = event->type() == QEvent::Wheel;
     const bool dragInput = event->type() == QEvent::MouseMove && (static_cast<QMouseEvent *>(event)->buttons() & Qt::LeftButton);
     if (!wheelInput && !dragInput) return false;
@@ -87,6 +92,7 @@ void ScrollDiagnostics::save()
     file.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner);
     file.write(QJsonDocument(QJsonObject{{"schemaVersion", 1}, {"renderLoop", qEnvironmentVariable("QSG_RENDER_LOOP", "default")}, {"updatedAt", QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs)},
         {"frameBudgetMs", m_budget}, {"inputCount", inputCount}, {"frameIntervals", statistics(intervals)},
+        {"cursorShape", qobject_cast<QQuickWindow *>(parent()) ? int(qobject_cast<QQuickWindow *>(parent())->cursor().shape()) : int(Qt::ArrowCursor)},
         {"inputToFrame", statistics(latency)}, {"dragInputToFrame", statistics(dragLatency)},
         {"wheelInputToFrame", statistics(wheelLatency)}, {"inputs", inputs}, {"frameIntervalsMs", frameIntervals}}).toJson());
     file.commit();

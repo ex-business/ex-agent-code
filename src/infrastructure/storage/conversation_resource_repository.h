@@ -8,6 +8,8 @@ struct ConversationResource {
     QString title;
     int messageCount = 0;
     int pageCount = 0;
+    QVariantMap changeSummary;
+    int activityStatus = 0;
 };
 
 // 每个会话一个目录，清单与消息分页分离，附件留在同目录 attachments 下。
@@ -16,6 +18,7 @@ public:
     QString rootPath() const;
     QVariantList list() const;
     QVariantList navigation() const;
+    QVariantMap navigationInfo() const;
     ConversationResource manifest(const QString &id, QString *error) const;
     QList<ChatMessage> page(const ConversationResource &resource, int number, QString *error) const;
 };

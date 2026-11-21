@@ -4,6 +4,7 @@ import QtQuick.Controls
 import ExAgent.App as Design
 
 Menu {
+    popupType: Popup.Item
     padding: 5
     implicitWidth: 218
     font.pixelSize: 12

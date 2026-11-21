@@ -58,6 +58,9 @@ QList<ChatSession> SessionRepository::load(QString *error) const
             message.status = static_cast<MessageStatus>(status);
             message.content = messageObject.value("content").toString();
             message.title = messageObject.value("title").toString();
+            message.files = messageObject.value("files").toArray().toVariantList();
+            message.activity = messageObject.value("activity").toObject().toVariantMap();
+            message.attachments = messageObject.value("attachments").toArray().toVariantList();
             message.expanded = messageObject.value("expanded").toBool();
             message.createdAt = QDateTime::fromString(messageObject.value("createdAt").toString(), Qt::ISODateWithMs);
             session.messages.append(message);
@@ -80,7 +83,8 @@ bool SessionRepository::save(const QList<ChatSession> &sessions, QString *error)
             messages.append(QJsonObject{
                 {"id", message.id}, {"role", static_cast<int>(message.role)},
                 {"status", static_cast<int>(message.status)}, {"content", message.content},
-                {"title", message.title}, {"expanded", message.expanded},
+                {"title", message.title}, {"expanded", message.expanded}, {"files", QJsonArray::fromVariantList(message.files)},
+                {"activity", QJsonObject::fromVariantMap(message.activity)}, {"attachments", QJsonArray::fromVariantList(message.attachments)},
                 {"createdAt", message.createdAt.toString(Qt::ISODateWithMs)}});
         }
         sessionArray.append(QJsonObject{

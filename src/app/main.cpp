@@ -7,6 +7,9 @@
 #include <QQuickStyle>
 #include <QQuickWindow>
 #include <QStyleHints>
+#ifdef Q_OS_MACOS
+#include "platform/macos/window_chrome.h"
+#endif
 
 int main(int argc, char *argv[])
 {
@@ -34,7 +37,10 @@ int main(int argc, char *argv[])
     engine.loadFromModule("ExAgent.App", "Main");
 #ifdef Q_OS_MACOS
     if (!engine.rootObjects().isEmpty()) {
-        if (auto *window = qobject_cast<QQuickWindow *>(engine.rootObjects().first())) new PixelScrollFilter(window);
+        if (auto *window = qobject_cast<QQuickWindow *>(engine.rootObjects().first())) {
+            configureMacWindowChrome(window);
+            new PixelScrollFilter(window);
+        }
     }
 #endif
     if (app.arguments().contains("--profile-scroll") && !engine.rootObjects().isEmpty()) {

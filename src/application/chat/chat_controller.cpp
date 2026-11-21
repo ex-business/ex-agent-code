@@ -113,6 +113,7 @@ bool ChatController::sendMessage()
 
 QVariantList ChatController::resourceConversations() const { return m_resources.list(); }
 QVariantList ChatController::navigationEntries() const { return m_resources.navigation(); }
+QVariantMap ChatController::navigationInfo() const { return m_resources.navigationInfo(); }
 QString ChatController::resourcePath() const { return m_resources.rootPath(); }
 void ChatController::showPreview() { loadResourceConversation("demo-basic"); }
 void ChatController::showLongPreview() { loadResourceConversation("demo-code"); }
@@ -129,6 +130,8 @@ void ChatController::loadResourceConversation(const QString &id)
     // 导入的历史是只读资源，不写回原始 Codex 会话，也不覆盖本地聊天。
     m_preview = true;
     m_previewTitle = resource.title;
+    m_changeSummary = resource.changeSummary;
+    m_activityStatus = resource.activityStatus;
     m_previewDraft.clear();
     m_messages.replacePaged(std::move(latest), resource.messageCount,
         [this, resource, number = resource.pageCount - 2]() mutable {
@@ -147,6 +150,7 @@ void ChatController::copyText(const QString &text) { QGuiApplication::clipboard(
 void ChatController::clearError() { setError({}); }
 void ChatController::setDarkTheme(bool dark)
 {
+    m_messages.setDark(dark);
     QGuiApplication::styleHints()->setColorScheme(dark ? Qt::ColorScheme::Dark : Qt::ColorScheme::Light);
 }
 

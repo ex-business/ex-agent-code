@@ -17,14 +17,28 @@ Rectangle {
     readonly property int firstVisibleLine: Math.max(1, Math.floor(codeView.contentY / lineHeight) + 1)
     readonly property int lastVisibleLine: Math.min(lines.lineCount, firstVisibleLine + Math.ceil(codeView.height / lineHeight) - 1)
     implicitHeight: 38 + viewportHeight + (lines.lineCount > 15 ? 27 : 0)
-    radius: 10
+    radius: 18
     color: Design.Theme.code
     border.color: Design.Theme.border
     clip: true
     activeFocusOnTab: true
-    function copySelection() { if (lines.selectedText.length > 0) controller.copyText(lines.selectedText) }
-    Shortcut { sequence: StandardKey.Copy; enabled: root.activeFocus; onActivated: root.copySelection() }
+    function clearSelection() { lines.select(lines.selectionCursor, lines.selectionCursor) }
+    readonly property int selectionLength: lines.selectionLength
+    function selectedContent() { return lines.selectedText }
+    onActiveFocusChanged: if (activeFocus) SelectionCoordinator.activate(root)
+    onSelectionLengthChanged: SelectionCoordinator.changed(root)
+    function copySelection() { if (lines.selectionLength > 0) { controller.copyText(lines.selectedText); copyTimer.restart() } }
     Shortcut { sequence: StandardKey.SelectAll; enabled: root.activeFocus; onActivated: lines.selectAll() }
+    Keys.onPressed: (event) => {
+        if (![Qt.Key_Left, Qt.Key_Right, Qt.Key_Up, Qt.Key_Down, Qt.Key_Home, Qt.Key_End].includes(event.key)) return
+        let key = event.key
+        const command = Qt.platform.os === "osx" && (event.modifiers & Qt.ControlModifier)
+        if (command && key === Qt.Key_Left) key = Qt.Key_Home
+        if (command && key === Qt.Key_Right) key = Qt.Key_End
+        lines.moveCursor(key, (event.modifiers & Qt.ShiftModifier) !== 0,
+                         (event.modifiers & (Qt.platform.os === "osx" ? Qt.AltModifier : Qt.ControlModifier)) !== 0)
+        event.accepted = true
+    }
     Accessible.role: Accessible.Pane
     Accessible.name: (language || "文本") + " 代码块，" + lines.lineCount + " 行"
     Accessible.description: "已格式化 " + lines.formattedLineCount + " 行，当前缓存 " + lines.cachedLineCount + " 行"
@@ -36,26 +50,26 @@ Rectangle {
         dark: Design.Theme.dark
     }
     FontMetrics { id: metrics; font.family: Design.Theme.monoFont; font.pixelSize: 13 }
-    Rectangle {
+    Item {
         id: codeHeader
         width: parent.width
         height: 38
-        color: Design.Theme.dark ? "#262626" : "#ededed"
         RowLayout {
             anchors.fill: parent
             anchors.leftMargin: 15
             anchors.rightMargin: 8
             spacing: 6
-            Text { text: root.language || "文本"; color: Design.Theme.secondary; font.family: Design.Theme.monoFont; font.pixelSize: 11 }
+            Design.Icon { name: "code"; implicitWidth: 15; implicitHeight: 15 }
+            Text { text: root.language === "text" || root.language === "" ? "纯文本" : root.language; color: Design.Theme.secondary; font.pixelSize: 12 }
             Item { Layout.fillWidth: true }
-            Text { text: lines.selectedText.length > 0 ? "已选 " + lines.selectedText.length + " 字符" : copyTimer.running ? "已复制" : "复制代码"; color: Design.Theme.secondary; font.pixelSize: 11 }
+            Text { visible: lines.selectionLength > 0 || copyTimer.running; text: lines.selectionLength > 0 ? "已选 " + lines.selectionLength + " 字符" : "已复制"; color: Design.Theme.secondary; font.pixelSize: 11 }
             Design.IconButton {
                 iconName: "select"
                 tooltip: "全选代码"
                 onClicked: { root.forceActiveFocus(); lines.selectAll() }
             }
             Design.IconButton {
-                visible: lines.selectedText.length > 0
+                visible: lines.selectionLength > 0
                 iconName: "copy"
                 tooltip: "复制所选代码"
                 onClicked: root.copySelection()
@@ -90,34 +104,26 @@ Rectangle {
         ScrollBar.horizontal: ScrollBar { policy: ScrollBar.AsNeeded; height: 6; z: 3 }
         Design.SmoothWheel { view: codeView; stepSize: root.lineHeight * 3; outerWheel: root.outerWheel }
         Design.SmoothWheel { view: codeView; orientation: Qt.Horizontal; stepSize: 66 }
-        MouseArea {
+        Design.SelectionSurface {
             id: selectionMouse
             parent: codeView
             anchors.fill: parent
             z: 2
-            acceptedButtons: Qt.LeftButton | Qt.RightButton
             Accessible.role: Accessible.EditableText
             Accessible.name: "代码选择区域"
             Accessible.focusable: true
-            Accessible.description: "已选择 " + lines.selectedText.length + " 个字符；支持跨行选择、全选与复制"
-            Accessible.onPressAction: root.forceActiveFocus()
-            preventStealing: true
-            cursorShape: Qt.IBeamCursor
-            function positionFor(x: real, y: real): int {
+            Accessible.description: "已选择 " + lines.selectionLength + " 个字符；支持跨行选择、全选与复制"
+            selectionAnchor: lines.selectionAnchor
+            function hitPosition(x, y, nearestCursor) {
                 const p = codeView.mapToItem(codeView.contentItem, x, Math.max(0, Math.min(codeView.height - 1, y)))
                 const rowIndex = Math.max(0, Math.min(lines.lineCount - 1, Math.floor(p.y / root.lineHeight)))
-                return lines.positionAtPixel(rowIndex, Math.max(0, p.x - 15), metrics.font)
+                return lines.positionAtPixel(rowIndex, Math.max(0, p.x - 15), metrics.font, nearestCursor)
             }
-            onPressed: (mouse) => {
-                root.forceActiveFocus()
-                if (mouse.button === Qt.RightButton) { codeMenu.popup(); return }
-                const position = positionFor(mouse.x, mouse.y)
-                lines.select(mouse.modifiers & Qt.ShiftModifier ? lines.selectionAnchor : position, position)
-            }
-            onPositionChanged: (mouse) => {
-                if (pressedButtons & Qt.LeftButton) lines.select(lines.selectionAnchor, positionFor(mouse.x, mouse.y))
-            }
-            onDoubleClicked: (mouse) => lines.selectWord(positionFor(mouse.x, mouse.y))
+            positionFor: (x, y, nearest) => hitPosition(x, y, nearest)
+            rangeFor: (position, unit) => lines.rangeAt(position, unit)
+            applySelection: (start, end) => { SelectionCoordinator.activate(root); lines.select(start, end) }
+            onFocusRequested: { SelectionCoordinator.activate(root); root.forceActiveFocus() }
+            onContextRequested: (x, y) => codeMenu.popup(selectionMouse, x, y)
             // 拖出视口时继续选择原始文本，回收行对象不会丢失跨行选区。
             Timer {
                 interval: 30
@@ -127,7 +133,7 @@ Rectangle {
                     const direction = selectionMouse.mouseY < 16 ? -1 : 1
                     codeView.contentY = Math.max(codeView.originY - codeView.topMargin,
                         Math.min(codeView.originY + codeView.contentHeight - codeView.height + codeView.bottomMargin, codeView.contentY + direction * 12))
-                    lines.select(lines.selectionAnchor, selectionMouse.positionFor(selectionMouse.mouseX, selectionMouse.mouseY))
+                    selectionMouse.extend(selectionMouse.mouseX, selectionMouse.mouseY)
                 }
             }
         }
@@ -182,7 +188,7 @@ Rectangle {
     Timer { id: copyTimer; interval: 1800 }
     Design.ContextMenu {
         id: codeMenu
-        Design.ContextMenuItem { text: "复制所选代码"; enabled: lines.selectedText.length > 0; onTriggered: root.copySelection() }
+        Design.ContextMenuItem { text: "复制所选代码"; enabled: lines.selectionLength > 0; onTriggered: root.copySelection() }
         Design.ContextMenuItem { text: "全选代码"; onTriggered: { root.forceActiveFocus(); lines.selectAll() } }
         Design.ContextMenuItem { text: "复制完整代码"; onTriggered: root.controller.copyText(root.code) }
     }

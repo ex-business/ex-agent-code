@@ -20,7 +20,7 @@ public:
     enum Kind { User = 1, Assistant = 2, Tool = 3, Notice = 4 };
     Q_ENUM(Kind)
     enum Roles { IdRole = Qt::UserRole + 1, KindRole, ContentRole, TitleRole,
-                 StatusRole, ExpandedRole, BlocksRole, TimeRole };
+                 StatusRole, ExpandedRole, BlocksRole, TimeRole, FilesRole, ActivityRole, AttachmentsRole };
     explicit MessageListModel(QObject *parent = nullptr);
     int rowCount(const QModelIndex &parent = {}) const override;
     QVariant data(const QModelIndex &index, int role) const override;
@@ -35,6 +35,7 @@ public:
     void append(ChatMessage message);
     void appendText(const QString &messageId, const QString &delta);
     Q_INVOKABLE void toggleExpanded(int row);
+    void setDark(bool dark);
 
 signals:
     void countChanged();
@@ -42,7 +43,7 @@ signals:
     void presentationChanged();
 
 private:
-    static QVariantList blocks(const QString &content);
+    bool m_dark = false;
     QList<ChatMessage> m_messages;
     int m_firstLoaded = 0;
     int m_pagedTotal = -1;

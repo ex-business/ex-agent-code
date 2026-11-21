@@ -14,14 +14,26 @@ qt_add_qml_module(ex_agent_chat
         presentation/chat/session_list_model.h presentation/chat/session_list_model.cpp
         presentation/code/code_line_model.h presentation/code/code_line_model.cpp
         presentation/code/syntax_highlighter.h presentation/code/syntax_highlighter.cpp
+        presentation/text/text_selection_rules.h presentation/text/text_selection_rules.cpp
+        presentation/text/markdown_formatter.h presentation/text/markdown_formatter.cpp
+        presentation/text/selection_coordinator.h presentation/text/selection_coordinator.cpp
+        presentation/workspace/workspace_controller.h presentation/workspace/workspace_controller.cpp
 )
 target_link_libraries(ex_agent_chat PUBLIC ex_agent_domain Qt6::Gui Qt6::Qml)
 target_include_directories(ex_agent_chat PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}"
     PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/application/chat" "${CMAKE_CURRENT_SOURCE_DIR}/presentation/chat" "${CMAKE_CURRENT_SOURCE_DIR}/presentation/code")
 target_compile_options(ex_agent_chat PRIVATE -Wall -Wextra -Wpedantic)
+target_include_directories(ex_agent_chat PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/presentation/text")
+target_include_directories(ex_agent_chat PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/presentation/workspace")
 
 qt_add_executable(ex-agent-code MACOSX_BUNDLE app/main.cpp app/scroll_diagnostics.h app/scroll_diagnostics.cpp app/pixel_scroll_filter.h app/pixel_scroll_filter.cpp)
 target_link_libraries(ex-agent-code PRIVATE ex_agent_chat ex_agent_chatplugin Qt6::Quick Qt6::QuickControls2)
+if(APPLE)
+    target_sources(ex_agent_chat PRIVATE platform/macos/word_boundaries.cpp)
+    target_link_libraries(ex_agent_chat PRIVATE "-framework CoreFoundation")
+    target_sources(ex-agent-code PRIVATE platform/macos/window_chrome.mm)
+    target_link_libraries(ex-agent-code PRIVATE "-framework AppKit")
+endif()
 set_target_properties(ex-agent-code PROPERTIES
     MACOSX_BUNDLE_BUNDLE_NAME "EX Agent Code"
     MACOSX_BUNDLE_GUI_IDENTIFIER "com.exbusiness.agentcode"
