@@ -3,7 +3,6 @@
 
 #include <QTimer>
 #include <algorithm>
-#include <QFontMetricsF>
 #include "presentation/text/text_selection_rules.h"
 #include <QTextBoundaryFinder>
 
@@ -96,6 +95,9 @@ void CodeLineModel::setDark(bool dark)
 void CodeLineModel::rebuildIndex()
 {
     m_anchor = m_cursor = 0;
+    m_preferredX = -1;
+    m_layoutRow = -1;
+    m_hitLayout.reset();
     m_lines.clear();
     m_highlightCache.clear();
     m_formattedLineCount = 0;
@@ -117,6 +119,8 @@ void CodeLineModel::rebuildIndex()
         m_maximumColumns = qMax(m_maximumColumns, columns);
         offset = end + 1;
     }
+    // 文件末尾的换行同样有可定位的空行，方向键不能停留在上一行。
+    if (m_code.endsWith('\n')) m_lines.append({m_code.size(), 0, state});
 }
 
 QString CodeLineModel::selectedText() const { return m_code.mid(qMin(m_anchor, m_cursor), qAbs(m_cursor - m_anchor)); }
@@ -134,34 +138,61 @@ int CodeLineModel::positionAt(int row, int displayColumn) const
     int raw = 0;
     for (const auto c : text) {
         if (display >= displayColumn) break;
+        if (c == '\t' && displayColumn - display < 2) break;
         display += c == '\t' ? 4 : 1;
         ++raw;
     }
+    // 垂直移动和制表符映射也必须落在完整字素边界。
+    QTextBoundaryFinder boundary(QTextBoundaryFinder::Grapheme, text.toString());
+    boundary.setPosition(raw);
+    if (!boundary.isAtBoundary()) raw = qMax(0, boundary.toPreviousBoundary());
     return line.offset + raw;
 }
 
 int CodeLineModel::positionAtPixel(int row, qreal x, const QFont &font, bool nearestCursor) const
 {
     if (row < 0 || row >= m_lines.size()) return 0;
+    const auto line = layoutLine(row, font);
+    const int column = line.xToCursor(x, nearestCursor ? QTextLine::CursorBetweenCharacters : QTextLine::CursorOnCharacter);
+    return positionAt(row, column);
+}
+
+int CodeLineModel::rowAt(int position) const
+{
+    const auto found = std::upper_bound(m_lines.cbegin(), m_lines.cend(), position,
+        [](int value, const Line &line) { return value < line.offset; });
+    return qMax(0, int(found - m_lines.cbegin()) - 1);
+}
+bool CodeLineModel::textAtPixel(int row, qreal x, const QFont &font) const
+{
+    if (row < 0 || row >= m_lines.size() || m_lines[row].length == 0 || x < 0) return false;
+    return x <= layoutLine(row, font).naturalTextWidth();
+}
+QTextLine CodeLineModel::layoutLine(int row, const QFont &font) const
+{
+    // 拖动时复用当前行的字形布局，不为每个鼠标位置反复测量多个字符串前缀。
+    if (!m_hitLayout || m_layoutRow != row || m_layoutFont != font) {
+        const auto &line = m_lines[row];
+        auto display = m_code.mid(line.offset, qMin<qsizetype>(line.length, MaxRenderedLineCharacters));
+        display.replace('\t', "    ");
+        m_hitLayout = std::make_unique<QTextLayout>(display, font);
+        m_hitLayout->beginLayout();
+        auto visual = m_hitLayout->createLine();
+        if (visual.isValid()) visual.setLineWidth(1e9);
+        m_hitLayout->endLayout();
+        m_layoutRow = row;
+        m_layoutFont = font;
+    }
+    return m_hitLayout->lineAt(0);
+}
+QVariantMap CodeLineModel::cursorGeometry(const QFont &font) const
+{
+    if (m_lines.isEmpty()) return {{"row", 0}, {"x", 0}};
+    const int row = rowAt(m_cursor);
+    int column = 0;
     const auto &line = m_lines[row];
-    auto display = m_code.mid(line.offset, qMin<qsizetype>(line.length, MaxRenderedLineCharacters));
-    display.replace('\t', "    ");
-    QFontMetricsF metrics(font);
-    int lower = 0;
-    int upper = display.size();
-    // 按实际字体宽度命中，中文注释、制表符和代理对不能用平均字符宽度猜测。
-    while (lower < upper) {
-        const int middle = (lower + upper + 1) / 2;
-        if (metrics.horizontalAdvance(display, middle) <= x) lower = middle;
-        else upper = middle - 1;
-    }
-    if (nearestCursor && lower < display.size()) {
-        const auto left = metrics.horizontalAdvance(display, lower);
-        const auto right = metrics.horizontalAdvance(display, lower + 1);
-        if (x - left > (right - left) / 2) ++lower;
-    }
-    if (lower > 0 && lower < display.size() && display[lower].isLowSurrogate()) --lower;
-    return positionAt(row, lower);
+    for (auto c : QStringView(m_code).mid(line.offset, qMin<qsizetype>(m_cursor - line.offset, MaxRenderedLineCharacters))) column += c == '\t' ? 4 : 1;
+    return {{"row", row}, {"x", layoutLine(row, font).cursorToX(column)}};
 }
 
 void CodeLineModel::select(int anchor, int cursor)
@@ -169,16 +200,12 @@ void CodeLineModel::select(int anchor, int cursor)
     anchor = qBound(0, anchor, static_cast<int>(m_code.size()));
     cursor = qBound(0, cursor, static_cast<int>(m_code.size()));
     if (anchor == m_anchor && cursor == m_cursor) return;
+    m_preferredX = -1;
     const int firstOffset = qMin(qMin(anchor, cursor), qMin(m_anchor, m_cursor));
     const int lastOffset = qMax(qMax(anchor, cursor), qMax(m_anchor, m_cursor));
     m_anchor = anchor;
     m_cursor = cursor;
     // 只通知受选择变化影响的行；虚拟列表仅刷新已创建的行对象。
-    const auto rowAt = [this](int offset) {
-        const auto found = std::upper_bound(m_lines.cbegin(), m_lines.cend(), offset,
-            [](int value, const Line &line) { return value < line.offset; });
-        return qMax(0, static_cast<int>(found - m_lines.cbegin()) - 1);
-    };
     const int firstRow = rowAt(firstOffset);
     const int lastRow = rowAt(lastOffset);
     if (!m_lines.isEmpty()) emit dataChanged(index(firstRow), index(lastRow), {SelectionFromRole, SelectionToRole});
@@ -198,8 +225,10 @@ QVariantMap CodeLineModel::rangeAt(int position, int unit) const
     position = qBound(0, position, int(m_code.size()));
     const auto found = std::upper_bound(m_lines.cbegin(), m_lines.cend(), position,
         [](int value, const Line &line) { return value < line.offset; });
-    const auto &line = m_lines[qMax(0, int(found - m_lines.cbegin()) - 1)];
-    if (unit == 2) return {{"start", int(line.offset)}, {"end", qMin(int(m_code.size()), int(line.offset + line.length + 1))}};
+    const int row = qMax(0, int(found - m_lines.cbegin()) - 1);
+    const auto &line = m_lines[row];
+    // 三击整行保留完整 CRLF，不能只复制 CR 而遗漏 LF。
+    if (unit == 2) return {{"start", int(line.offset)}, {"end", row + 1 < m_lines.size() ? int(m_lines[row + 1].offset) : int(m_code.size())}};
     // 选词只分析命中的一行，拖动大代码选区不重复扫描整份文件。
     auto range = TextSelectionRules().range(m_code.mid(line.offset, line.length), position - line.offset, unit, true);
     range["start"] = range["start"].toInt() + int(line.offset);
@@ -207,29 +236,35 @@ QVariantMap CodeLineModel::rangeAt(int position, int unit) const
     return range;
 }
 
-void CodeLineModel::moveCursor(int key, bool extend, bool byWord)
+void CodeLineModel::moveCursor(int key, bool extend, bool byWord, const QFont &font)
 {
     if (m_lines.isEmpty()) return;
     int target = m_cursor;
-    const auto found = std::upper_bound(m_lines.cbegin(), m_lines.cend(), m_cursor,
-        [](int value, const Line &line) { return value < line.offset; });
-    const int row = qMax(0, int(found - m_lines.cbegin()) - 1);
+    const int row = rowAt(m_cursor);
+    qreal preferredX = -1;
     if (!extend && m_anchor != m_cursor && (key == Qt::Key_Left || key == Qt::Key_Right)) {
         target = key == Qt::Key_Left ? qMin(m_anchor, m_cursor) : qMax(m_anchor, m_cursor);
     } else if (key == Qt::Key_Home) target = m_lines[row].offset;
     else if (key == Qt::Key_End) target = m_lines[row].offset + m_lines[row].length;
     else if (key == Qt::Key_Up || key == Qt::Key_Down) {
-        int column = 0;
-        for (auto c : QStringView(m_code).mid(m_lines[row].offset, m_cursor - m_lines[row].offset)) column += c == '\t' ? 4 : 1;
-        target = positionAt(qBound(0, row + (key == Qt::Key_Up ? -1 : 1), int(m_lines.size()) - 1), column);
+        // 按实际字形横坐标保持目标位置，中文、emoji 和组合字符不能按字符数猜列宽。
+        preferredX = m_preferredX >= 0 ? m_preferredX : cursorGeometry(font).value("x").toReal();
+        const int targetRow = qBound(0, row + (key == Qt::Key_Up ? -1 : 1), int(m_lines.size()) - 1);
+        target = positionAtPixel(targetRow, preferredX, font);
     } else {
         // 光标按字素移动，不能把 emoji 或代理对从中间截断。
-        QTextBoundaryFinder finder(byWord ? QTextBoundaryFinder::Word : QTextBoundaryFinder::Grapheme, m_code);
-        finder.setPosition(m_cursor);
-        target = key == Qt::Key_Left ? finder.toPreviousBoundary() : finder.toNextBoundary();
-        if (target < 0) target = key == Qt::Key_Left ? 0 : int(m_code.size());
+        // 方向键只分析当前行；长代码不能每次按键都扫描整份文件。
+        const auto &line = m_lines[row];
+        const auto text = m_code.mid(line.offset, line.length);
+        QTextBoundaryFinder finder(byWord ? QTextBoundaryFinder::Word : QTextBoundaryFinder::Grapheme, text);
+        finder.setPosition(qMin(int(line.length), m_cursor - int(line.offset)));
+        const int local = key == Qt::Key_Left ? finder.toPreviousBoundary() : finder.toNextBoundary();
+        if (local >= 0) target = int(line.offset) + local;
+        else if (key == Qt::Key_Left) target = row > 0 ? int(m_lines[row - 1].offset + m_lines[row - 1].length) : 0;
+        else target = row + 1 < m_lines.size() ? int(m_lines[row + 1].offset) : int(m_code.size());
     }
     select(extend ? m_anchor : target, target);
+    m_preferredX = preferredX;
 }
 
 void CodeLineModel::queueMetrics() const

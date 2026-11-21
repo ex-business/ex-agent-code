@@ -6,6 +6,7 @@ import ExAgent.App as Design
 Item {
     id: root
     required property string text
+    property Flickable selectionView: null
     signal linkActivated(string link)
     // 导入记录常带结束换行，只规范展示边缘，不改写资源原文或消息存储。
     readonly property string displayText: text.replace(/[\r\n]+$/, "")
@@ -25,6 +26,7 @@ Item {
             id: messageText
             x: 16; y: 12
             width: parent.width - 32
+            selectionView: root.selectionView
             text: root.presentation.html
             textFormat: TextEdit.RichText
             wrapMode: TextEdit.Wrap

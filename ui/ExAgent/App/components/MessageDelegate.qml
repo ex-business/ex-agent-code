@@ -40,7 +40,7 @@ Item {
         id: userBody
         ColumnLayout {
             spacing: 8
-            Design.UserMessageBubble { Layout.fillWidth: true; text: root.content; onLinkActivated: (link) => root.openLink(link) }
+            Design.UserMessageBubble { Layout.fillWidth: true; text: root.content; selectionView: root.outerWheel ? root.outerWheel.view : null; onLinkActivated: (link) => root.openLink(link) }
             Design.MessageAttachments { visible: root.attachments.length > 0; Layout.fillWidth: true; attachments: root.attachments; onImageRequested: (image) => root.imageRequested(image) }
         }
     }

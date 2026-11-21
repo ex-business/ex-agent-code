@@ -5,6 +5,7 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QQuickWindow>
+#include <QQuickItem>
 #include <QSaveFile>
 #include <QScreen>
 #include <QStandardPaths>
@@ -29,8 +30,21 @@ ScrollDiagnostics::~ScrollDiagnostics() { save(); }
 bool ScrollDiagnostics::eventFilter(QObject *, QEvent *event)
 {
     if (event->type() == QEvent::MouseMove || event->type() == QEvent::HoverMove) {
-        std::lock_guard guard(m_mutex);
-        m_dirty = true;
+        // 在 Quick 完成命中和光标切换后采样，保留形状变化，避免焦点恢复后的箭头覆盖证据。
+        if (!m_cursorPending) {
+            m_cursorPending = true;
+            QTimer::singleShot(0, this, [this] {
+                m_cursorPending = false;
+                const auto *window = qobject_cast<QQuickWindow *>(parent());
+                if (!window) return;
+                const int shape = int(window->cursor().shape());
+                std::lock_guard guard(m_mutex);
+                if (m_cursorShapes.size() < 128 && (m_cursorShapes.isEmpty() || m_cursorShapes.last().toObject().value("shape").toInt() != shape)) {
+                    m_cursorShapes.append(QJsonObject{{"shape", shape}, {"ms", m_clock.nsecsElapsed() / 1000000.0}});
+                    m_dirty = true;
+                }
+            });
+        }
     }
     const bool wheelInput = event->type() == QEvent::Wheel;
     const bool dragInput = event->type() == QEvent::MouseMove && (static_cast<QMouseEvent *>(event)->buttons() & Qt::LeftButton);
@@ -41,8 +55,11 @@ bool ScrollDiagnostics::eventFilter(QObject *, QEvent *event)
     if (now - m_lastInput > 350) m_activeStart = now;
     m_lastInput = now;
     ++m_inputCount;
+    const auto *view = parent()->findChild<QQuickItem *>("messageList");
     if (m_inputs.size() < 2000) m_inputs.append(QJsonObject{{"ms", now}, {"kind", wheelInput ? 1 : 2},
         {"pixelY", wheel ? wheel->pixelDelta().y() : 0}, {"angleY", wheel ? wheel->angleDelta().y() : 0},
+        {"viewY", view ? view->property("contentY").toDouble() : 0},
+        {"originY", view ? view->property("originY").toDouble() : 0},
         {"phase", wheel ? static_cast<int>(wheel->phase()) : 0}});
     m_dirty = true;
     return false;
@@ -68,7 +85,7 @@ void ScrollDiagnostics::presented()
 }
 void ScrollDiagnostics::save()
 {
-    QJsonArray inputs;
+    QJsonArray inputs, cursorShapes;
     std::vector<double> intervals, latency, dragLatency, wheelLatency;
     int inputCount;
     {
@@ -77,6 +94,7 @@ void ScrollDiagnostics::save()
         m_dirty = false;
         inputs = m_inputs; intervals = m_intervals; latency = m_latency; inputCount = m_inputCount;
         dragLatency = m_dragLatency; wheelLatency = m_wheelLatency;
+        cursorShapes = m_cursorShapes;
     }
     const auto statistics = [this](std::vector<double> samples) {
         std::sort(samples.begin(), samples.end());
@@ -90,9 +108,13 @@ void ScrollDiagnostics::save()
     QSaveFile file(m_path);
     if (!file.open(QIODevice::WriteOnly)) return;
     file.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner);
+    const auto *view = parent()->findChild<QQuickItem *>("messageList");
     file.write(QJsonDocument(QJsonObject{{"schemaVersion", 1}, {"renderLoop", qEnvironmentVariable("QSG_RENDER_LOOP", "default")}, {"updatedAt", QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs)},
+        {"viewY", view ? view->property("contentY").toDouble() : 0},
+        {"originY", view ? view->property("originY").toDouble() : 0},
         {"frameBudgetMs", m_budget}, {"inputCount", inputCount}, {"frameIntervals", statistics(intervals)},
         {"cursorShape", qobject_cast<QQuickWindow *>(parent()) ? int(qobject_cast<QQuickWindow *>(parent())->cursor().shape()) : int(Qt::ArrowCursor)},
+        {"cursorShapes", cursorShapes},
         {"inputToFrame", statistics(latency)}, {"dragInputToFrame", statistics(dragLatency)},
         {"wheelInputToFrame", statistics(wheelLatency)}, {"inputs", inputs}, {"frameIntervalsMs", frameIntervals}}).toJson());
     file.commit();

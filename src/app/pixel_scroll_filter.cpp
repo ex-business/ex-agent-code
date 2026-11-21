@@ -4,12 +4,10 @@
 #include <QQuickWindow>
 #include <QWheelEvent>
 #include <QtMath>
-#include <utility>
 
-PixelScrollFilter::PixelScrollFilter(QQuickWindow *window) : QQuickItem(window->contentItem()), m_window(window)
+PixelScrollFilter::PixelScrollFilter(QQuickWindow *window) : QObject(window), m_window(window)
 {
     window->installEventFilter(this);
-    setAcceptedMouseButtons(Qt::NoButton);
 }
 bool PixelScrollFilter::eventFilter(QObject *, QEvent *event)
 {
@@ -30,10 +28,8 @@ bool PixelScrollFilter::eventFilter(QObject *, QEvent *event)
     bool consumed = false;
     for (; item; item = item->parentItem()) {
         if (!item->property("pixelWheelEnabled").toBool()) continue;
-        int pendingIndex = -1;
-        for (int index = 0; index < m_pending.size(); ++index) if (m_pending[index].item == item) { pendingIndex = index; break; }
-        const qreal currentX = pendingIndex >= 0 ? m_pending[pendingIndex].x : item->property("contentX").toReal();
-        const qreal currentY = pendingIndex >= 0 ? m_pending[pendingIndex].y : item->property("contentY").toReal();
+        const qreal currentX = item->property("contentX").toReal();
+        const qreal currentY = item->property("contentY").toReal();
         const qreal minX = item->property("originX").toReal() - item->property("leftMargin").toReal();
         const qreal minY = item->property("originY").toReal() - item->property("topMargin").toReal();
         const qreal maxX = minX + qMax(0.0, item->property("contentWidth").toReal() - item->width() + item->property("leftMargin").toReal() + item->property("rightMargin").toReal());
@@ -44,9 +40,12 @@ bool PixelScrollFilter::eventFilter(QObject *, QEvent *event)
         const qreal usedY = currentY - nextY;
         if (!qFuzzyIsNull(usedX) || !qFuzzyIsNull(usedY)) {
             if (item->property("flicking").toBool()) QMetaObject::invokeMethod(item, "cancelFlick");
-            if (pendingIndex < 0) m_pending.append({item, nextX, nextY});
-            else { m_pending[pendingIndex].x = nextX; m_pending[pendingIndex].y = nextY; }
             QMetaObject::invokeMethod(item, "pixelScrollStarted");
+            // 在输入阶段更新视口，让布局在本帧 polish 前完成；场景图自行合并绘制。
+            // 不在 updatePolish 内再次移动 ListView，避免布局再排到下一帧。
+            item->setProperty("pixelAligned", false);
+            if (!qFuzzyIsNull(usedX)) item->setProperty("contentX", nextX);
+            if (!qFuzzyIsNull(usedY)) item->setProperty("contentY", nextY);
             consumed = true;
             remainingX -= usedX;
             remainingY -= usedY;
@@ -54,19 +53,6 @@ bool PixelScrollFilter::eventFilter(QObject *, QEvent *event)
         if (qFuzzyIsNull(remainingX) && qFuzzyIsNull(remainingY)) break;
     }
     if (!consumed) return false;
-    // 同一帧内多个输入合并一次位置更新，保留全部位移，不叠加人工惯性。
-    polish();
     wheel->accept();
     return true;
 }
-void PixelScrollFilter::apply()
-{
-    const auto pending = std::exchange(m_pending, {});
-    for (const auto &entry : pending) {
-        if (!entry.item) continue;
-        entry.item->setProperty("pixelAligned", false);
-        entry.item->setProperty("contentX", entry.x);
-        entry.item->setProperty("contentY", entry.y);
-    }
-}
-void PixelScrollFilter::updatePolish() { apply(); }

@@ -21,7 +21,7 @@ ColumnLayout {
             sourceComponent: modelData.kind === 1 ? code : prose
             Component {
                 id: prose
-                Design.MarkdownText { block: blockLoader.modelData; onLinkActivated: (link) => root.linkActivated(link) }
+                Design.MarkdownText { block: blockLoader.modelData; selectionView: root.outerWheel ? root.outerWheel.view : null; onLinkActivated: (link) => root.linkActivated(link) }
             }
             Component {
                 id: code

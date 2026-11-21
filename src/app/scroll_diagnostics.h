@@ -21,6 +21,8 @@ private:
     QTimer m_saveTimer;
     std::mutex m_mutex;
     QJsonArray m_inputs;
+    QJsonArray m_cursorShapes;
+    bool m_cursorPending = false;
     std::vector<double> m_intervals;
     std::vector<double> m_latency;
     std::vector<double> m_dragLatency;

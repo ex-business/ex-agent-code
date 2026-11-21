@@ -4,6 +4,8 @@
 #include <QCache>
 #include <QVector>
 #include <QFont>
+#include <QTextLayout>
+#include <memory>
 #include <QtQml/qqmlregistration.h>
 
 namespace exagent {
@@ -44,8 +46,10 @@ public:
     int selectionCursor() const;
     Q_INVOKABLE int positionAt(int row, int displayColumn) const;
     Q_INVOKABLE int positionAtPixel(int row, qreal x, const QFont &font, bool nearestCursor = true) const;
+    Q_INVOKABLE QVariantMap cursorGeometry(const QFont &font) const;
+    Q_INVOKABLE bool textAtPixel(int row, qreal x, const QFont &font) const;
     Q_INVOKABLE QVariantMap rangeAt(int position, int unit) const;
-    Q_INVOKABLE void moveCursor(int key, bool extend, bool byWord);
+    Q_INVOKABLE void moveCursor(int key, bool extend, bool byWord, const QFont &font);
     Q_INVOKABLE void select(int anchor, int cursor);
     Q_INVOKABLE void selectAll();
     Q_INVOKABLE void selectWord(int position);
@@ -59,6 +63,8 @@ private:
     struct Line { qsizetype offset; qsizetype length; int state; };
     void rebuildIndex();
     void queueMetrics() const;
+    int rowAt(int position) const;
+    QTextLine layoutLine(int row, const QFont &font) const;
     QString m_code;
     QString m_language;
     bool m_dark = true;
@@ -66,6 +72,10 @@ private:
     int m_maximumColumns = 0;
     int m_anchor = 0;
     int m_cursor = 0;
+    qreal m_preferredX = -1;
+    mutable int m_layoutRow = -1;
+    mutable QFont m_layoutFont;
+    mutable std::unique_ptr<QTextLayout> m_hitLayout;
     mutable QCache<int, QString> m_highlightCache{2048};
     mutable int m_formattedLineCount = 0;
     mutable bool m_metricsPending = false;

@@ -25,6 +25,17 @@ Rectangle {
     function clearSelection() { lines.select(lines.selectionCursor, lines.selectionCursor) }
     readonly property int selectionLength: lines.selectionLength
     function selectedContent() { return lines.selectedText }
+    readonly property var caret: {
+        return lines.selectionCursor >= 0 ? lines.cursorGeometry(metrics.font) : ({row: 0, x: 0})
+    }
+    function revealCursor() {
+        const y = caret.row * lineHeight
+        if (y < codeView.contentY + 12) codeView.contentY = y - 12
+        else if (y + lineHeight > codeView.contentY + codeView.height - 12) codeView.contentY = y + lineHeight - codeView.height + 12
+        const x = caret.x + 15
+        if (x < codeView.contentX + 15) codeView.contentX = Math.max(0, x - 15)
+        else if (x > codeView.contentX + codeView.width - 20) codeView.contentX = x - codeView.width + 20
+    }
     onActiveFocusChanged: if (activeFocus) SelectionCoordinator.activate(root)
     onSelectionLengthChanged: SelectionCoordinator.changed(root)
     function copySelection() { if (lines.selectionLength > 0) { controller.copyText(lines.selectedText); copyTimer.restart() } }
@@ -36,7 +47,8 @@ Rectangle {
         if (command && key === Qt.Key_Left) key = Qt.Key_Home
         if (command && key === Qt.Key_Right) key = Qt.Key_End
         lines.moveCursor(key, (event.modifiers & Qt.ShiftModifier) !== 0,
-                         (event.modifiers & (Qt.platform.os === "osx" ? Qt.AltModifier : Qt.ControlModifier)) !== 0)
+                         (event.modifiers & (Qt.platform.os === "osx" ? Qt.AltModifier : Qt.ControlModifier)) !== 0, metrics.font)
+        revealCursor()
         event.accepted = true
     }
     Accessible.role: Accessible.Pane
@@ -114,6 +126,11 @@ Rectangle {
             Accessible.focusable: true
             Accessible.description: "已选择 " + lines.selectionLength + " 个字符；支持跨行选择、全选与复制"
             selectionAnchor: lines.selectionAnchor
+            cursorFor: (x, y) => {
+                const point = codeView.mapToItem(codeView.contentItem, x, y)
+                const row = Math.floor(point.y / root.lineHeight)
+                return lines.textAtPixel(row, point.x - 15, metrics.font) ? Qt.IBeamCursor : Qt.ArrowCursor
+            }
             function hitPosition(x, y, nearestCursor) {
                 const p = codeView.mapToItem(codeView.contentItem, x, Math.max(0, Math.min(codeView.height - 1, y)))
                 const rowIndex = Math.max(0, Math.min(lines.lineCount - 1, Math.floor(p.y / root.lineHeight)))
@@ -122,20 +139,20 @@ Rectangle {
             positionFor: (x, y, nearest) => hitPosition(x, y, nearest)
             rangeFor: (position, unit) => lines.rangeAt(position, unit)
             applySelection: (start, end) => { SelectionCoordinator.activate(root); lines.select(start, end) }
-            onFocusRequested: { SelectionCoordinator.activate(root); root.forceActiveFocus() }
+            onFocusRequested: { codeView.cancelFlick(); SelectionCoordinator.activate(root); root.forceActiveFocus() }
             onContextRequested: (x, y) => codeMenu.popup(selectionMouse, x, y)
-            // 拖出视口时继续选择原始文本，回收行对象不会丢失跨行选区。
-            Timer {
-                interval: 30
-                repeat: true
-                running: (selectionMouse.pressedButtons & Qt.LeftButton) !== 0 && (selectionMouse.mouseY < 16 || selectionMouse.mouseY > codeView.height - 16)
-                onTriggered: {
-                    const direction = selectionMouse.mouseY < 16 ? -1 : 1
-                    codeView.contentY = Math.max(codeView.originY - codeView.topMargin,
-                        Math.min(codeView.originY + codeView.contentHeight - codeView.height + codeView.bottomMargin, codeView.contentY + direction * 12))
-                    selectionMouse.extend(selectionMouse.mouseX, selectionMouse.mouseY)
-                }
-            }
+        }
+        Design.SelectionAutoScroll { surface: selectionMouse; view: codeView; horizontal: true }
+        Rectangle {
+            // 只读代码仍显示键盘定位点，Shift 扩选后端点始终保持可见。
+            parent: codeView.contentItem
+            x: 15 + root.caret.x
+            y: root.caret.row * root.lineHeight
+            width: 1
+            height: root.lineHeight
+            color: Design.Theme.text
+            visible: root.activeFocus && lines.selectionLength === 0
+            z: 1
         }
         // 每行都是固定高度的可回收 delegate，超出视口的行不创建富文本对象。
         component CodeRow: Item {

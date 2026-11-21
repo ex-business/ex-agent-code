@@ -17,6 +17,12 @@ FocusScope {
     readonly property int selectionStart: editor.selectionStart
     readonly property int selectionEnd: editor.selectionEnd
     readonly property int selectionLength: editor.selectionEnd - editor.selectionStart
+    property Flickable selectionView: null
+    // 选词拖动只复用纯文本快照，不在每次鼠标移动时复制整个富文本。
+    readonly property string selectionText: {
+        const source = editor.text
+        return source.length ? editor.getText(0, editor.length).replace(/[\u2028\u2029]/g, "\n") : ""
+    }
     implicitHeight: editor.implicitHeight
     activeFocusOnTab: true
     signal linkActivated(string link)
@@ -60,7 +66,7 @@ FocusScope {
         id: selectionSurface
         anchors.fill: parent
         z: 1
-        cursorShape: root.hoverCursor(selectionSurface.mouseX, selectionSurface.mouseY)
+        cursorFor: (x, y) => root.hoverCursor(x, y)
         selectionAnchor: editor.cursorPosition === editor.selectionStart ? editor.selectionEnd : editor.selectionStart
         positionFor: (x, y, caret) => {
             const position = editor.positionAt(x, y)
@@ -68,15 +74,20 @@ FocusScope {
             const rect = editor.positionToRectangle(position)
             return rect.x > x && Math.abs(rect.y - y) < rect.height ? position - 1 : position
         }
-        rangeFor: (position, unit) => TextSelectionRules.range(editor.getText(0, editor.length).replace(/[\u2028\u2029]/g, "\n"), position, unit)
+        rangeFor: (position, unit) => TextSelectionRules.range(root.selectionText, position, unit)
         applySelection: (start, end) => { SelectionCoordinator.activate(root); editor.select(start, end) }
-        onFocusRequested: { SelectionCoordinator.activate(root); editor.forceActiveFocus() }
+        onFocusRequested: {
+            if (root.selectionView) root.selectionView.cancelFlick()
+            SelectionCoordinator.activate(root)
+            editor.forceActiveFocus()
+        }
         onContextRequested: (x, y) => textMenu.popup(root, x, y)
         onTapped: (x, y) => {
             const link = editor.linkAt(x, y)
             if (editor.selectionStart === editor.selectionEnd && link) root.linkActivated(link)
         }
     }
+    Design.SelectionAutoScroll { surface: selectionSurface; view: root.selectionView }
     Design.ContextMenu {
         id: textMenu
         Design.ContextMenuItem { text: "复制"; enabled: editor.selectionStart !== editor.selectionEnd; onTriggered: { SelectionCoordinator.activate(root); SelectionCoordinator.copy() } }

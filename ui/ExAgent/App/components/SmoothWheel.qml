@@ -41,7 +41,10 @@ Item {
         interval: 140
         onTriggered: {
             if (root.animating) restart()
-            else root.scrollingSettled()
+            else {
+                root.view.pixelAligned = true
+                root.scrollingSettled()
+            }
         }
     }
 }
