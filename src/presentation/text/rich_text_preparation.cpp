@@ -24,7 +24,9 @@ public:
         const auto key = cacheKey(job.input);
         if (const auto *cached = m_cache.object(key); cached && cached->input.source == job.input.source) {
             const auto result = cached->value;
-            QTimer::singleShot(0, this, [job, result] { if (job.owner && !job.cancel->load()) job.owner->apply(job.generation, result); });
+            // submit已由对象的单次调度合并输入；缓存命中直接交付，避免再等一轮导致占位与正文交替重排。
+            // generation与取消校验仍由apply负责，后台未命中的准备流程不变。
+            if (job.owner && !job.cancel->load()) job.owner->apply(job.generation, result);
             return true;
         }
         for (auto it = m_jobs.begin(); it != m_jobs.end();) {
