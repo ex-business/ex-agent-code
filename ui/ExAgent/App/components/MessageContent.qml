@@ -15,22 +15,16 @@ ColumnLayout {
     spacing: 14
     Repeater {
         model: root.blocks
-        delegate: Loader {
-            id: blockLoader
+        delegate: Design.BlockRenderer {
             required property var modelData
             required property int index
             Layout.fillWidth: true
-            Layout.preferredHeight: (item as Item)?.implicitHeight ?? 24
-            asynchronous: true
-            sourceComponent: modelData.kind === 1 ? code : prose
-            Component {
-                id: prose
-                Design.MarkdownText { block: blockLoader.modelData; messageId: root.messageId; blockIndex: blockLoader.index; selectionManager: root.outerWheel ? root.outerWheel.selectionManager : null; selectionView: root.outerWheel ? root.outerWheel.view : null; onLinkActivated: (link) => root.linkActivated(link) }
-            }
-            Component {
-                id: code
-                Design.CodeBlock { code: blockLoader.modelData.text; messageId: root.messageId; blockIndex: blockLoader.index; language: blockLoader.modelData.language; controller: root.controller; outerWheel: root.outerWheel }
-            }
+            block: modelData
+            controller: root.controller
+            messageId: root.messageId
+            blockIndex: index
+            outerWheel: root.outerWheel
+            onLinkActivated: (link) => root.linkActivated(link)
         }
     }
 }

@@ -47,6 +47,9 @@ ColumnLayout {
     Loader {
         active: root.expanded && root.details.length > 0
         Layout.fillWidth: true
-        sourceComponent: Design.CodeBlock { code: root.details; messageId: root.messageId; blockIndex: 1; language: "text"; controller: root.controller; outerWheel: root.outerWheel }
+        sourceComponent: Design.BlockRenderer {
+            block: ({blockId: root.activity.blockId || "", rendererKind: Number(root.activity.blockKind || 2), contentMode: Number(root.activity.contentMode || 1), sourceKind: Number(root.activity.sourceKind || 1), title: root.title, text: root.details, language: "text", data: root.activity.data || ({})})
+            messageId: root.messageId; blockIndex: 1; controller: root.controller; outerWheel: root.outerWheel
+        }
     }
 }

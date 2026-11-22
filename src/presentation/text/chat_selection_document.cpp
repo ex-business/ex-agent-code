@@ -12,7 +12,7 @@ void ChatSelectionDocument::setModel(MessageListModel *model)
         connect(model, &QAbstractItemModel::modelAboutToBeReset, this, &ChatSelectionDocument::clearSelection);
         connect(model, &QAbstractItemModel::modelReset, this, &ChatSelectionDocument::rebuildRows);
         connect(model, &QAbstractItemModel::rowsInserted, this, &ChatSelectionDocument::rebuildRows);
-        connect(model, &QAbstractItemModel::dataChanged, this, [this] { emit selectionChanged(); });
+        connect(model, &QAbstractItemModel::dataChanged, this, &ChatSelectionDocument::reconcilePositions);
         connect(model, &QObject::destroyed, this, [this] { m_model = nullptr; m_rows.clear(); clearSelection(); emit modelChanged(); });
     }
     rebuildRows();
@@ -23,6 +23,21 @@ void ChatSelectionDocument::rebuildRows()
     m_rows.clear();
     if (m_model) for (int row = 0; row < m_model->count(); ++row)
         m_rows.insert(m_model->data(m_model->index(row), MessageListModel::IdRole).toString(), row);
+    reconcilePositions();
+}
+void ChatSelectionDocument::reconcilePositions()
+{
+    if (!m_model) return;
+    for (auto *position : {&m_anchor, &m_cursor}) {
+        if (position->id.isEmpty()) continue;
+        const auto row = orderOf(position->id);
+        if (row < 0) { clearSelection(); return; }
+        const auto keys = m_model->selectionBlockKeys(row);
+        const auto ordinal = keys.indexOf(position->blockKey);
+        // 内容版本替换后旧块不存在时明确失效，不能把旧偏移投影到同序号的新块。
+        if (ordinal < 0) { clearSelection(); return; }
+        position->block = ordinal;
+    }
     emit selectionChanged();
 }
 bool ChatSelectionDocument::less(const Position &a, const Position &b) const
@@ -40,8 +55,11 @@ void ChatSelectionDocument::select(const QString &anchorId, int anchorBlock, int
                                    const QString &cursorId, int cursorBlock, int cursorOffset)
 {
     if (orderOf(anchorId) < 0 || orderOf(cursorId) < 0) return;
-    Position anchor{anchorId, qMax(0, anchorBlock), qMax(0, anchorOffset)};
-    Position cursor{cursorId, qMax(0, cursorBlock), qMax(0, cursorOffset)};
+    Position anchor{anchorId, qMax(0, anchorBlock), qMax(0, anchorOffset), {}};
+    Position cursor{cursorId, qMax(0, cursorBlock), qMax(0, cursorOffset), {}};
+    anchor.blockKey = m_model->selectionBlockKeys(orderOf(anchorId)).value(anchor.block);
+    cursor.blockKey = m_model->selectionBlockKeys(orderOf(cursorId)).value(cursor.block);
+    if (anchor.blockKey.isEmpty() || cursor.blockKey.isEmpty()) return;
     if (m_anchor.id == anchor.id && m_anchor.block == anchor.block && m_anchor.offset == anchor.offset &&
         m_cursor.id == cursor.id && m_cursor.block == cursor.block && m_cursor.offset == cursor.offset) return;
     m_anchor = anchor; m_cursor = cursor;
@@ -49,14 +67,14 @@ void ChatSelectionDocument::select(const QString &anchorId, int anchorBlock, int
 }
 QVariantMap ChatSelectionDocument::anchorPosition() const
 {
-    return {{"id", m_anchor.id}, {"block", m_anchor.block}, {"offset", m_anchor.offset}};
+    return {{"id", m_anchor.id}, {"block", m_anchor.block}, {"blockId", m_anchor.blockKey}, {"offset", m_anchor.offset}};
 }
 QVariantMap ChatSelectionDocument::range(const QString &id, int block, int length) const
 {
     if (!selectionLength()) return {{"start", 0}, {"end", 0}};
     auto first = m_anchor, last = m_cursor;
     if (less(last, first)) std::swap(first, last);
-    const Position start{id, block, 0}, end{id, block, length};
+    const Position start{id, block, 0, {}}, end{id, block, length, {}};
     if (orderOf(id) < 0 || less(end, first) || less(last, start)) return {{"start", 0}, {"end", 0}};
     return {{"start", first.id == id && first.block == block ? qBound(0, first.offset, length) : 0},
             {"end", last.id == id && last.block == block ? qBound(0, last.offset, length) : length}};

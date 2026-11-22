@@ -4,10 +4,12 @@ target_link_libraries(ex_agent_domain INTERFACE Qt6::Core)
 
 # 通信底座只依赖Core/Network，后台模式不创建GUI或加载QML。
 qt_add_library(ex_agent_ipc STATIC
+    domain/content/content_block.h
     domain/ipc/protocol.h
     infrastructure/ipc/rpc_channel.h infrastructure/ipc/rpc_channel.cpp
     application/services/local_service_process.h application/services/local_service_process.cpp
     application/services/content_block_store.h application/services/content_block_store.cpp
+    application/services/content_block_adapters.h application/services/content_block_adapters.cpp
     services/local/service_worker.h services/local/service_worker.cpp
 )
 target_include_directories(ex_agent_ipc PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}")
@@ -20,8 +22,13 @@ qt_add_qml_module(ex_agent_chat
     VERSION 1.0
     SOURCES
         application/chat/chat_controller.h application/chat/chat_controller.cpp
+        application/services/internal_content_task.h application/services/internal_content_task.cpp
+        application/services/media_catalog.h application/services/media_catalog.cpp
+        application/services/media_content_task.h application/services/media_content_task.cpp
         infrastructure/storage/session_repository.h infrastructure/storage/session_repository.cpp
         infrastructure/storage/conversation_resource_repository.h infrastructure/storage/conversation_resource_repository.cpp
+        presentation/blocks/block_window_model.h
+        presentation/blocks/block_view_registry.h presentation/blocks/block_view_registry.cpp
         presentation/chat/message_list_model.h presentation/chat/message_list_model.cpp
         presentation/chat/session_list_model.h presentation/chat/session_list_model.cpp
         presentation/code/code_line_model.h presentation/code/code_line_model.cpp

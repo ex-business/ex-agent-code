@@ -4,10 +4,22 @@
 #include "presentation/text/markdown_formatter.h"
 #include <QRegularExpression>
 #include <QTextDocument>
+#include <QFutureWatcher>
+#include <QTimer>
+#include <QThreadPool>
+#include <QtConcurrentRun>
+#include <QLoggingCategory>
+Q_LOGGING_CATEGORY(resourceBlockLog, "exagent.content.resource")
 
 namespace exagent {
 
-MessageListModel::MessageListModel(QObject *parent) : QAbstractListModel(parent) {}
+MessageListModel::MessageListModel(QObject *parent) : QAbstractListModel(parent), m_fallbackBlocks(this), m_contentStore(&m_fallbackBlocks) {}
+void MessageListModel::setContentContext(const QString &conversationId, ContentBlockStore *store)
+{
+    m_conversationId = conversationId;
+    m_contentStore = store ? store : &m_fallbackBlocks;
+    m_blocksCache.clear();
+}
 int MessageListModel::rowCount(const QModelIndex &parent) const { return parent.isValid() ? 0 : m_messages.size() - m_firstLoaded; }
 int MessageListModel::count() const { return rowCount(); }
 int MessageListModel::totalCount() const { return m_pagedTotal >= 0 ? m_pagedTotal : m_messages.size(); }
@@ -17,14 +29,15 @@ int MessageListModel::loadOlder()
 {
     if (m_pagedTotal >= 0) {
         if (!hasOlder() || !m_olderLoader) return 0;
-        auto older = m_olderLoader();
+        if (m_pageBuffer.isEmpty()) { m_pageFailed = false; prefetchOlder(); return 0; }
+        auto older = std::move(m_pageBuffer); m_pageBuffer.clear(); --m_nextPage;
         const int added = older.size();
         if (added == 0) return 0;
         beginInsertRows({}, 0, added - 1);
         older.append(m_messages);
         m_messages = std::move(older);
         endInsertRows();
-        emit countChanged();
+        emit countChanged(); emit paginationChanged();
         return added;
     }
     const int added = qMin(30, m_firstLoaded);
@@ -35,6 +48,35 @@ int MessageListModel::loadOlder()
     endInsertRows();
     emit countChanged();
     return added;
+}
+void MessageListModel::prefetchOlder()
+{
+    if (m_pagedTotal < 0 || !hasOlder() || !m_olderLoader || m_nextPage < 0 || m_pageFailed || m_loadingPage || !m_pageBuffer.isEmpty() || m_activeReaders >= 2) return;
+    static QThreadPool readers;
+    readers.setMaxThreadCount(2); readers.setThreadPriority(QThread::LowPriority);
+    m_loadingPage = true; ++m_activeReaders; emit paginationChanged();
+    const auto generation = m_pageGeneration;
+    const auto cancel = m_pageCancel = std::make_shared<std::atomic_bool>(false);
+    auto *watcher = new QFutureWatcher<OlderPage>(this);
+    connect(watcher, &QFutureWatcher<OlderPage>::finished, this, [this, watcher, generation, cancel] {
+        --m_activeReaders;
+        if (generation == m_pageGeneration && !cancel->load()) {
+            m_loadingPage = false;
+            try {
+                auto page = watcher->result();
+                if (!page.error.isEmpty() || page.messages.isEmpty()) { m_pageFailed = true; emit pageFailure(page.error.isEmpty() ? QStringLiteral("历史页为空，已保留当前内容") : page.error); }
+                else { m_pageBuffer = std::move(page.messages); emit olderPageReady(); }
+            } catch (...) { m_pageFailed = true; emit pageFailure(QStringLiteral("历史预取失败，已保留当前内容")); }
+            emit paginationChanged();
+        }
+        watcher->deleteLater();
+        if (generation != m_pageGeneration && hasOlder()) QTimer::singleShot(0, this, &MessageListModel::prefetchOlder);
+    });
+    // 文件读取仅捕获无GUI依赖的读取函数与页号；结果按会话代次校验后才交给模型。
+    watcher->setFuture(QtConcurrent::run(&readers, [reader = m_olderLoader, page = m_nextPage, cancel] {
+        if (cancel->load()) return OlderPage{};
+        auto result = reader(page); return cancel->load() ? OlderPage{} : result;
+    }));
 }
 const QList<ChatMessage> &MessageListModel::messages() const { return m_messages; }
 
@@ -67,6 +109,13 @@ QVariant MessageListModel::data(const QModelIndex &index, int role) const
         if (message.role != MessageRole::Assistant && message.role != MessageRole::Notice) return QVariantList{};
         if (const auto *cached = m_blocksCache.object(message.id)) return *cached;
         auto parsed = MarkdownFormatter().split(message.content);
+        QString error;
+        if (m_contentStore) {
+            auto projected = ResourceBlockAdapter(*m_contentStore).project(m_conversationId, message.id, parsed, &error);
+            if (error.isEmpty()) parsed = std::move(projected);
+            // 超过统一快照预算时仍保留旧渲染原文，不让架构迁移静默丢失历史内容。
+            else qCWarning(resourceBlockLog).noquote() << "资源块归约失败，保留原文展示，messageId：" << message.id << "原因：" << error;
+        }
         qsizetype bytes = 0;
         for (const auto &entry : parsed) {
             const auto block = entry.toMap();
@@ -86,6 +135,26 @@ QHash<int, QByteArray> MessageListModel::roleNames() const
             {TitleRole, "messageTitle"}, {StatusRole, "messageStatus"}, {ExpandedRole, "expanded"},
             {BlocksRole, "contentBlocks"}, {TimeRole, "timeLabel"}, {FilesRole, "changedFiles"},
             {ActivityRole, "activity"}, {AttachmentsRole, "attachments"}};
+}
+
+QStringList MessageListModel::selectionBlockKeys(int row) const
+{
+    if (row < 0 || row >= count()) return {};
+    const auto &message = m_messages.at(m_firstLoaded + row);
+    if (message.role == MessageRole::User) return {message.id + ".user"};
+    if (message.role == MessageRole::Tool) {
+        if (message.title == QStringLiteral("文件修改")) {
+            QStringList keys;
+            for (const auto &value : data(index(row), FilesRole).toList()) keys.append(message.id + ".file." + value.toMap().value("path").toString());
+            return keys;
+        }
+        return {message.id + ".summary", message.activity.value("blockId", message.id + ".details").toString()};
+    }
+    QStringList keys;
+    for (const auto &value : data(index(row), BlocksRole).toList()) {
+        const auto block = value.toMap(); keys.append(block.value("blockId", message.id + ".block." + QString::number(keys.size())).toString());
+    }
+    return keys;
 }
 
 QStringList MessageListModel::selectionBlocks(int row) const
@@ -127,6 +196,8 @@ QStringList MessageListModel::selectionBlocks(int row) const
 
 void MessageListModel::replace(QList<ChatMessage> messages)
 {
+    ++m_pageGeneration; if (m_pageCancel) m_pageCancel->store(true);
+    m_loadingPage = false; m_pageFailed = false; m_pageBuffer.clear();
     beginResetModel();
     m_messages = std::move(messages);
     m_pagedTotal = -1;
@@ -137,9 +208,11 @@ void MessageListModel::replace(QList<ChatMessage> messages)
     emit countChanged();
 }
 
-void MessageListModel::replacePaged(QList<ChatMessage> latest, int total, std::function<QList<ChatMessage>()> olderLoader)
+void MessageListModel::replacePaged(QList<ChatMessage> latest, int total, int nextPage, std::function<OlderPage(int)> olderLoader)
 {
-    // 资源模式只保存已读取的页；未翻阅的历史不读取、不转换 Markdown。
+    // 资源模式只保留已读取页和最多一个预取页，不在主线程读取历史文件。
+    ++m_pageGeneration; if (m_pageCancel) m_pageCancel->store(true);
+    m_loadingPage = false; m_pageFailed = false; m_pageBuffer.clear(); m_nextPage = nextPage;
     beginResetModel();
     m_messages = std::move(latest);
     m_firstLoaded = 0;

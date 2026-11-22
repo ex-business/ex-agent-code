@@ -7,7 +7,10 @@
 #include <QObject>
 #include "application/services/local_service_process.h"
 #include "application/services/content_block_store.h"
+#include "application/services/internal_content_task.h"
 #include <QTimer>
+#include "application/services/media_content_task.h"
+#include "presentation/blocks/block_view_registry.h"
 #include <QtQml/qqmlregistration.h>
 
 namespace exagent {
@@ -32,10 +35,13 @@ class ChatController final : public QObject {
     Q_PROPERTY(int serviceState READ serviceState NOTIFY serviceStateChanged)
     Q_PROPERTY(int backgroundTaskState READ backgroundTaskState NOTIFY backgroundTaskChanged)
     Q_PROPERTY(QString backgroundTaskId READ backgroundTaskId NOTIFY backgroundTaskChanged)
+    Q_PROPERTY(int internalTaskState READ internalTaskState NOTIFY backgroundTaskChanged)
+    Q_PROPERTY(exagent::BlockViewRegistry *blockViews READ blockViews CONSTANT)
     Q_PROPERTY(int activityStatus READ activityStatus NOTIFY sessionChanged)
 public:
     explicit ChatController(QObject *parent = nullptr);
     ~ChatController() override;
+    BlockViewRegistry *blockViews() { return &m_blockViews; }
     MessageListModel *messages();
     SessionListModel *sessions();
     QString currentSessionId() const;
@@ -68,7 +74,16 @@ public:
     QString backgroundTaskId() const { return m_preview ? QString{} : m_backgroundTasks.value(currentSessionId()); }
     Q_INVOKABLE void runBackgroundTask();
     Q_INVOKABLE void cancelBackgroundTask();
+    int internalTaskState() const;
+    Q_INVOKABLE void analyzeLoadedConversation();
+    Q_INVOKABLE void cancelInternalTask();
+    Q_INVOKABLE void requestBlockExport(const QVariantMap &block) { emit blockExportRequested(block); }
+    Q_INVOKABLE void exportBlock(const QVariantMap &block, const QUrl &target);
+    Q_INVOKABLE void openImageSequence(const QUrl &folder);
+    Q_INVOKABLE QUrl mediaSource(const QVariantMap &block, const QString &resourceId) const;
 signals:
+    void blockExportRequested(QVariantMap block);
+    void blockExported(QString path);
     void serviceStateChanged();
     void backgroundTaskChanged();
     void sessionChanged();
@@ -102,6 +117,14 @@ private:
     QList<QString> m_dirtyBlocks;
     LocalServiceProcess m_service;
     ContentBlockStore m_blocks;
+    BlockViewRegistry m_blockViews;
+    ExternalBlockAdapter m_externalBlocks;
+    InternalContentTask m_internalTask;
+    MediaCatalog m_mediaCatalog;
+    MediaContentTask m_mediaTask;
+    QThreadPool m_exporter;
+    int m_exportPending = 0;
+    QHash<QString, QString> m_internalTasks;
     QHash<QString, QString> m_backgroundTasks;
     QList<QJsonObject> m_waitingTasks;
     QHash<QString, QString> m_taskRequests;

@@ -29,9 +29,10 @@ signals:
     void modelChanged();
     void selectionChanged();
 private:
-    struct Position { QString id; int block = 0; int offset = 0; };
+    struct Position { QString id; int block = 0; int offset = 0; QString blockKey; };
     bool less(const Position &a, const Position &b) const;
     void rebuildRows();
+    void reconcilePositions();
     QPointer<MessageListModel> m_model;
     QHash<QString, int> m_rows;
     Position m_anchor, m_cursor;

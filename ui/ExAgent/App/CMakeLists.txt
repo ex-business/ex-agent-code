@@ -1,10 +1,15 @@
-set_source_files_properties(Theme.qml PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
+set_source_files_properties(Theme.qml BlockRendererRegistry.qml PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
 qt_add_qml_module(ex_agent_workbench
     STATIC
     URI ExAgent.App
     VERSION 1.0
     QML_FILES
-        Main.qml Theme.qml
+        Main.qml Theme.qml BlockRendererRegistry.qml
+        components/BlockRenderer.qml components/BlockWindowManager.qml
+        components/blocks/BlockRendererContent.qml
+        components/blocks/TextBlockRenderer.qml components/blocks/CodeBlockRenderer.qml
+        components/blocks/ChartBlockRenderer.qml components/blocks/ImageBlockRenderer.qml
+        components/blocks/ImageSequenceRenderer.qml components/blocks/UnknownBlockRenderer.qml
         components/Icon.qml components/IconButton.qml
         components/ContextMenu.qml components/ContextMenuItem.qml
         components/Sidebar.qml components/Composer.qml

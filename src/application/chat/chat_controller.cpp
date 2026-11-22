@@ -1,12 +1,17 @@
 #include "chat_controller.h"
 
 #include <QClipboard>
+#include <QCryptographicHash>
 #include <QGuiApplication>
 #include <QLoggingCategory>
 #include <QStandardPaths>
 #include <QStyleHints>
 #include <QUuid>
 #include <algorithm>
+#include <QFutureWatcher>
+#include <QJsonDocument>
+#include <QSaveFile>
+#include <QtConcurrentRun>
 
 Q_LOGGING_CATEGORY(chatLog, "exagent.chat")
 
@@ -14,12 +19,15 @@ namespace exagent {
 
 ChatController::ChatController(QObject *parent)
     : QObject(parent), m_messages(this), m_sessionModel(this),
-      m_repository(QStandardPaths::writableLocation(QStandardPaths::AppDataLocation)), m_service(this), m_blocks(this)
+      m_repository(QStandardPaths::writableLocation(QStandardPaths::AppDataLocation)), m_service(this), m_blocks(this), m_blockViews(m_blocks, this), m_externalBlocks(m_blocks), m_internalTask(m_blocks, this), m_mediaCatalog(QStandardPaths::writableLocation(QStandardPaths::AppDataLocation), this), m_mediaTask(m_blocks, m_mediaCatalog, this)
 {
-    m_service.setEventSink([this](const QString &method, const QJsonObject &event, QString *error) { return m_blocks.apply(method, event, error); });
+    m_exporter.setMaxThreadCount(1);
+    m_service.setEventSink([this](const QString &method, const QJsonObject &event, QString *error) { return m_externalBlocks.apply(method, event, error); });
     m_blockUpdateTimer.setSingleShot(true); m_blockUpdateTimer.setInterval(16);
     connect(&m_blockUpdateTimer, &QTimer::timeout, this, &ChatController::drainServiceBlocks);
     connect(&m_blocks, &ContentBlockStore::blockChanged, this, [this](const QString &id) {
+        const auto *block = m_blocks.find(id);
+        if (!block || block->mode == content::ContentMode::Static) return;
         // 协议逐事件归约，界面每16ms按块合并刷新，不让输出频率决定整段排版频率。
         if (!m_dirtyBlocks.contains(id)) m_dirtyBlocks.append(id);
         if (!m_blockUpdateTimer.isActive()) m_blockUpdateTimer.start();
@@ -35,12 +43,17 @@ ChatController::ChatController(QObject *parent)
         if (!taskId.isEmpty()) m_blocks.interrupt(reason, taskId, code == -32001 || code == -32002 ? ipc::TaskState::Interrupted : ipc::TaskState::Failed);
         setError(reason);
     });
+    connect(&m_mediaTask, &MediaContentTask::failure, this, &ChatController::setError);
+    connect(&m_mediaCatalog, &MediaCatalog::failure, this, &ChatController::setError);
+    connect(&m_blockViews, &BlockViewRegistry::failure, this, &ChatController::setError);
+    connect(&m_internalTask, &InternalContentTask::failure, this, &ChatController::setError);
     QString error;
     m_sessions = m_repository.load(&error);
     m_storageWritable = error.isEmpty();
     // 旧进程已不再存活；只修正本服务创建的运行记录，不改导入资源和其他工具历史。
     for (auto &session : m_sessions) for (auto &message : session.messages) {
-        if (message.activity.value("serviceId").toString() != "local-service" || message.status != MessageStatus::Running) continue;
+        const auto serviceId = message.activity.value("serviceId").toString();
+        if ((serviceId != "local-service" && serviceId != "internal-analysis") || message.status != MessageStatus::Running) continue;
         message.status = MessageStatus::Failed;
         message.activity.insert("taskState", int(ipc::TaskState::Interrupted));
         message.activity.insert("summary", message.title + QStringLiteral(" · 结果待确认"));
@@ -50,6 +63,7 @@ ChatController::ChatController(QObject *parent)
     m_saveTimer.setSingleShot(true);
     m_saveTimer.setInterval(500);
     connect(&m_saveTimer, &QTimer::timeout, this, &ChatController::flush);
+    connect(&m_messages, &MessageListModel::pageFailure, this, &ChatController::setError);
     connect(&m_messages, &MessageListModel::contentUpdated, this, &ChatController::persistCurrent);
     connect(&m_messages, &MessageListModel::presentationChanged, this, &ChatController::persistCurrent);
     if (m_sessions.isEmpty()) newSession();
@@ -61,6 +75,8 @@ ChatController::~ChatController()
     // 先断开后台回调再销毁成员，避免等待子进程退出时访问已销毁的内容仓库。
     disconnect(&m_service, nullptr, this, nullptr);
     m_service.setEventSink({});
+    m_mediaTask.stopAll();
+    m_internalTask.stopAll();
     m_blocks.interrupt(QStringLiteral("应用正在退出，后台任务不自动重新执行"));
     drainServiceBlocks();
     flush();
@@ -98,6 +114,7 @@ void ChatController::newSession()
     m_sessions.prepend(session);
     m_current = 0;
     m_preview = false;
+    m_messages.setContentContext(session.id, &m_blocks);
     m_messages.replace({});
     refreshSessions();
     emit sessionChanged();
@@ -112,6 +129,7 @@ void ChatController::selectSession(const QString &id)
         if (m_sessions[i].id != id) continue;
         m_current = i;
         m_preview = false;
+        m_messages.setContentContext(id, &m_blocks);
         m_messages.replace(m_sessions[i].messages);
         refreshSessions();
         emit sessionChanged();
@@ -175,14 +193,12 @@ void ChatController::loadResourceConversation(const QString &id)
     m_changeSummary = resource.changeSummary;
     m_activityStatus = resource.activityStatus;
     m_previewDraft.clear();
-    m_messages.replacePaged(std::move(latest), resource.messageCount,
-        [this, resource, number = resource.pageCount - 2]() mutable {
-            if (number < 0) return QList<ChatMessage>{};
-            QString pageError;
-            auto messages = m_resources.page(resource, number, &pageError);
-            if (!pageError.isEmpty()) { setError(pageError); return QList<ChatMessage>{}; }
-            --number;
-            return messages;
+    m_messages.setContentContext(QStringLiteral("resource.") + QString::fromLatin1(QCryptographicHash::hash(id.toUtf8(), QCryptographicHash::Sha256).toHex()), &m_blocks);
+    m_messages.replacePaged(std::move(latest), resource.messageCount, resource.pageCount - 2,
+        [repository = m_resources, resource](int number) {
+            MessageListModel::OlderPage result;
+            result.messages = repository.page(resource, number, &result.error);
+            return result;
         });
     emit sessionChanged();
     emit backgroundTaskChanged();
@@ -191,8 +207,7 @@ void ChatController::loadResourceConversation(const QString &id)
 
 int ChatController::backgroundTaskState() const
 {
-    const auto *block = m_blocks.task(backgroundTaskId());
-    return block ? int(block->state) : -1;
+    return m_blocks.taskState(backgroundTaskId());
 }
 void ChatController::runBackgroundTask()
 {
@@ -240,6 +255,87 @@ void ChatController::cancelBackgroundTask()
     if (id.isEmpty()) setError(QStringLiteral("后台暂不可达，无法确认取消结果；不会自动重跑任务。"));
     else m_taskRequests.insert(id, taskId);
 }
+int ChatController::internalTaskState() const
+{
+    if (m_preview) return -1;
+    return m_blocks.taskState(m_internalTasks.value(currentSessionId()));
+}
+void ChatController::analyzeLoadedConversation()
+{
+    if (internalTaskState() == int(content::TaskState::Created) || internalTaskState() == int(content::TaskState::Running)) return;
+    // 只复制已加载消息的共享字符串快照，统计本身在线程池执行，不读取额外历史页。
+    QStringList texts;
+    for (int row = 0; row < m_messages.count(); ++row) texts.append(m_messages.data(m_messages.index(row), MessageListModel::ContentRole).toString());
+    const auto sourceTitle = sessionTitle();
+    if (m_preview) newSession();
+    if (m_current < 0 || !m_storageWritable) { setError(QStringLiteral("会话无法保存，未启动内部任务。")); return; }
+    if (m_sessions[m_current].messages.isEmpty()) {
+        m_sessions[m_current].title = QStringLiteral("会话内容统计"); emit sessionChanged();
+    }
+    ContentBlock block;
+    block.id = createId(); block.taskId = createId(); block.conversationId = currentSessionId();
+    block.title = QStringLiteral("已加载会话内容统计");
+    const auto conversationId = block.conversationId, taskId = block.taskId;
+    QString error;
+    if (!m_internalTask.start(std::move(block), std::move(texts), sourceTitle, &error)) { setError(error); return; }
+    m_internalTasks.insert(conversationId, taskId); emit backgroundTaskChanged();
+}
+void ChatController::cancelInternalTask()
+{
+    if (!m_preview) {
+        const auto id = m_internalTasks.value(currentSessionId()); m_internalTask.cancel(id); m_mediaTask.cancel(id);
+    }
+}
+void ChatController::exportBlock(const QVariantMap &block, const QUrl &target)
+{
+    if (!target.isLocalFile() || m_exportPending > 0) { setError(QStringLiteral("请选择本机导出位置，并等待已有导出任务完成")); return; }
+    auto snapshot = m_blocks.snapshot(block.value("blockId").toString());
+    if (snapshot.isEmpty()) snapshot = block;
+    ++m_exportPending;
+    auto *watcher = new QFutureWatcher<bool>(this);
+    const auto path = target.toLocalFile();
+    connect(watcher, &QFutureWatcher<bool>::finished, this, [this, watcher, path] {
+        --m_exportPending;
+        bool success = false;
+        try { success = watcher->result(); } catch (...) {}
+        if (success) emit blockExported(path);
+        else setError(QStringLiteral("内容导出失败，原始内容已保留"));
+        watcher->deleteLater();
+    });
+    // 用户选择目标后才写文件，序列化和落盘均离开GUI线程；导出不改变块或任务状态。
+    watcher->setFuture(QtConcurrent::run(&m_exporter, [snapshot, path] {
+        const auto bytes = QJsonDocument::fromVariant(snapshot).toJson();
+        QSaveFile file(path);
+        if (!file.open(QIODevice::WriteOnly)) return false;
+        file.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner);
+        return file.write(bytes) == bytes.size() && file.commit();
+    }));
+}
+void ChatController::openImageSequence(const QUrl &folder)
+{
+    if (!folder.isLocalFile()) { setError(QStringLiteral("请选择本机图片目录")); return; }
+    if (internalTaskState() == 0 || internalTaskState() == 1) { setError(QStringLiteral("请先等待或取消当前内部任务")); return; }
+    if (m_preview) newSession();
+    if (m_current < 0 || !m_storageWritable) { setError(QStringLiteral("会话无法保存，未加载图片")); return; }
+    if (m_sessions[m_current].messages.isEmpty()) { m_sessions[m_current].title = QStringLiteral("图片序列"); emit sessionChanged(); }
+    ContentBlock block; block.id = createId(); block.taskId = createId(); block.conversationId = currentSessionId();
+    const auto taskId = block.taskId, conversation = block.conversationId;
+    QString error;
+    if (!m_mediaTask.start(std::move(block), folder.toLocalFile(), &error)) { setError(error); return; }
+    m_internalTasks.insert(conversation, taskId); emit backgroundTaskChanged();
+}
+QUrl ChatController::mediaSource(const QVariantMap &view, const QString &resourceId) const
+{
+    const auto id = view.value("blockId").toString();
+    const auto current = m_blocks.snapshot(id);
+    const auto block = current.isEmpty() ? view : current;
+    // 外部协议尚未协商资源授权，不允许外部事件借已知资源ID读取宿主文件。
+    if (block.value("sourceKind").toInt() == int(content::BlockSource::External)) return {};
+    const auto data = block.value("data").toMap();
+    bool allowed = data.value("resourceId").toString() == resourceId;
+    for (const auto &frame : data.value("frames").toList()) if (frame.toMap().value("resourceId").toString() == resourceId) { allowed = true; break; }
+    return allowed ? m_mediaCatalog.source(resourceId) : QUrl{};
+}
 void ChatController::drainServiceBlocks()
 {
     m_blockUpdateTimer.stop();
@@ -249,7 +345,7 @@ void ChatController::drainServiceBlocks()
 void ChatController::applyServiceBlock(const QString &id)
 {
     const auto *block = m_blocks.find(id);
-    if (!block) return;
+    if (!block || block->mode != content::ContentMode::Dynamic) return;
     int sessionIndex = -1;
     for (int i = 0; i < m_sessions.size(); ++i) if (m_sessions[i].id == block->conversationId) { sessionIndex = i; break; }
     if (sessionIndex < 0) return;
@@ -270,8 +366,8 @@ void ChatController::applyServiceBlock(const QString &id)
     const auto stateLabel = block->state == ipc::TaskState::Created ? QStringLiteral("等待接收") : block->state == ipc::TaskState::Running ? QStringLiteral("运行中")
         : block->state == ipc::TaskState::Complete ? QStringLiteral("已完成") : block->state == ipc::TaskState::Cancelled ? QStringLiteral("已取消")
         : block->state == ipc::TaskState::Interrupted ? QStringLiteral("结果待确认") : QStringLiteral("未能执行");
-    message.activity = {{"kind", 2}, {"summary", block->title + " · " + stateLabel}, {"serviceId", "local-service"}, {"taskId", block->taskId}, {"blockId", block->id},
-        {"blockKind", int(block->kind)}, {"taskState", int(block->state)}, {"revision", block->revision}};
+    message.activity = {{"kind", 2}, {"summary", block->title + " · " + stateLabel}, {"serviceId", block->source == content::BlockSource::Internal ? "internal-analysis" : "local-service"}, {"taskId", block->taskId}, {"blockId", block->id},
+        {"blockKind", int(block->kind)}, {"contentMode", int(block->mode)}, {"sourceKind", int(block->source)}, {"taskState", int(block->state)}, {"revision", block->revision}};
     if (!block->data.isEmpty()) message.activity.insert("data", block->data.toVariantMap());
     if (found == session.messages.cend()) { message.expanded = true; session.messages.append(message); }
     else session.messages[std::distance(session.messages.cbegin(), found)] = message;

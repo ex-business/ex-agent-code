@@ -7,6 +7,7 @@ import ExAgent.App as Design
 Design.ContextMenu {
     id: root
     required property ChatController controller
+    signal imageSequenceRequested()
     Design.ContextMenuItem { text: "新聊天"; onTriggered: root.controller.newSession() }
     Design.ContextMenuItem { text: "预览消息样式"; onTriggered: root.controller.showPreview() }
     Design.ContextMenuItem { text: "当前 ChatGPT 对话"; onTriggered: root.controller.showConversationPreview() }
@@ -31,6 +32,18 @@ Design.ContextMenu {
         text: "取消后台任务"
         enabled: root.controller.backgroundTaskState === 0 || root.controller.backgroundTaskState === 1
         onTriggered: root.controller.cancelBackgroundTask()
+    }
+    MenuSeparator {}
+    Design.ContextMenuItem {
+        text: "统计已加载会话"
+        enabled: root.controller.internalTaskState !== 0 && root.controller.internalTaskState !== 1
+        onTriggered: root.controller.analyzeLoadedConversation()
+    }
+    Design.ContextMenuItem { text: "打开图片序列…"; onTriggered: root.imageSequenceRequested() }
+    Design.ContextMenuItem {
+        text: "取消内部任务"
+        enabled: root.controller.internalTaskState === 0 || root.controller.internalTaskState === 1
+        onTriggered: root.controller.cancelInternalTask()
     }
     MenuSeparator {}
     Design.ContextMenuItem { text: Design.Theme.dark ? "浅色主题" : "深色主题"; onTriggered: Design.Theme.dark = !Design.Theme.dark }

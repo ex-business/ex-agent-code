@@ -9,17 +9,21 @@ RowLayout {
     required property string text
     signal copyRequested(string text)
     onTextChanged: copiedTimer.stop()
-    spacing: 1
-    Design.IconButton {
-        implicitWidth: 26; implicitHeight: 26
+    spacing: 2
+    // 消息操作统一使用18px图形和32px命中区域，便于辨认与点击。
+    component ReplyAction: Design.IconButton {
+        implicitWidth: 32
+        implicitHeight: 32
+        iconSize: 18
+        iconColor: Design.Theme.secondary
+    }
+    ReplyAction {
         iconName: copiedTimer.running ? "check" : "copy"
         tooltip: "复制回复"
-        iconColor: Design.Theme.muted
-        iconSize: 14
         onClicked: { root.copyRequested(root.text); copiedTimer.restart() }
     }
-    Design.IconButton { implicitWidth: 26; implicitHeight: 26; iconSize: 14; iconName: "feedback"; tooltip: "反馈样式展示，尚未连接"; iconColor: Design.Theme.muted }
-    Design.IconButton { implicitWidth: 26; implicitHeight: 26; iconSize: 14; iconName: "speaker"; tooltip: "朗读样式展示，尚未连接"; iconColor: Design.Theme.muted }
-    Design.IconButton { implicitWidth: 26; implicitHeight: 26; iconSize: 14; iconName: "dots"; tooltip: "更多回复操作，尚未连接"; iconColor: Design.Theme.muted }
+    ReplyAction { iconName: "feedback"; tooltip: "反馈样式展示，尚未连接" }
+    ReplyAction { iconName: "speaker"; tooltip: "朗读样式展示，尚未连接" }
+    ReplyAction { iconName: "dots"; tooltip: "更多回复操作，尚未连接" }
     Timer { id: copiedTimer; interval: 1800 }
 }

@@ -16,6 +16,7 @@ ListView {
     property var layoutAnchor: null
     function resetForSession() {
         layoutAnchor = null
+        waitingOlder = false; previousScrollTime = 0; upwardVelocity = 0
         jumpPage.stop()
         jumpTarget = -1
         stop()
@@ -62,6 +63,26 @@ ListView {
     model: transcript.controller.messages
     property bool followingEnd: true
     property bool loadingOlder: false
+    property real previousScrollY: 0
+    property real previousScrollTime: 0
+    property real upwardVelocity: 0
+    property bool waitingOlder: false
+    onContentYChanged: {
+        const now = Date.now()
+        const delta = previousScrollY - contentY
+        if (previousScrollTime > 0 && now > previousScrollTime) upwardVelocity = Math.max(0, delta * 1000 / (now - previousScrollTime))
+        previousScrollY = contentY; previousScrollTime = now
+        const runway = Math.min(height * 4, Math.max(height, upwardVelocity * 0.18))
+        if (delta > 0 && contentY - originY < runway && transcript.controller.messages.hasOlder) transcript.controller.messages.prefetchOlder()
+    }
+    Connections {
+        target: transcript.controller.messages
+        function onPageFailure(error: string) { transcript.waitingOlder = false; transcript.jumpTarget = -1 }
+        function onOlderPageReady() {
+            if (transcript.jumpTarget >= 0) jumpPage.restart()
+            else if (transcript.waitingOlder) { transcript.waitingOlder = false; transcript.loadPreviousPage() }
+        }
+    }
     property int jumpTarget: -1
     function seekFraction(fraction: real) {
         transcriptWheel.stop()
@@ -76,6 +97,7 @@ ListView {
             const first = transcript.controller.messages.totalCount - transcript.controller.messages.count
             if (transcript.jumpTarget < first && transcript.controller.messages.hasOlder) {
                 if (transcript.controller.messages.loadOlder() > 0) { restart(); return }
+                if (transcript.controller.messages.olderLoading) return
             }
             transcript.forceLayout()
             transcript.positionViewAtIndex(Math.max(0, transcript.jumpTarget - (transcript.controller.messages.totalCount - transcript.controller.messages.count)), ListView.Beginning)
@@ -93,8 +115,15 @@ ListView {
             if (transcript.contentY - transcript.originY < 120) transcript.loadPreviousPage()
         }
     }
-    function loadPreviousPage() {
+    function loadPreviousPage(retry = false) {
         if (loadingOlder || jumpTarget >= 0 || transcriptScrollBar.pressed || transcriptWheel.animating || !transcript.controller.messages.hasOlder) return
+        if (!transcript.controller.messages.olderReady) {
+            waitingOlder = true
+            // 仅用户明确点击时清除读取失败标记，自动滚动不循环重试损坏资源。
+            if (retry) transcript.controller.messages.loadOlder()
+            else transcript.controller.messages.prefetchOlder()
+            return
+        }
         loadingOlder = true
         followingEnd = false
         const row = Math.max(0, indexAt(width / 2, contentY + 2))
@@ -116,7 +145,7 @@ ListView {
             visible: transcript.controller.messages.hasOlder
             text: "加载更早的消息 · 还有 " + (transcript.controller.messages.totalCount - transcript.controller.messages.count) + " 条"
             flat: true
-            onClicked: transcript.loadPreviousPage()
+            onClicked: transcript.loadPreviousPage(true)
             contentItem: Text { text: olderMessagesButton.text; color: Design.Theme.secondary; font.pixelSize: 12 }
             background: Rectangle { radius: 8; color: olderMessagesButton.hovered ? Design.Theme.hover : "transparent" }
         }

@@ -5,6 +5,7 @@ import QtQuick.Layouts
 import ExAgent.App as Design
 import ExAgent.Chat
 import QtCore as Core
+import QtQuick.Dialogs
 
 ApplicationWindow {
     id: window
@@ -22,7 +23,24 @@ ApplicationWindow {
     property bool sidebarVisible: true
     property bool filesVisible: true
     WorkspaceController { id: workspaceController }
-    Design.ChatMenu { id: chatMenu; controller: window.controller }
+    Design.ChatMenu { id: chatMenu; controller: window.controller; onImageSequenceRequested: imageFolder.open() }
+    Design.BlockWindowManager { controller: window.controller }
+    FolderDialog { id: imageFolder; title: "选择图片序列目录"; onAccepted: window.controller.openImageSequence(selectedFolder) }
+    FileDialog {
+        id: exportDialog
+        property var blockSnapshot: ({})
+        title: "导出内容数据"
+        fileMode: FileDialog.SaveFile
+        defaultSuffix: "json"
+        nameFilters: ["JSON 数据 (*.json)"]
+        onAccepted: window.controller.exportBlock(blockSnapshot, selectedFile)
+    }
+    MessageDialog { id: exportNotice; title: "内容已导出" }
+    Connections {
+        target: window.controller
+        function onBlockExportRequested(block: var) { exportDialog.blockSnapshot = block; exportDialog.open() }
+        function onBlockExported(path: string) { exportNotice.text = path; exportNotice.open() }
+    }
     Design.ImagePreview { id: imagePreview }
     header: Design.WorkbenchTitleBar {
         id: titleBar
