@@ -6,6 +6,9 @@ qt_add_qml_module(ex_agent_workbench
     QML_FILES
         Main.qml Theme.qml BlockRendererRegistry.qml
         components/BlockRenderer.qml components/BlockWindowManager.qml
+        components/media/MediaSession.qml components/media/MediaButton.qml
+        components/media/MediaCanvas.qml components/media/MediaPreview.qml
+        components/media/MediaControls.qml components/media/MediaThumbnails.qml components/media/MediaViewer.qml
         components/blocks/BlockRendererContent.qml
         components/blocks/TextBlockRenderer.qml components/blocks/CodeBlockRenderer.qml
         components/blocks/ChartBlockRenderer.qml components/blocks/ImageBlockRenderer.qml

@@ -12,6 +12,16 @@
 Q_LOGGING_CATEGORY(resourceBlockLog, "exagent.content.resource")
 
 namespace exagent {
+namespace {
+bool auxiliaryMediaPreview(const ChatMessage &message)
+{
+    // 与消息呈现的合并规则一致，隐藏的旧辅助首帧不进入跨消息复制结果。
+    return message.role == MessageRole::Tool && message.title == QStringLiteral("首帧预览")
+        && message.activity.value("sourceKind").toInt() == int(content::BlockSource::Internal)
+        && message.activity.value("blockKind").toInt() == int(content::BlockKind::Image)
+        && !message.activity.value("taskId").toString().isEmpty();
+}
+}
 
 MessageListModel::MessageListModel(QObject *parent) : QAbstractListModel(parent), m_fallbackBlocks(this), m_contentStore(&m_fallbackBlocks) {}
 void MessageListModel::setContentContext(const QString &conversationId, ContentBlockStore *store)
@@ -141,6 +151,7 @@ QStringList MessageListModel::selectionBlockKeys(int row) const
 {
     if (row < 0 || row >= count()) return {};
     const auto &message = m_messages.at(m_firstLoaded + row);
+    if (auxiliaryMediaPreview(message)) return {};
     if (message.role == MessageRole::User) return {message.id + ".user"};
     if (message.role == MessageRole::Tool) {
         if (message.title == QStringLiteral("文件修改")) {
@@ -161,6 +172,7 @@ QStringList MessageListModel::selectionBlocks(int row) const
 {
     if (row < 0 || row >= count()) return {};
     const auto &message = m_messages.at(m_firstLoaded + row);
+    if (auxiliaryMediaPreview(message)) return {};
     if (message.role == MessageRole::User) {
         auto text = message.content;
         text.remove(QRegularExpression("[\\r\\n]+$"));

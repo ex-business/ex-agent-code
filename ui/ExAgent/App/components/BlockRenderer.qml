@@ -20,7 +20,9 @@ ColumnLayout {
         const version = controller.blockViews.revision
         return controller.blockViews.state(root.blockId)
     }
-    readonly property bool showContent: detached || (viewState.visibility === 1 && viewState.expansion === 1 && viewState.placement === 1)
+    readonly property bool mediaContent: rendererKind === 5 || rendererKind === 6
+    // 媒体窗口打开后保留预览原位，避免后续聊天跳动；内嵌预览不播放。
+    readonly property bool showContent: detached || (viewState.visibility === 1 && viewState.expansion === 1 && (viewState.placement === 1 || mediaContent))
     spacing: 5
     // 普通正文不逐段展示管理按钮；只有独立内容卡片保留一行明确的文字操作。
     component ActionLink: ToolButton {
@@ -44,7 +46,7 @@ ColumnLayout {
     RowLayout {
         Layout.fillWidth: true
         spacing: 5
-        visible: root.blockId.length > 0 && (root.detached || root.rendererKind !== 1 || Number(root.block.contentMode) === 2 || !root.showContent)
+        visible: root.blockId.length > 0 && (root.detached || (root.rendererKind !== 1 && root.rendererKind !== 5 && root.rendererKind !== 6) || (Number(root.block.contentMode) === 2 && root.rendererKind !== 5 && root.rendererKind !== 6) || !root.showContent)
         Layout.preferredHeight: 22
         Label {
             Layout.fillWidth: true

@@ -26,6 +26,7 @@ public:
     Q_INVOKABLE QVariantMap presentation(const QString &id) const;
     Q_INVOKABLE void savePresentation(const QString &id, const QVariantMap &value);
 signals:
+    void focusRequested(QString blockId);
     void viewsChanged();
     void changed();
     void failure(QString reason);

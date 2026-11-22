@@ -43,7 +43,9 @@ void BlockViewRegistry::detach(const QVariantMap &fallback)
         emit failure(QStringLiteral("独立视图快照过大，请先导出内容")); return;
     }
     if (detachedBlocks().size() >= 16 && m_views.value(id).placement != 2) { emit failure(QStringLiteral("独立内容窗口最多16个")); return; }
-    auto *view = ensure(id); if (!view || view->placement == 2) return;
+    auto *view = ensure(id); if (!view) return;
+    // 重复点击预览只唤回已有窗口，不重建播放器或丢失呈现状态。
+    if (view->placement == 2) { emit focusRequested(id); return; }
     view->placement = 2; view->visibility = 1; view->block = block;
     view->viewId = QUuid::createUuid().toString(QUuid::WithoutBraces);
     touch(); m_windows.add(id, view->viewId); emit viewsChanged();

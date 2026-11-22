@@ -24,7 +24,7 @@ ApplicationWindow {
     property bool filesVisible: true
     WorkspaceController { id: workspaceController }
     Design.ChatMenu { id: chatMenu; controller: window.controller; onImageSequenceRequested: imageFolder.open() }
-    Design.BlockWindowManager { controller: window.controller }
+    Design.BlockWindowManager { controller: window.controller; hostWindow: window }
     FolderDialog { id: imageFolder; title: "选择图片序列目录"; onAccepted: window.controller.openImageSequence(selectedFolder) }
     FileDialog {
         id: exportDialog
@@ -41,7 +41,7 @@ ApplicationWindow {
         function onBlockExportRequested(block: var) { exportDialog.blockSnapshot = block; exportDialog.open() }
         function onBlockExported(path: string) { exportNotice.text = path; exportNotice.open() }
     }
-    Design.ImagePreview { id: imagePreview }
+    Design.ImagePreview { id: imagePreview; controller: window.controller }
     header: Design.WorkbenchTitleBar {
         id: titleBar
         windowHandle: window

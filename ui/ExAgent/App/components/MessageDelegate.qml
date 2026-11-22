@@ -28,11 +28,15 @@ Item {
     readonly property bool isUser: messageKind === MessageListModel.User
     readonly property bool isTool: messageKind === MessageListModel.Tool
     readonly property bool isNotice: messageKind === MessageListModel.Notice
-    implicitHeight: body.implicitHeight + (isTool ? (messageTitle === "文件修改" ? 40 : 8) : isUser ? 42 : isNotice ? 12 : 26)
+    // 旧版媒体任务的辅助首帧仍保留在会话里，界面合并进序列预览，不重复占用聊天区域。
+    readonly property bool auxiliaryMedia: isTool && Number(activity.sourceKind) === 2 && Number(activity.blockKind) === 5 && messageTitle === "首帧预览" && Boolean(activity.taskId)
+    visible: !auxiliaryMedia
+    implicitHeight: auxiliaryMedia ? 0 : body.implicitHeight + (isTool ? (messageTitle === "文件修改" ? 40 : 8) : isUser ? 42 : isNotice ? 12 : 26)
 
     // 每条消息只实例化自己的类型，不能用 visible=false 留下其他类型的全文布局。
     Loader {
         id: body
+        active: !root.auxiliaryMedia
         width: root.width
         sourceComponent: root.isUser ? userBody : root.isNotice ? noticeBody
                          : root.isTool ? (root.messageTitle === "文件修改" ? filesBody : toolBody) : assistantBody
