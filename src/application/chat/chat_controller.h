@@ -5,6 +5,8 @@
 #include "presentation/chat/message_list_model.h"
 #include "presentation/chat/session_list_model.h"
 #include <QObject>
+#include "application/services/local_service_process.h"
+#include "application/services/content_block_store.h"
 #include <QTimer>
 #include <QtQml/qqmlregistration.h>
 
@@ -27,9 +29,13 @@ class ChatController final : public QObject {
     Q_PROPERTY(QVariantMap navigationInfo READ navigationInfo NOTIFY resourcesChanged)
     Q_PROPERTY(QString resourcePath READ resourcePath CONSTANT)
     Q_PROPERTY(QVariantMap changeSummary READ changeSummary NOTIFY sessionChanged)
+    Q_PROPERTY(int serviceState READ serviceState NOTIFY serviceStateChanged)
+    Q_PROPERTY(int backgroundTaskState READ backgroundTaskState NOTIFY backgroundTaskChanged)
+    Q_PROPERTY(QString backgroundTaskId READ backgroundTaskId NOTIFY backgroundTaskChanged)
     Q_PROPERTY(int activityStatus READ activityStatus NOTIFY sessionChanged)
 public:
     explicit ChatController(QObject *parent = nullptr);
+    ~ChatController() override;
     MessageListModel *messages();
     SessionListModel *sessions();
     QString currentSessionId() const;
@@ -57,13 +63,23 @@ public:
     Q_INVOKABLE void clearError();
     Q_INVOKABLE void setDarkTheme(bool dark);
     void flush();
+    int serviceState() const { return int(m_service.state()); }
+    int backgroundTaskState() const;
+    QString backgroundTaskId() const { return m_preview ? QString{} : m_backgroundTasks.value(currentSessionId()); }
+    Q_INVOKABLE void runBackgroundTask();
+    Q_INVOKABLE void cancelBackgroundTask();
 signals:
+    void serviceStateChanged();
+    void backgroundTaskChanged();
     void sessionChanged();
     void draftChanged();
     void errorChanged();
     void resourcesChanged();
 
 private:
+    void drainServiceBlocks();
+    void applyServiceBlock(const QString &id);
+    void dispatchBackgroundTasks();
     void persistCurrent();
     void refreshSessions();
     void setError(const QString &message);
@@ -82,6 +98,13 @@ private:
     QVariantMap m_changeSummary;
     int m_activityStatus = 0;
     QTimer m_saveTimer;
+    QTimer m_blockUpdateTimer;
+    QList<QString> m_dirtyBlocks;
+    LocalServiceProcess m_service;
+    ContentBlockStore m_blocks;
+    QHash<QString, QString> m_backgroundTasks;
+    QList<QJsonObject> m_waitingTasks;
+    QHash<QString, QString> m_taskRequests;
 };
 
 } // namespace exagent

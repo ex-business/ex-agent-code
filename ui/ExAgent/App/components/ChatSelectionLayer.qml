@@ -8,6 +8,8 @@ Item {
     required property ListView view
     required property MessageListModel model
     signal olderPageRequested()
+    signal layoutChangeStarting()
+    signal layoutChangeFinished()
     readonly property alias document: document
     property var parts: []
     property bool dragging: false

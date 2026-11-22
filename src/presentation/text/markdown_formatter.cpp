@@ -101,7 +101,7 @@ QVariantMap proseHtml(const QString &text, bool dark)
     return {{"html", html}, {"tableRules", rules}};
 }
 }
-QVariantList MarkdownFormatter::format(const QString &content, bool dark) const
+QVariantList MarkdownFormatter::split(const QString &content) const
 {
     QVariantList result;
     qsizetype start = 0;
@@ -114,7 +114,7 @@ QVariantList MarkdownFormatter::format(const QString &content, bool dark) const
         if (text.endsWith('\n')) text.chop(1);
         if (!inCode) text = text.trimmed();
         if (text.isEmpty() && !inCode) return;
-        auto block = inCode ? QVariantMap{} : proseHtml(text, dark);
+        QVariantMap block;
         block.insert("kind", inCode ? 1 : 0);
         block.insert("text", text);
         block.insert("language", language);
@@ -140,4 +140,19 @@ QVariantList MarkdownFormatter::format(const QString &content, bool dark) const
     append(content.size());
     return result;
 }
+QVariantMap MarkdownFormatter::prosePresentation(const QString &content, bool dark) const { return proseHtml(content, dark); }
+QVariantList MarkdownFormatter::format(const QString &content, bool dark) const
+{
+    auto blocks = split(content);
+    for (auto &entry : blocks) {
+        auto block = entry.toMap();
+        if (block.value("kind").toInt() == 0) {
+            const auto prepared = proseHtml(block.value("text").toString(), dark);
+            for (auto it = prepared.cbegin(); it != prepared.cend(); ++it) block.insert(it.key(), it.value());
+        }
+        entry = block;
+    }
+    return blocks;
+}
+
 }

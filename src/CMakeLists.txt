@@ -2,6 +2,18 @@ add_library(ex_agent_domain INTERFACE)
 target_include_directories(ex_agent_domain INTERFACE "${CMAKE_CURRENT_SOURCE_DIR}")
 target_link_libraries(ex_agent_domain INTERFACE Qt6::Core)
 
+# 通信底座只依赖Core/Network，后台模式不创建GUI或加载QML。
+qt_add_library(ex_agent_ipc STATIC
+    domain/ipc/protocol.h
+    infrastructure/ipc/rpc_channel.h infrastructure/ipc/rpc_channel.cpp
+    application/services/local_service_process.h application/services/local_service_process.cpp
+    application/services/content_block_store.h application/services/content_block_store.cpp
+    services/local/service_worker.h services/local/service_worker.cpp
+)
+target_include_directories(ex_agent_ipc PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}")
+target_link_libraries(ex_agent_ipc PUBLIC Qt6::Core Qt6::Network)
+target_compile_options(ex_agent_ipc PRIVATE -Wall -Wextra -Wpedantic)
+
 qt_add_library(ex_agent_chat STATIC)
 qt_add_qml_module(ex_agent_chat
     URI ExAgent.Chat
@@ -15,6 +27,7 @@ qt_add_qml_module(ex_agent_chat
         presentation/code/code_line_model.h presentation/code/code_line_model.cpp
         presentation/code/syntax_highlighter.h presentation/code/syntax_highlighter.cpp
         presentation/text/text_selection_rules.h presentation/text/text_selection_rules.cpp
+        presentation/text/rich_text_preparation.h presentation/text/rich_text_preparation.cpp
         presentation/text/markdown_formatter.h presentation/text/markdown_formatter.cpp
         presentation/text/selection_scroll_clock.h presentation/text/selection_scroll_clock.cpp
         presentation/text/chat_selection_tracker.h presentation/text/chat_selection_tracker.cpp
@@ -22,7 +35,7 @@ qt_add_qml_module(ex_agent_chat
         presentation/text/selection_coordinator.h presentation/text/selection_coordinator.cpp
         presentation/workspace/workspace_controller.h presentation/workspace/workspace_controller.cpp
 )
-target_link_libraries(ex_agent_chat PUBLIC ex_agent_domain Qt6::Gui Qt6::Qml Qt6::Quick)
+target_link_libraries(ex_agent_chat PUBLIC ex_agent_domain ex_agent_ipc Qt6::Gui Qt6::Qml Qt6::Quick Qt6::Concurrent)
 target_include_directories(ex_agent_chat PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}"
     PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/application/chat" "${CMAKE_CURRENT_SOURCE_DIR}/presentation/chat" "${CMAKE_CURRENT_SOURCE_DIR}/presentation/code")
 target_compile_options(ex_agent_chat PRIVATE -Wall -Wextra -Wpedantic)

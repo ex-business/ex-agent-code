@@ -6,6 +6,7 @@
 #include <QStandardPaths>
 #include <QStyleHints>
 #include <QUuid>
+#include <algorithm>
 
 Q_LOGGING_CATEGORY(chatLog, "exagent.chat")
 
@@ -13,11 +14,38 @@ namespace exagent {
 
 ChatController::ChatController(QObject *parent)
     : QObject(parent), m_messages(this), m_sessionModel(this),
-      m_repository(QStandardPaths::writableLocation(QStandardPaths::AppDataLocation))
+      m_repository(QStandardPaths::writableLocation(QStandardPaths::AppDataLocation)), m_service(this), m_blocks(this)
 {
+    m_service.setEventSink([this](const QString &method, const QJsonObject &event, QString *error) { return m_blocks.apply(method, event, error); });
+    m_blockUpdateTimer.setSingleShot(true); m_blockUpdateTimer.setInterval(16);
+    connect(&m_blockUpdateTimer, &QTimer::timeout, this, &ChatController::drainServiceBlocks);
+    connect(&m_blocks, &ContentBlockStore::blockChanged, this, [this](const QString &id) {
+        // 协议逐事件归约，界面每16ms按块合并刷新，不让输出频率决定整段排版频率。
+        if (!m_dirtyBlocks.contains(id)) m_dirtyBlocks.append(id);
+        if (!m_blockUpdateTimer.isActive()) m_blockUpdateTimer.start();
+    });
+    connect(&m_service, &LocalServiceProcess::stateChanged, this, &ChatController::serviceStateChanged);
+    connect(&m_service, &LocalServiceProcess::ready, this, &ChatController::dispatchBackgroundTasks);
+    connect(&m_service, &LocalServiceProcess::failure, this, [this](const QString &reason) {
+        m_waitingTasks.clear(); m_taskRequests.clear(); m_blocks.interrupt(reason); setError(reason);
+    });
+    connect(&m_service, &LocalServiceProcess::response, this, [this](const QString &id, const QJsonValue &) { m_taskRequests.remove(id); });
+    connect(&m_service, &LocalServiceProcess::requestFailed, this, [this](const QString &id, int code, const QString &reason) {
+        const auto taskId = m_taskRequests.take(id);
+        if (!taskId.isEmpty()) m_blocks.interrupt(reason, taskId, code == -32001 || code == -32002 ? ipc::TaskState::Interrupted : ipc::TaskState::Failed);
+        setError(reason);
+    });
     QString error;
     m_sessions = m_repository.load(&error);
     m_storageWritable = error.isEmpty();
+    // 旧进程已不再存活；只修正本服务创建的运行记录，不改导入资源和其他工具历史。
+    for (auto &session : m_sessions) for (auto &message : session.messages) {
+        if (message.activity.value("serviceId").toString() != "local-service" || message.status != MessageStatus::Running) continue;
+        message.status = MessageStatus::Failed;
+        message.activity.insert("taskState", int(ipc::TaskState::Interrupted));
+        message.activity.insert("summary", message.title + QStringLiteral(" · 结果待确认"));
+        message.content += QStringLiteral("\n应用已重新启动，原后台任务不自动恢复，已有内容保留。\n");
+    }
     if (!error.isEmpty()) setError(error);
     m_saveTimer.setSingleShot(true);
     m_saveTimer.setInterval(500);
@@ -26,6 +54,18 @@ ChatController::ChatController(QObject *parent)
     connect(&m_messages, &MessageListModel::presentationChanged, this, &ChatController::persistCurrent);
     if (m_sessions.isEmpty()) newSession();
     else selectSession(m_sessions.first().id);
+}
+
+ChatController::~ChatController()
+{
+    // 先断开后台回调再销毁成员，避免等待子进程退出时访问已销毁的内容仓库。
+    disconnect(&m_service, nullptr, this, nullptr);
+    m_service.setEventSink({});
+    m_blocks.interrupt(QStringLiteral("应用正在退出，后台任务不自动重新执行"));
+    drainServiceBlocks();
+    flush();
+    disconnect(&m_blocks, nullptr, this, nullptr);
+    m_service.stop();
 }
 
 MessageListModel *ChatController::messages() { return &m_messages; }
@@ -61,6 +101,7 @@ void ChatController::newSession()
     m_messages.replace({});
     refreshSessions();
     emit sessionChanged();
+    emit backgroundTaskChanged();
     emit draftChanged();
     m_saveTimer.start();
 }
@@ -74,6 +115,7 @@ void ChatController::selectSession(const QString &id)
         m_messages.replace(m_sessions[i].messages);
         refreshSessions();
         emit sessionChanged();
+        emit backgroundTaskChanged();
         emit draftChanged();
         return;
     }
@@ -143,7 +185,100 @@ void ChatController::loadResourceConversation(const QString &id)
             return messages;
         });
     emit sessionChanged();
+    emit backgroundTaskChanged();
     emit draftChanged();
+}
+
+int ChatController::backgroundTaskState() const
+{
+    const auto *block = m_blocks.task(backgroundTaskId());
+    return block ? int(block->state) : -1;
+}
+void ChatController::runBackgroundTask()
+{
+    if (backgroundTaskState() == int(ipc::TaskState::Created) || backgroundTaskState() == int(ipc::TaskState::Running)) return;
+    if (m_service.state() == ipc::ServiceState::Failed && m_service.processId() > 0) {
+        setError(QStringLiteral("后台进程正在结束，请稍后重试。")); return;
+    }
+    if (m_waitingTasks.size() >= 16) { setError(QStringLiteral("待派发后台任务已满，请稍后重试。")); return; }
+    if (m_preview) newSession();
+    if (m_current < 0 || !m_storageWritable) { setError(QStringLiteral("会话无法保存，未启动后台任务。")); return; }
+    if (m_sessions[m_current].messages.isEmpty()) {
+        m_sessions[m_current].title = QStringLiteral("后台通信任务");
+        emit sessionChanged();
+    }
+    ContentBlock block;
+    block.id = createId(); block.taskId = createId(); block.conversationId = currentSessionId();
+    block.title = QStringLiteral("后台通信任务"); block.text = QStringLiteral("等待独立后台进程接收任务。\n");
+    QString error;
+    if (!m_blocks.prepare(block, &error)) { setError(error); return; }
+    m_backgroundTasks.insert(block.conversationId, block.taskId);
+    m_waitingTasks.append({{"conversationId", block.conversationId}, {"taskId", block.taskId}, {"blockId", block.id}, {"kind", 1}, {"title", block.title}});
+    emit backgroundTaskChanged();
+    if (m_service.state() == ipc::ServiceState::Ready) dispatchBackgroundTasks();
+    else m_service.start();
+}
+void ChatController::dispatchBackgroundTasks()
+{
+    const auto tasks = m_waitingTasks; m_waitingTasks.clear();
+    for (const auto &task : tasks) {
+        const auto taskId = task.value("taskId").toString();
+        const auto id = m_service.request("task.start", task);
+        if (id.isEmpty()) m_blocks.interrupt(QStringLiteral("后台请求队列未接受任务"), taskId, ipc::TaskState::Failed);
+        else m_taskRequests.insert(id, taskId);
+    }
+}
+void ChatController::cancelBackgroundTask()
+{
+    const auto taskId = backgroundTaskId();
+    if (taskId.isEmpty()) return;
+    // 尚未派发的任务直接在宿主取消，不因点击取消而额外启动工作进程。
+    for (int i = 0; i < m_waitingTasks.size(); ++i) if (m_waitingTasks[i].value("taskId").toString() == taskId) {
+        m_waitingTasks.removeAt(i); m_blocks.interrupt(QStringLiteral("任务在派发前被用户取消"), taskId, ipc::TaskState::Cancelled); return;
+    }
+    const auto id = m_service.request("task.cancel", {{"taskId", taskId}});
+    if (id.isEmpty()) setError(QStringLiteral("后台暂不可达，无法确认取消结果；不会自动重跑任务。"));
+    else m_taskRequests.insert(id, taskId);
+}
+void ChatController::drainServiceBlocks()
+{
+    m_blockUpdateTimer.stop();
+    const auto ids = m_dirtyBlocks; m_dirtyBlocks.clear();
+    for (const auto &id : ids) applyServiceBlock(id);
+}
+void ChatController::applyServiceBlock(const QString &id)
+{
+    const auto *block = m_blocks.find(id);
+    if (!block) return;
+    int sessionIndex = -1;
+    for (int i = 0; i < m_sessions.size(); ++i) if (m_sessions[i].id == block->conversationId) { sessionIndex = i; break; }
+    if (sessionIndex < 0) return;
+    auto &session = m_sessions[sessionIndex];
+    ChatMessage message;
+    const auto found = std::find_if(session.messages.cbegin(), session.messages.cend(), [&](const ChatMessage &entry) { return entry.id == id; });
+    if (found != session.messages.cend()) message = *found;
+    message.id = block->id; message.role = MessageRole::Tool; message.title = block->title;
+    message.content = block->text;
+    // 外部任务状态显式映射，不能把完成2、失败3误当成已有消息状态。
+    switch (block->state) {
+    case ipc::TaskState::Complete: message.status = MessageStatus::Complete; break;
+    case ipc::TaskState::Cancelled: message.status = MessageStatus::Cancelled; break;
+    case ipc::TaskState::Failed:
+    case ipc::TaskState::Interrupted: message.status = MessageStatus::Failed; break;
+    default: message.status = MessageStatus::Running; break;
+    }
+    const auto stateLabel = block->state == ipc::TaskState::Created ? QStringLiteral("等待接收") : block->state == ipc::TaskState::Running ? QStringLiteral("运行中")
+        : block->state == ipc::TaskState::Complete ? QStringLiteral("已完成") : block->state == ipc::TaskState::Cancelled ? QStringLiteral("已取消")
+        : block->state == ipc::TaskState::Interrupted ? QStringLiteral("结果待确认") : QStringLiteral("未能执行");
+    message.activity = {{"kind", 2}, {"summary", block->title + " · " + stateLabel}, {"serviceId", "local-service"}, {"taskId", block->taskId}, {"blockId", block->id},
+        {"blockKind", int(block->kind)}, {"taskState", int(block->state)}, {"revision", block->revision}};
+    if (!block->data.isEmpty()) message.activity.insert("data", block->data.toVariantMap());
+    if (found == session.messages.cend()) { message.expanded = true; session.messages.append(message); }
+    else session.messages[std::distance(session.messages.cbegin(), found)] = message;
+    session.updatedAt = QDateTime::currentDateTimeUtc();
+    if (!m_preview && m_current == sessionIndex) m_messages.upsertServiceMessage(message);
+    else { refreshSessions(); m_saveTimer.start(); }
+    emit backgroundTaskChanged();
 }
 
 void ChatController::copyText(const QString &text) { QGuiApplication::clipboard()->setText(text); }

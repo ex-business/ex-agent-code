@@ -78,6 +78,19 @@ Rectangle {
         language: root.language
         code: root.code
         dark: Design.Theme.dark
+        onPreparingChanged: {
+            if (root.selectionManager) {
+                root.selectionManager.layoutChangeStarting()
+                Qt.callLater(root.selectionManager.layoutChangeFinished)
+            }
+        }
+    }
+    Text {
+        visible: lines.preparing
+        x: 15; y: 46
+        text: "正在准备代码…"
+        color: Design.Theme.muted
+        font.pixelSize: 12
     }
     Design.ChatSelectionPart {
         id: selectionPart

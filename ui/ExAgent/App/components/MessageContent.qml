@@ -20,6 +20,8 @@ ColumnLayout {
             required property var modelData
             required property int index
             Layout.fillWidth: true
+            Layout.preferredHeight: (item as Item)?.implicitHeight ?? 24
+            asynchronous: true
             sourceComponent: modelData.kind === 1 ? code : prose
             Component {
                 id: prose

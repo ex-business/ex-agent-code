@@ -22,5 +22,16 @@ Design.ContextMenu {
     }
     Design.ContextMenuItem { text: "复制本地会话文件路径"; onTriggered: root.controller.copyText(root.controller.storagePath) }
     MenuSeparator {}
+    Design.ContextMenuItem {
+        text: "运行后台通信任务"
+        enabled: root.controller.backgroundTaskState !== 0 && root.controller.backgroundTaskState !== 1
+        onTriggered: root.controller.runBackgroundTask()
+    }
+    Design.ContextMenuItem {
+        text: "取消后台任务"
+        enabled: root.controller.backgroundTaskState === 0 || root.controller.backgroundTaskState === 1
+        onTriggered: root.controller.cancelBackgroundTask()
+    }
+    MenuSeparator {}
     Design.ContextMenuItem { text: Design.Theme.dark ? "浅色主题" : "深色主题"; onTriggered: Design.Theme.dark = !Design.Theme.dark }
 }

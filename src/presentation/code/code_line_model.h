@@ -5,6 +5,8 @@
 #include <QVector>
 #include <QFont>
 #include <QTextLayout>
+#include <QTimer>
+#include <atomic>
 #include <memory>
 #include <QtQml/qqmlregistration.h>
 
@@ -16,6 +18,7 @@ class CodeLineModel : public QAbstractListModel {
     Q_PROPERTY(QString code READ code WRITE setCode NOTIFY codeChanged)
     Q_PROPERTY(QString language READ language WRITE setLanguage NOTIFY languageChanged)
     Q_PROPERTY(bool dark READ dark WRITE setDark NOTIFY darkChanged)
+    Q_PROPERTY(bool preparing READ preparing NOTIFY preparingChanged)
     Q_PROPERTY(int lineCount READ lineCount NOTIFY codeChanged)
     Q_PROPERTY(int maximumColumns READ maximumColumns NOTIFY codeChanged)
     Q_PROPERTY(int cachedLineCount READ cachedLineCount NOTIFY metricsChanged)
@@ -34,6 +37,8 @@ public:
     QString language() const;
     bool dark() const;
     int lineCount() const;
+    bool preparing() const { return m_preparing; }
+    ~CodeLineModel() override;
     int maximumColumns() const;
     int cachedLineCount() const;
     int formattedLineCount() const;
@@ -54,6 +59,7 @@ public:
     Q_INVOKABLE void selectAll();
     Q_INVOKABLE void selectWord(int position);
 signals:
+    void preparingChanged();
     void codeChanged();
     void languageChanged();
     void darkChanged();
@@ -62,6 +68,12 @@ signals:
 private:
     struct Line { qsizetype offset; qsizetype length; int state; };
     void rebuildIndex();
+    void startIndex();
+    struct PreparedIndex { QVector<Line> lines; int maximumColumns = 0; };
+    QTimer m_indexSchedule;
+    quint64 m_indexGeneration = 0;
+    bool m_preparing = false, m_indexRunning = false;
+    std::shared_ptr<std::atomic_bool> m_indexCancel;
     void queueMetrics() const;
     int rowAt(int position) const;
     QTextLine layoutLine(int row, const QFont &font) const;

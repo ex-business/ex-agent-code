@@ -2,6 +2,9 @@
 #include "syntax_highlighter.h"
 
 #include <QTimer>
+#include <QFutureWatcher>
+#include <QThreadPool>
+#include <QtConcurrentRun>
 #include <algorithm>
 #include "presentation/text/text_selection_rules.h"
 #include <QTextBoundaryFinder>
@@ -11,7 +14,12 @@ namespace {
 constexpr int MaxRenderedLineCharacters = 24 * 1024;
 }
 
-CodeLineModel::CodeLineModel(QObject *parent) : QAbstractListModel(parent) {}
+CodeLineModel::CodeLineModel(QObject *parent) : QAbstractListModel(parent)
+{
+    m_indexSchedule.setSingleShot(true);
+    connect(&m_indexSchedule, &QTimer::timeout, this, &CodeLineModel::startIndex);
+}
+CodeLineModel::~CodeLineModel() { if (m_indexCancel) m_indexCancel->store(true); }
 QString CodeLineModel::code() const { return m_code; }
 QString CodeLineModel::language() const { return m_language; }
 bool CodeLineModel::dark() const { return m_dark; }
@@ -102,25 +110,60 @@ void CodeLineModel::rebuildIndex()
     m_highlightCache.clear();
     m_formattedLineCount = 0;
     m_maximumColumns = 0;
-    if (m_code.isEmpty()) return;
-    qsizetype offset = 0;
-    int state = 0;
-    while (offset < m_code.size()) {
-        auto end = m_code.indexOf('\n', offset);
-        if (end < 0) end = m_code.size();
-        auto length = end - offset;
-        if (length > 0 && m_code[offset + length - 1] == '\r') --length;
-        const auto line = QStringView(m_code).mid(offset, length);
-        m_lines.append({offset, length, state});
-        // 一次性只建立轻量行索引和跨行词法状态，避免跳到注释中部时错误着色。
-        state = SyntaxHighlighter::scan(line, m_language, state, m_dark, false).endState;
-        int columns = 0;
-        for (const auto c : line.left(MaxRenderedLineCharacters)) columns += c == '\t' ? 4 : 1;
-        m_maximumColumns = qMax(m_maximumColumns, columns);
-        offset = end + 1;
-    }
-    // 文件末尾的换行同样有可定位的空行，方向键不能停留在上一行。
-    if (m_code.endsWith('\n')) m_lines.append({m_code.size(), 0, state});
+    ++m_indexGeneration;
+    if (m_indexCancel) m_indexCancel->store(true);
+    m_preparing = !m_code.isEmpty();
+    emit preparingChanged();
+    m_indexSchedule.start(0);
+}
+
+void CodeLineModel::startIndex()
+{
+    // 同一控件只允许一个任务在途；反复更新时只保留最新快照，不堆积旧版本。
+    if (m_indexRunning || m_code.isEmpty()) return;
+    static QThreadPool pool;
+    pool.setMaxThreadCount(2);
+    pool.setThreadPriority(QThread::LowPriority);
+    m_indexRunning = true;
+    const auto generation = m_indexGeneration;
+    const auto cancel = m_indexCancel = std::make_shared<std::atomic_bool>(false);
+    auto *watcher = new QFutureWatcher<PreparedIndex>(this);
+    connect(watcher, &QFutureWatcher<PreparedIndex>::finished, this, [this, watcher, generation, cancel] {
+        m_indexRunning = false;
+        if (generation == m_indexGeneration && !cancel->load()) {
+            PreparedIndex result;
+            try { result = watcher->result(); } catch (...) { qWarning("代码索引准备失败，原始代码仍可复制"); }
+            beginResetModel();
+            m_lines = std::move(result.lines);
+            m_maximumColumns = result.maximumColumns;
+            endResetModel();
+            m_preparing = false;
+            emit preparingChanged(); emit codeChanged(); emit metricsChanged();
+        } else startIndex();
+        watcher->deleteLater();
+    });
+    watcher->setFuture(QtConcurrent::run(&pool, [code = m_code, language = m_language, dark = m_dark, cancel] {
+        PreparedIndex result;
+        qsizetype offset = 0;
+        int state = 0;
+        while (offset < code.size()) {
+            if (cancel->load()) return PreparedIndex{};
+            auto end = code.indexOf('\n', offset);
+            if (end < 0) end = code.size();
+            auto length = end - offset;
+            if (length > 0 && code[offset + length - 1] == '\r') --length;
+            const auto line = QStringView(code).mid(offset, length);
+            result.lines.append({offset, length, state});
+            // 跨行词法状态也在后台建立；可见行仍按需着色并使用原有有界缓存。
+            state = SyntaxHighlighter::scan(line, language, state, dark, false).endState;
+            int columns = 0;
+            for (const auto c : line.left(MaxRenderedLineCharacters)) columns += c == '\t' ? 4 : 1;
+            result.maximumColumns = qMax(result.maximumColumns, columns);
+            offset = end + 1;
+        }
+        if (code.endsWith('\n')) result.lines.append({code.size(), 0, state});
+        return result;
+    }));
 }
 
 QString CodeLineModel::selectedText() const { return m_code.mid(qMin(m_anchor, m_cursor), qAbs(m_cursor - m_anchor)); }

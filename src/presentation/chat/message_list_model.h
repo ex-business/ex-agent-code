@@ -33,6 +33,7 @@ public:
     void replace(QList<ChatMessage> messages);
     void replacePaged(QList<ChatMessage> latest, int total, std::function<QList<ChatMessage>()> olderLoader);
     void append(ChatMessage message);
+    void upsertServiceMessage(ChatMessage message);
     void appendText(const QString &messageId, const QString &delta);
     Q_INVOKABLE void toggleExpanded(int row);
     void setDark(bool dark);

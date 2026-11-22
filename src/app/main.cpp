@@ -1,6 +1,7 @@
 #include "application/chat/chat_controller.h"
 #include "scroll_diagnostics.h"
 #include "pixel_scroll_filter.h"
+#include "services/local/service_worker.h"
 
 #include <QGuiApplication>
 #include <QQmlApplicationEngine>
@@ -14,6 +15,9 @@
 
 int main(int argc, char *argv[])
 {
+    // 后台与IDE共用发行包，但进程入口、事件循环和生命周期独立。
+    for (int index = 1; index < argc; ++index)
+        if (QByteArray(argv[index]) == "--ipc-service") return exagent::runServiceWorker(argc, argv);
     // 诊断用渲染循环对比开关，只影响本次启动，不修改用户环境。
     for (int index = 1; index < argc; ++index) {
         if (QByteArray(argv[index]) == "--render-loop-basic") qputenv("QSG_RENDER_LOOP", "basic");

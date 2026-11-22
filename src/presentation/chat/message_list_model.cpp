@@ -66,7 +66,7 @@ QVariant MessageListModel::data(const QModelIndex &index, int role) const
     case BlocksRole: {
         if (message.role != MessageRole::Assistant && message.role != MessageRole::Notice) return QVariantList{};
         if (const auto *cached = m_blocksCache.object(message.id)) return *cached;
-        auto parsed = MarkdownFormatter().format(message.content, m_dark);
+        auto parsed = MarkdownFormatter().split(message.content);
         qsizetype bytes = 0;
         for (const auto &entry : parsed) {
             const auto block = entry.toMap();
@@ -113,7 +113,7 @@ QStringList MessageListModel::selectionBlocks(int row) const
         return blocks;
     }
     QStringList result;
-    for (const auto &entry : data(index(row), BlocksRole).toList()) {
+    for (const auto &entry : MarkdownFormatter().format(message.content, m_dark)) {
         const auto block = entry.toMap();
         if (block.value("kind").toInt() == 1) result.append(block.value("text").toString());
         else {
@@ -158,6 +158,21 @@ void MessageListModel::append(ChatMessage message)
     endInsertRows();
     emit countChanged();
     emit contentUpdated();
+}
+
+void MessageListModel::upsertServiceMessage(ChatMessage message)
+{
+    for (int row = 0; row < m_messages.size(); ++row) {
+        if (m_messages[row].id != message.id) continue;
+        // 后台更新不重置展开状态和整份列表，避免打断阅读、滚动和文字选择。
+        message.expanded = m_messages[row].expanded;
+        m_messages[row] = std::move(message);
+        m_blocksCache.remove(m_messages[row].id);
+        if (row >= m_firstLoaded) emit dataChanged(index(row - m_firstLoaded), index(row - m_firstLoaded),
+            {ContentRole, TitleRole, StatusRole, ActivityRole, BlocksRole});
+        emit contentUpdated(); return;
+    }
+    append(std::move(message));
 }
 
 void MessageListModel::appendText(const QString &messageId, const QString &delta)

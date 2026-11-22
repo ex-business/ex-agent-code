@@ -13,14 +13,38 @@ ListView {
     readonly property alias selectionDocument: selectionLayer.document
     readonly property alias selectionManager: selectionLayer
     function stop() { transcriptWheel.stop() }
+    property var layoutAnchor: null
     function resetForSession() {
+        layoutAnchor = null
         jumpPage.stop()
         jumpTarget = -1
         stop()
         selectionLayer.finish()
         revealLatest()
     }
-    Design.ChatSelectionLayer { id: selectionLayer; view: transcript; model: transcript.controller.messages; onOlderPageRequested: transcript.loadPreviousPage() }
+    Design.ChatSelectionLayer {
+        id: selectionLayer
+        view: transcript
+        model: transcript.controller.messages
+        onOlderPageRequested: transcript.loadPreviousPage()
+        onLayoutChangeStarting: transcript.captureLayoutAnchor()
+        onLayoutChangeFinished: Qt.callLater(transcript.restoreLayoutAnchor)
+    }
+    function captureLayoutAnchor() {
+        if (followingEnd || layoutAnchor || loadingOlder || moving) return
+        const row = indexAt(width / 2, contentY + 2)
+        const item = row >= 0 ? itemAtIndex(row) : null
+        const message = item as MessageRow
+        if (message) layoutAnchor = {id: message.messageId, offset: contentY - message.y}
+    }
+    function restoreLayoutAnchor() {
+        const anchor = layoutAnchor; layoutAnchor = null
+        if (!anchor || followingEnd || loadingOlder || moving) return
+        forceLayout()
+        const row = selectionDocument.orderOf(anchor.id)
+        const item = row >= 0 ? itemAtIndex(row) : null
+        if (item) contentY = Math.max(originY - topMargin, Math.min(Math.max(originY - topMargin, originY + contentHeight - height + bottomMargin), item.y + anchor.offset))
+    }
     objectName: "messageList"
     property bool pixelWheelEnabled: true
     signal pixelScrollStarted()
@@ -62,7 +86,7 @@ ListView {
         id: transcriptWheel
         view: transcript
         selectionManager: selectionLayer
-        onScrollingStarted: transcript.followingEnd = false
+        onScrollingStarted: { transcript.layoutAnchor = null; transcript.followingEnd = false }
         onScrollingSettled: {
             if (transcriptScrollBar.pressed || selectionLayer.origin) return
             if (transcript.atYEnd) transcript.followingEnd = true
