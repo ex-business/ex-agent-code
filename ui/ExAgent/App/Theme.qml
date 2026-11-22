@@ -3,6 +3,9 @@ import QtQuick
 
 QtObject {
     property bool dark: false
+    property bool motionEnabled: true
+    readonly property int pressDuration: motionEnabled ? 90 : 0
+    readonly property int disclosureDuration: motionEnabled ? 160 : 0
     property color background: dark ? "#191919" : "#ffffff"
     property color sidebar: dark ? "#222222" : "#fafafa"
     property color surface: dark ? "#2f2f2f" : "#f1f1f1"
@@ -15,6 +18,7 @@ QtObject {
     property color selected: dark ? "#3a3a3a" : "#e5e5e5"
     property color accent: dark ? "#ececec" : "#242424"
     property color onAccent: dark ? "#202020" : "#ffffff"
+    property color danger: dark ? "#ff9292" : "#c83d3d"
     property color warning: dark ? "#e5b07a" : "#986020"
     readonly property string font: Qt.platform.os === "osx" ? ".AppleSystemUIFont" : "Sans Serif"
     readonly property string monoFont: Qt.platform.os === "osx" ? "Menlo" : "monospace"

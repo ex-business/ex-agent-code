@@ -15,7 +15,7 @@ ListView {
     function stop() { transcriptWheel.stop() }
     property var layoutAnchor: null
     function resetForSession() {
-        layoutAnchor = null
+        layoutAnchor = null; pinnedMessage = ""; pinLayout.stop(); groupDisclosure.stop(); disclosureGroupId = ""
         waitingOlder = false; previousScrollTime = 0; upwardVelocity = 0
         jumpPage.stop()
         jumpTarget = -1
@@ -38,11 +38,53 @@ ListView {
         const message = item as MessageRow
         if (message) layoutAnchor = {id: message.messageId, offset: contentY - message.y}
     }
+    property string disclosureGroupId: ""
+    function beginContentDisclosure() {
+        // 主动折叠时退出贴底，不能在每帧高度变化时再次拉动整页。
+        transcriptWheel.stop()
+        followingEnd = false
+    }
+    function beginGroupDisclosure(id: string) { beginContentDisclosure(); disclosureGroupId = id; groupDisclosure.restart() }
+    Timer {
+        id: groupDisclosure
+        interval: 16
+        onTriggered: {
+            // 等待实际动画完成，再卸载内容与复核锚点，避免残留空白。
+            for (const child of transcript.contentItem.children) {
+                if (child instanceof MessageRow && child.disclosureAnimating) { restart(); return }
+            }
+            transcript.disclosureGroupId = ""
+            transcript.settlePinnedMessage()
+        }
+    }
+    property string pinnedMessage: ""
+    property int pinPass: 0
+    function pinMessageAnchor(id: string, viewportY: real) {
+        followingEnd = false
+        layoutAnchor = {id: id, offset: -viewportY}
+        pinnedMessage = id
+        pinPass = 0
+    }
+    function settlePinnedMessage() { if (!groupDisclosure.running) pinLayout.restart() }
+    Timer {
+        id: pinLayout
+        interval: 16
+        repeat: true
+        onTriggered: {
+            // ListView会分批修正回收行的高度；短暂复核，保证折叠后的标题仍可见。
+            const row = transcript.selectionDocument.orderOf(transcript.pinnedMessage)
+            if (row < 0) { stop(); return }
+            transcript.forceLayout()
+            transcript.positionViewAtIndex(row, ListView.Contain)
+            if (++transcript.pinPass >= 3) { stop(); transcript.pinnedMessage = "" }
+        }
+    }
     function restoreLayoutAnchor() {
         const anchor = layoutAnchor; layoutAnchor = null
         if (!anchor || followingEnd || loadingOlder || moving) return
         forceLayout()
         const row = selectionDocument.orderOf(anchor.id)
+        if (row >= 0 && !itemAtIndex(row)) positionViewAtIndex(row, ListView.Beginning)
         const item = row >= 0 ? itemAtIndex(row) : null
         if (item) contentY = Math.max(originY - topMargin, Math.min(Math.max(originY - topMargin, originY + contentHeight - height + bottomMargin), item.y + anchor.offset))
     }
@@ -108,7 +150,7 @@ ListView {
         id: transcriptWheel
         view: transcript
         selectionManager: selectionLayer
-        onScrollingStarted: { transcript.layoutAnchor = null; transcript.followingEnd = false }
+        onScrollingStarted: { transcript.layoutAnchor = null; transcript.pinnedMessage = ""; pinLayout.stop(); groupDisclosure.stop(); transcript.disclosureGroupId = ""; transcript.followingEnd = false }
         onScrollingSettled: {
             if (transcriptScrollBar.pressed || selectionLayer.origin) return
             if (transcript.atYEnd) transcript.followingEnd = true
@@ -196,9 +238,11 @@ ListView {
         required property var contentBlocks
         required property var changedFiles
         required property var activity
+        required property var activityGroup
         required property var attachments
         width: ListView.view.width
         height: messageView.implicitHeight
+        readonly property bool disclosureAnimating: messageView.disclosureAnimating
         Design.MessageDelegate {
             id: messageView
             width: Math.min(messageRow.width - 48, 760)
@@ -214,6 +258,7 @@ ListView {
             expanded: messageRow.expanded
             contentBlocks: messageRow.contentBlocks
             changedFiles: messageRow.changedFiles
+            activityGroup: messageRow.activityGroup
             activity: messageRow.activity
             attachments: messageRow.attachments
             onFileRequested: (path) => transcript.fileRequested(path)

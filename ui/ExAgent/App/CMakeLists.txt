@@ -5,8 +5,11 @@ qt_add_qml_module(ex_agent_workbench
     VERSION 1.0
     QML_FILES
         Main.qml Theme.qml BlockRendererRegistry.qml
+        components/PressFeedback.qml components/DisclosureHeight.qml
+        components/WindowEntrance.qml components/BlockHeader.qml components/ActivityGroupHeader.qml
         components/BlockRenderer.qml components/BlockWindowManager.qml
         components/media/MediaSession.qml components/media/MediaButton.qml
+        components/media/ImageTile.qml components/media/MediaToolButton.qml components/media/MediaViewerChrome.qml
         components/media/MediaCanvas.qml components/media/MediaPreview.qml
         components/media/MediaControls.qml components/media/MediaThumbnails.qml components/media/MediaViewer.qml
         components/blocks/BlockRendererContent.qml

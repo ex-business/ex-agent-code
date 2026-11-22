@@ -11,6 +11,7 @@ Item {
     implicitHeight: 36
     Button {
         id: chip
+        transform: Design.PressFeedback { button: chip }
         anchors.centerIn: parent
         implicitHeight: 34
         implicitWidth: labels.implicitWidth + 26
@@ -34,6 +35,8 @@ Item {
         x: parent ? (parent.width - width) / 2 : 0
         y: parent ? (parent.height - height) / 2 : 0
         padding: 12
+        enter: Transition { NumberAnimation { property: "opacity"; from: 0; to: 1; duration: Design.Theme.disclosureDuration } }
+        exit: Transition { NumberAnimation { property: "opacity"; from: 1; to: 0; duration: Design.Theme.pressDuration } }
         modal: true
         background: Rectangle { radius: 14; color: Design.Theme.background; border.color: Design.Theme.border }
         contentItem: Design.ChangedFilesCard {

@@ -1,6 +1,8 @@
 #include "chat_controller.h"
+#include "application/services/media_file_exporter.h"
 
 #include <QClipboard>
+#include <QFileInfo>
 #include <QCryptographicHash>
 #include <QGuiApplication>
 #include <QLoggingCategory>
@@ -323,6 +325,39 @@ void ChatController::openImageSequence(const QUrl &folder)
     QString error;
     if (!m_mediaTask.start(std::move(block), folder.toLocalFile(), &error)) { setError(error); return; }
     m_internalTasks.insert(conversation, taskId); emit backgroundTaskChanged();
+}
+void ChatController::saveMedia(const QVariantMap &block, const QString &resourceId, const QUrl &attachment, const QUrl &target)
+{
+    QUrl source;
+    if (!attachment.isEmpty()) {
+        for (const auto &message : m_messages.messages()) for (const auto &entry : message.attachments)
+            if (QUrl(entry.toMap().value("url").toString()) == attachment) source = attachment;
+    } else source = mediaSource(block, resourceId);
+    const auto path = source.toLocalFile();
+    if (!source.isLocalFile() || !target.isLocalFile() || path.isEmpty() || m_exportPending > 0
+        || QFileInfo(path).canonicalFilePath() != path || QFileInfo(target.toLocalFile()).absoluteFilePath() == path
+        || QFileInfo(target.toLocalFile()).canonicalFilePath() == path || block.value("sourceKind").toInt() == int(content::BlockSource::External)) {
+        setError(QStringLiteral("图片未授权、目标不可用或已有导出正在进行")); return;
+    }
+    ++m_exportPending;
+    auto *watcher = new QFutureWatcher<QString>(this);
+    connect(watcher, &QFutureWatcher<QString>::finished, this, [this, watcher, savedPath = target.toLocalFile()] {
+        --m_exportPending;
+        QString error;
+        try { error = watcher->result(); } catch (...) { error = QStringLiteral("后台复制发生异常"); }
+        if (!error.isEmpty()) {
+            qWarning().noquote() << "原始图片保存失败，目标：" << savedPath << "原因：" << error;
+            setError(QStringLiteral("原始图片保存失败：") + error);
+        } else {
+            qInfo().noquote() << "原始图片已保存，目标：" << savedPath;
+            emit mediaSaved(savedPath);
+        }
+        watcher->deleteLater();
+    });
+    // 复制原始字节而非缩小纹理，耗时IO交给独立后台模块。
+    watcher->setFuture(QtConcurrent::run(&m_exporter, [path, destination = target.toLocalFile()] {
+        return MediaFileExporter::copyOriginal(path, destination);
+    }));
 }
 QUrl ChatController::mediaSource(const QVariantMap &view, const QString &resourceId) const
 {

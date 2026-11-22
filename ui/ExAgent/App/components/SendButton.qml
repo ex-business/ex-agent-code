@@ -10,6 +10,8 @@ Item {
     signal triggered()
     implicitWidth: 30
     implicitHeight: 30
+    scale: Design.Theme.motionEnabled && mouse.pressed ? 0.94 : 1
+    Behavior on scale { NumberAnimation { duration: Design.Theme.pressDuration; easing.type: Easing.OutCubic } }
     activeFocusOnTab: true
     Accessible.role: Accessible.Button
     Accessible.name: hasText ? "发送消息" : "语音样式展示，未连接"

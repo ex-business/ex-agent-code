@@ -11,6 +11,7 @@ AbstractButton {
     property real iconSize: 17
     implicitWidth: 32
     implicitHeight: 32
+    transform: Design.PressFeedback { button: root }
     hoverEnabled: true
     HoverHandler { cursorShape: Qt.PointingHandCursor; enabled: root.enabled }
     Accessible.name: tooltip

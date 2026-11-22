@@ -1,5 +1,6 @@
 pragma ComponentBehavior: Bound
 import QtQuick
+import QtQuick.Window
 import ExAgent.App as Design
 
 // 原图像素与视口适配分别计算，小图片默认不放大；缩放及平移只属于查看器。
@@ -7,6 +8,23 @@ Item {
     id: canvas
     required property Design.MediaSession session
     property bool interactive: false
+    property color surfaceColor: Design.Theme.dark ? "#141414" : "#f4f4f5"
+    property real decodedScale: 1
+    readonly property real desiredDecodeScale: Math.min(1, actualScale * Screen.devicePixelRatio)
+    onDesiredDecodeScaleChanged: decodeDelay.restart()
+    Timer { id: decodeDelay; interval: 120; onTriggered: canvas.decodedScale = canvas.desiredDecodeScale }
+    Component.onCompleted: decodedScale = desiredDecodeScale
+    function decodeSize(parity: int): size {
+        let index = session.frameIndex
+        if (index % 2 !== parity) index = index + 1 < session.frames.length ? index + 1 : session.loopMode === session.repeatMode ? 0 : index
+        const frame = session.frames[index] || ({})
+        const w = Math.max(1, Number(frame.width) || naturalWidth)
+        const h = Math.max(1, Number(frame.height) || naturalHeight)
+        // 当前帧按显示倍率升级，下一帧只预取低分辨率；单帧不超过32Mi像素，原始资源仍遵循登记预算。
+        const scale = Math.min(1, Math.sqrt(32 * 1024 * 1024 / (w * h)), 16384 / Math.max(w, h),
+                               interactive ? (index === session.frameIndex ? decodedScale : 2048 / Math.max(w, h)) : 960 / Math.max(w, h))
+        return Qt.size(Math.max(1, Math.ceil(w * scale)), Math.max(1, Math.ceil(h * scale)))
+    }
     property real zoom: 1
     property real panX: 0
     property real panY: 0
@@ -40,18 +58,18 @@ Item {
     function retry() { ++session.resourceRevision; bufferA.source = ""; bufferB.source = ""; ++reloadRevision; bufferA.source = Qt.binding(() => sourceFor(0)); bufferB.source = Qt.binding(() => sourceFor(1)) }
     onWidthChanged: clampPan()
     onHeightChanged: clampPan()
-    Connections { target: canvas.session; function onFrameIndexChanged() { canvas.fit() } }
+    Connections { target: canvas.session; function onFrameIndexChanged() { canvas.fit(); canvas.decodedScale = canvas.desiredDecodeScale } }
     Binding { target: canvas.session; property: "frameReady"; value: canvas.ready }
     Binding { target: canvas.session; property: "frameError"; value: canvas.failed }
     clip: true
-    Rectangle { anchors.fill: parent; radius: 8; color: Design.Theme.dark ? "#141414" : "#f4f4f5" }
+    Rectangle { anchors.fill: parent; radius: 8; color: canvas.surfaceColor }
     Image {
         id: bufferA
         visible: canvas.session.frameIndex % 2 === 0
         x: (canvas.width - bufferA.width) / 2 + canvas.panX; y: (canvas.height - bufferA.height) / 2 + canvas.panY
         width: canvas.naturalWidth * canvas.actualScale; height: canvas.naturalHeight * canvas.actualScale
         source: canvas.sourceFor(0)
-        asynchronous: true; cache: false; sourceSize: canvas.interactive ? Qt.size(4096, 4096) : Qt.size(960, 960)
+        asynchronous: true; retainWhileLoading: true; cache: false; sourceSize: canvas.decodeSize(0)
         fillMode: Image.PreserveAspectFit
         Accessible.name: "当前图片 " + (canvas.session.frameIndex + 1)
     }
@@ -61,7 +79,7 @@ Item {
         x: (canvas.width - bufferB.width) / 2 + canvas.panX; y: (canvas.height - bufferB.height) / 2 + canvas.panY
         width: canvas.naturalWidth * canvas.actualScale; height: canvas.naturalHeight * canvas.actualScale
         source: canvas.sourceFor(1)
-        asynchronous: true; cache: false; sourceSize: canvas.interactive ? Qt.size(4096, 4096) : Qt.size(960, 960)
+        asynchronous: true; retainWhileLoading: true; cache: false; sourceSize: canvas.decodeSize(1)
         fillMode: Image.PreserveAspectFit
         Accessible.name: "当前图片 " + (canvas.session.frameIndex + 1)
     }

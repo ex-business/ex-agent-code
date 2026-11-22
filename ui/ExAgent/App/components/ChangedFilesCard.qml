@@ -9,10 +9,15 @@ Rectangle {
     required property var files
     property string messageId: ""
     property var selectionManager: null
+    property var outerWheel: null
     property bool expanded: true
     property bool showAll: false
+    property bool disclosureActive: false
+    function animateDisclosure() { if (outerWheel) outerWheel.view.beginContentDisclosure(); disclosureActive = true; disclosureReset.restart() }
+    Timer { id: disclosureReset; interval: 16; onTriggered: { if (fileDisclosure.running) restart(); else root.disclosureActive = false } }
     // 虚拟列表复用卡片时清除上一条消息的展开与滚动状态。
     onFilesChanged: {
+        disclosureActive = false; disclosureReset.stop()
         expanded = true
         showAll = false
         fileList.contentY = 0
@@ -29,11 +34,12 @@ Rectangle {
         ListView {
             id: fileList
             Layout.fillWidth: true
-            Layout.preferredHeight: Math.min(280, count * 35)
+            Layout.preferredHeight: root.expanded ? Math.min(280, (root.showAll ? root.files.length : Math.min(3, root.files.length)) * 35) : 0
+            Design.DisclosureHeight on Layout.preferredHeight { id: fileDisclosure; allowed: root.disclosureActive }
             clip: true
             reuseItems: true
             acceptedButtons: Qt.NoButton
-            model: root.expanded ? root.showAll ? root.files : root.files.slice(0, 3) : []
+            model: root.expanded || root.disclosureActive ? root.showAll ? root.files : root.files.slice(0, 3) : []
             ScrollBar.vertical: ScrollBar { width: 4; policy: ScrollBar.AsNeeded }
             delegate: Button {
                 id: file
@@ -59,14 +65,14 @@ Rectangle {
             HoverHandler { cursorShape: Qt.PointingHandCursor }
             text: "再显示 " + (root.files.length - 3) + " 个文件"
             flat: true
-            onClicked: root.showAll = true
+            onClicked: { root.animateDisclosure(); root.showAll = true }
         }
         Button {
             id: toggle
             HoverHandler { cursorShape: Qt.PointingHandCursor }
             text: root.expanded ? "收起文件  ⌃" : "展开 " + root.files.length + " 个文件  ⌄"
             Accessible.name: text
-            onClicked: root.expanded = !root.expanded
+            onClicked: { root.animateDisclosure(); root.expanded = !root.expanded }
             background: Item {}
             contentItem: Text { text: toggle.text; color: Design.Theme.text; font.pixelSize: 13 }
         }

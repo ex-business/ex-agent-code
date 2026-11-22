@@ -22,11 +22,8 @@ RowLayout {
         onClicked: moreMenu.popup(moreButton, 0, -moreMenu.height)
         Design.ContextMenu {
             id: moreMenu
-            Design.ContextMenuItem { text: "粘贴"; enabled: root.canPaste; onTriggered: root.pasteRequested() }
-            Design.ContextMenuItem { text: "新聊天"; onTriggered: root.newChatRequested() }
-            MenuSeparator {}
-            Design.ContextMenuItem { text: "预览消息样式"; onTriggered: root.previewRequested() }
-            Design.ContextMenuItem { text: "长代码与历史展示"; onTriggered: root.longPreviewRequested() }
+            Design.ContextMenuItem { text: "粘贴"; iconName: "copy"; shortcutLabel: Qt.platform.os === "osx" ? "⌘V" : ""; enabled: root.canPaste; onTriggered: root.pasteRequested() }
+            Design.ContextMenuItem { text: "新聊天"; iconName: "new"; shortcutLabel: Qt.platform.os === "osx" ? "⌘N" : ""; onTriggered: root.newChatRequested() }
         }
     }
     RowLayout {

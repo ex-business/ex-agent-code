@@ -46,7 +46,9 @@ int MessageListModel::loadOlder()
         beginInsertRows({}, 0, added - 1);
         older.append(m_messages);
         m_messages = std::move(older);
+        m_groups.rebuild(m_messages, m_firstLoaded);
         endInsertRows();
+        if (count()) emit dataChanged(index(0), index(count() - 1), {GroupRole});
         emit countChanged(); emit paginationChanged();
         return added;
     }
@@ -55,7 +57,9 @@ int MessageListModel::loadOlder()
     // 旧消息按页插入，初次打开只向视图暴露最近 30 条。
     beginInsertRows({}, 0, added - 1);
     m_firstLoaded -= added;
+    m_groups.rebuild(m_messages, m_firstLoaded);
     endInsertRows();
+    if (count()) emit dataChanged(index(0), index(count() - 1), {GroupRole});
     emit countChanged();
     return added;
 }
@@ -95,6 +99,7 @@ QVariant MessageListModel::data(const QModelIndex &index, int role) const
     if (!index.isValid() || index.row() < 0 || index.row() >= rowCount()) return {};
     const auto &message = m_messages.at(m_firstLoaded + index.row());
     switch (role) {
+    case GroupRole: return m_groups.info(index.row());
     case IdRole: return message.id;
     case KindRole: return static_cast<int>(message.role);
     case ContentRole: return message.content;
@@ -144,14 +149,14 @@ QHash<int, QByteArray> MessageListModel::roleNames() const
     return {{IdRole, "messageId"}, {KindRole, "messageKind"}, {ContentRole, "content"},
             {TitleRole, "messageTitle"}, {StatusRole, "messageStatus"}, {ExpandedRole, "expanded"},
             {BlocksRole, "contentBlocks"}, {TimeRole, "timeLabel"}, {FilesRole, "changedFiles"},
-            {ActivityRole, "activity"}, {AttachmentsRole, "attachments"}};
+            {ActivityRole, "activity"}, {AttachmentsRole, "attachments"}, {GroupRole, "activityGroup"}};
 }
 
 QStringList MessageListModel::selectionBlockKeys(int row) const
 {
     if (row < 0 || row >= count()) return {};
     const auto &message = m_messages.at(m_firstLoaded + row);
-    if (auxiliaryMediaPreview(message)) return {};
+    if (auxiliaryMediaPreview(message) || m_groups.hidden(row)) return {};
     if (message.role == MessageRole::User) return {message.id + ".user"};
     if (message.role == MessageRole::Tool) {
         if (message.title == QStringLiteral("文件修改")) {
@@ -159,7 +164,10 @@ QStringList MessageListModel::selectionBlockKeys(int row) const
             for (const auto &value : data(index(row), FilesRole).toList()) keys.append(message.id + ".file." + value.toMap().value("path").toString());
             return keys;
         }
-        return {message.id + ".summary", message.activity.value("blockId", message.id + ".details").toString()};
+        QStringList keys;
+        if (m_groups.head(row)) keys << message.id + ".group";
+        if (!m_groups.collapsed(row)) keys << message.id + ".summary" << message.activity.value("blockId", message.id + ".details").toString();
+        return keys;
     }
     QStringList keys;
     for (const auto &value : data(index(row), BlocksRole).toList()) {
@@ -172,7 +180,7 @@ QStringList MessageListModel::selectionBlocks(int row) const
 {
     if (row < 0 || row >= count()) return {};
     const auto &message = m_messages.at(m_firstLoaded + row);
-    if (auxiliaryMediaPreview(message)) return {};
+    if (auxiliaryMediaPreview(message) || m_groups.hidden(row)) return {};
     if (message.role == MessageRole::User) {
         auto text = message.content;
         text.remove(QRegularExpression("[\\r\\n]+$"));
@@ -188,8 +196,11 @@ QStringList MessageListModel::selectionBlocks(int row) const
         }
         const auto kind = message.activity.value("kind").toInt();
         const auto summary = message.activity.value("summary").toString();
-        QStringList blocks{!summary.isEmpty() ? summary : kind == 3 ? QStringLiteral("已查看 %1 张图像").arg(message.attachments.size())
-            : message.title.startsWith(QStringLiteral("运行命令")) && message.status == MessageStatus::Complete ? QStringLiteral("已") + message.title : message.title};
+        QStringList blocks;
+        if (m_groups.head(row)) blocks << m_groups.info(row).value("summary").toString();
+        if (m_groups.collapsed(row)) return blocks;
+        blocks << (!summary.isEmpty() ? summary : kind == 3 ? QStringLiteral("已查看 %1 张图像").arg(message.attachments.size())
+            : message.title.startsWith(QStringLiteral("运行命令")) && message.status == MessageStatus::Complete ? QStringLiteral("已") + message.title : message.title);
         if (message.expanded && !message.content.isEmpty()) blocks.append(message.content);
         return blocks;
     }
@@ -211,11 +222,13 @@ void MessageListModel::replace(QList<ChatMessage> messages)
     ++m_pageGeneration; if (m_pageCancel) m_pageCancel->store(true);
     m_loadingPage = false; m_pageFailed = false; m_pageBuffer.clear();
     beginResetModel();
+    m_groups.clear();
     m_messages = std::move(messages);
     m_pagedTotal = -1;
     m_olderLoader = {};
     m_firstLoaded = qMax(0, static_cast<int>(m_messages.size()) - 30);
     m_blocksCache.clear();
+    m_groups.rebuild(m_messages, m_firstLoaded);
     endResetModel();
     emit countChanged();
 }
@@ -226,11 +239,13 @@ void MessageListModel::replacePaged(QList<ChatMessage> latest, int total, int ne
     ++m_pageGeneration; if (m_pageCancel) m_pageCancel->store(true);
     m_loadingPage = false; m_pageFailed = false; m_pageBuffer.clear(); m_nextPage = nextPage;
     beginResetModel();
+    m_groups.clear();
     m_messages = std::move(latest);
     m_firstLoaded = 0;
     m_pagedTotal = total;
     m_olderLoader = std::move(olderLoader);
     m_blocksCache.clear();
+    m_groups.rebuild(m_messages, m_firstLoaded);
     endResetModel();
     emit countChanged();
 }
@@ -240,7 +255,9 @@ void MessageListModel::append(ChatMessage message)
     const auto row = rowCount();
     beginInsertRows({}, row, row);
     m_messages.append(std::move(message));
+    m_groups.rebuild(m_messages, m_firstLoaded);
     endInsertRows();
+    if (count()) emit dataChanged(index(0), index(count() - 1), {GroupRole});
     emit countChanged();
     emit contentUpdated();
 }
@@ -250,11 +267,13 @@ void MessageListModel::upsertServiceMessage(ChatMessage message)
     for (int row = 0; row < m_messages.size(); ++row) {
         if (m_messages[row].id != message.id) continue;
         // 后台更新不重置展开状态和整份列表，避免打断阅读、滚动和文字选择。
+        const bool groupChanged = message.status != m_messages[row].status || message.title != m_messages[row].title || message.activity.value("kind") != m_messages[row].activity.value("kind") || message.activity.value("taskId") != m_messages[row].activity.value("taskId");
         message.expanded = m_messages[row].expanded;
         m_messages[row] = std::move(message);
         m_blocksCache.remove(m_messages[row].id);
         if (row >= m_firstLoaded) emit dataChanged(index(row - m_firstLoaded), index(row - m_firstLoaded),
             {ContentRole, TitleRole, StatusRole, ActivityRole, BlocksRole});
+        if (groupChanged) refreshGroups();
         emit contentUpdated(); return;
     }
     append(std::move(message));
@@ -280,6 +299,19 @@ void MessageListModel::toggleExpanded(int row)
     auto &message = m_messages[m_firstLoaded + row];
     message.expanded = !message.expanded;
     emit dataChanged(index(row), index(row), {ExpandedRole});
+    emit presentationChanged();
+}
+
+void MessageListModel::refreshGroups()
+{
+    m_groups.rebuild(m_messages, m_firstLoaded);
+    if (count()) emit dataChanged(index(0), index(count() - 1), {GroupRole});
+}
+void MessageListModel::toggleActivityGroup(int row)
+{
+    const auto group = m_groups.info(row);
+    if (!m_groups.toggle(row)) return;
+    emit dataChanged(index(group.value("first").toInt()), index(group.value("last").toInt()), {GroupRole});
     emit presentationChanged();
 }
 

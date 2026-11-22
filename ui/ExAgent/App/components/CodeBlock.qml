@@ -243,9 +243,9 @@ Rectangle {
     Timer { id: copyTimer; interval: 1800 }
     Design.ContextMenu {
         id: codeMenu
-        Design.ContextMenuItem { text: "复制所选聊天内容"; visible: root.selectionManager !== null; enabled: root.selectionManager && root.selectionManager.document.selectionLength > 0; onTriggered: root.selectionManager.copySelection() }
-        Design.ContextMenuItem { text: "复制所选代码"; enabled: lines.selectionLength > 0; onTriggered: root.copySelection() }
-        Design.ContextMenuItem { text: "全选代码"; onTriggered: { root.forceActiveFocus(); root.selectCode() } }
-        Design.ContextMenuItem { text: "复制完整代码"; onTriggered: root.controller.copyText(root.code) }
+        Design.ContextMenuItem { text: "复制所选聊天内容"; iconName: "copy"; shortcutLabel: Qt.platform.os === "osx" ? "⌘C" : ""; visible: root.selectionManager !== null; enabled: root.selectionManager && root.selectionManager.document.selectionLength > 0; onTriggered: root.selectionManager.copySelection() }
+        Design.ContextMenuItem { text: "复制所选代码"; iconName: "copy"; enabled: lines.selectionLength > 0; onTriggered: root.copySelection() }
+        Design.ContextMenuItem { text: "全选代码"; iconName: "select"; shortcutLabel: Qt.platform.os === "osx" ? "⌘A" : ""; onTriggered: { root.forceActiveFocus(); root.selectCode() } }
+        Design.ContextMenuItem { text: "复制完整代码"; iconName: "copy"; onTriggered: root.controller.copyText(root.code) }
     }
 }

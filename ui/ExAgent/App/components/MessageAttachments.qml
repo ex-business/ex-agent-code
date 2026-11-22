@@ -1,53 +1,24 @@
 pragma ComponentBehavior: Bound
 import QtQuick
 import QtQuick.Controls
-import QtQuick.Window
 import ExAgent.App as Design
 
-Flickable {
+// 只实例化可见附件；横纵比影响卡片宽度，长截图保留可辨识的预览尺寸。
+ListView {
     id: root
     required property var attachments
     signal imageRequested(var image)
-    implicitHeight: attachments.length > 0 ? 84 : 0
-    contentWidth: thumbnails.implicitWidth
-    contentHeight: height
-    clip: true
+    implicitHeight: attachments.length > 0 ? 116 : 0
+    orientation: ListView.Horizontal
+    spacing: 8; clip: true; reuseItems: true; cacheBuffer: 240
     boundsBehavior: Flickable.StopAtBounds
-    flickableDirection: Flickable.HorizontalFlick
-    Row {
-        id: thumbnails
-        spacing: 8
-        Repeater {
-            model: root.attachments
-            delegate: Rectangle {
-                id: thumbnail
-                required property var modelData
-                width: 80; height: 80; radius: 10
-                border.color: Design.Theme.border
-                color: Design.Theme.background
-                Image {
-                    anchors.fill: parent; anchors.margins: 3
-                    source: thumbnail.modelData.url
-                    sourceSize.width: Math.ceil(80 * Screen.devicePixelRatio)
-                    sourceSize.height: Math.ceil(80 * Screen.devicePixelRatio)
-                    fillMode: Image.PreserveAspectFit
-                    asynchronous: true
-                    cache: true
-                    smooth: true
-                }
-                MouseArea {
-                    anchors.fill: parent
-                    hoverEnabled: true
-                    cursorShape: Qt.PointingHandCursor
-                    Accessible.role: Accessible.Button
-                    Accessible.name: "查看原图 " + thumbnail.modelData.name
-                    Accessible.onPressAction: root.imageRequested(thumbnail.modelData)
-                    onClicked: root.imageRequested(thumbnail.modelData)
-                    ToolTip.visible: containsMouse
-                    ToolTip.text: thumbnail.modelData.name
-                }
-            }
-        }
+    model: attachments
+    delegate: Design.ImageTile {
+        required property var modelData
+        width: Math.max(88, Math.min(210, 112 * Number(modelData.width || 1) / Math.max(1, Number(modelData.height || 1))))
+        height: 112
+        source: modelData.url; label: modelData.name || "图片"
+        onActivated: root.imageRequested(modelData)
     }
     ScrollBar.horizontal: ScrollBar { height: 3; policy: ScrollBar.AsNeeded }
 }

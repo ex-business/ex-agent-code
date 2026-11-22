@@ -18,11 +18,11 @@ ListView {
         required property var modelData
         required property int index
         width: 76; height: 66; radius: 7
-        color: Design.Theme.surface
+        color: "#333333"
         border.width: strip.session.frameIndex === index ? 2 : 1
-        border.color: strip.session.frameIndex === index ? Design.Theme.text : Design.Theme.border
+        border.color: strip.session.frameIndex === index ? "#ffffff" : "#555555"
         Image { anchors.fill: parent; anchors.margins: 4; anchors.bottomMargin: 16; source: strip.session.sourceForFrame(tile.index); sourceSize: Qt.size(144, 96); asynchronous: true; cache: false; fillMode: Image.PreserveAspectFit }
-        Text { anchors.bottom: parent.bottom; anchors.bottomMargin: 3; anchors.horizontalCenter: parent.horizontalCenter; text: tile.index + 1; color: Design.Theme.secondary; font.pixelSize: 10 }
+        Text { anchors.bottom: parent.bottom; anchors.bottomMargin: 3; anchors.horizontalCenter: parent.horizontalCenter; text: tile.index + 1; color: "#cccccc"; font.pixelSize: 10 }
         MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; Accessible.role: Accessible.Button; Accessible.name: "跳到第" + (tile.index + 1) + "张"; Accessible.onPressAction: strip.session.seek(tile.index); onClicked: strip.session.seek(tile.index) }
     }
     ScrollBar.horizontal: ScrollBar { policy: ScrollBar.AsNeeded }

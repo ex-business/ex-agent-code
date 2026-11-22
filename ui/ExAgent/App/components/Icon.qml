@@ -11,6 +11,10 @@ Item {
     implicitHeight: 18
     // 由场景图绘制曲线，避免小尺寸 Canvas 位图被 Retina 放大后发虚。
     readonly property var paths: ({
+        download: "M12 3V15M7 10L12 15L17 10M4 17V21H20V17",
+        fit: "M3 9V3H9M15 3H21V9M21 15V21H15M9 21H3V15",
+        original: "M5 8L8 5V19M13 8L16 5V19",
+        expand: "M14 3H21V10M21 3L13 11M10 21H3V14M3 21L11 13",
         plus: "M12 5V19M5 12H19",
         refresh: "M20 8A9 9 0 1 0 20 16M20 3V9H14",
         minus: "M5 12H19",

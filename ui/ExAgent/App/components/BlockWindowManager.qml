@@ -26,7 +26,10 @@ Instantiator {
         minimumWidth: mediaWindow ? 680 : 420; minimumHeight: mediaWindow ? 520 : 320
         x: manager.hostWindow.x + Math.max(0, (manager.hostWindow.width - width) / 2)
         y: manager.hostWindow.y + Math.max(32, (manager.hostWindow.height - height) / 2)
-        Component.onCompleted: Qt.callLater(() => { blockWindow.raise(); blockWindow.requestActivate() })
+        function activateContent() {
+            if (!visible) return
+            blockWindow.raise(); blockWindow.requestActivate()
+        }
         Connections {
             target: manager.controller.blockViews
             function onFocusRequested(id: string) {
@@ -37,6 +40,10 @@ Instantiator {
         title: snapshot.title || Design.BlockRendererRegistry.labelFor(Number(snapshot.rendererKind || 0))
         color: Design.Theme.background
         onClosing: { const id = blockId; Qt.callLater(() => manager.controller.blockViews.reattach(id)) }
+        Design.WindowEntrance {
+            anchors.fill: parent
+            ready: mediaLoader.status === Loader.Ready || contentLoader.status === Loader.Ready
+            onReadyChanged: if (ready) Qt.callLater(blockWindow.activateContent)
         Loader {
             id: mediaLoader
             focus: true
@@ -45,20 +52,23 @@ Instantiator {
             sourceComponent: Design.MediaViewer { block: blockWindow.snapshot; controller: manager.controller }
         }
         Loader {
+            id: contentLoader
             anchors.fill: parent
             active: Number(blockWindow.snapshot.rendererKind) !== 5 && Number(blockWindow.snapshot.rendererKind) !== 6
             sourceComponent: ScrollView {
+                id: contentScroll
                 anchors.fill: parent
                 anchors.margins: 16
                 contentWidth: availableWidth
                 Design.BlockRenderer {
-                    width: parent.width
+                    width: contentScroll.availableWidth
                     block: blockWindow.snapshot
                     controller: manager.controller
                     detached: true
                     onLinkActivated: (link) => { if (link.startsWith("https://") || link.startsWith("http://")) Qt.openUrlExternally(link) }
                 }
             }
+        }
         }
     }
 }

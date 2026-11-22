@@ -23,12 +23,14 @@ qt_add_qml_module(ex_agent_chat
     SOURCES
         application/chat/chat_controller.h application/chat/chat_controller.cpp
         application/services/internal_content_task.h application/services/internal_content_task.cpp
+        application/services/media_file_exporter.h application/services/media_file_exporter.cpp
         application/services/media_catalog.h application/services/media_catalog.cpp
         application/services/media_content_task.h application/services/media_content_task.cpp
         infrastructure/storage/session_repository.h infrastructure/storage/session_repository.cpp
         infrastructure/storage/conversation_resource_repository.h infrastructure/storage/conversation_resource_repository.cpp
         presentation/blocks/block_window_model.h
         presentation/blocks/block_view_registry.h presentation/blocks/block_view_registry.cpp
+        presentation/chat/activity_group_projection.h presentation/chat/activity_group_projection.cpp
         presentation/chat/message_list_model.h presentation/chat/message_list_model.cpp
         presentation/chat/session_list_model.h presentation/chat/session_list_model.cpp
         presentation/code/code_line_model.h presentation/code/code_line_model.cpp

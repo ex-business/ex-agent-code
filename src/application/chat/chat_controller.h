@@ -80,8 +80,10 @@ public:
     Q_INVOKABLE void requestBlockExport(const QVariantMap &block) { emit blockExportRequested(block); }
     Q_INVOKABLE void exportBlock(const QVariantMap &block, const QUrl &target);
     Q_INVOKABLE void openImageSequence(const QUrl &folder);
+    Q_INVOKABLE void saveMedia(const QVariantMap &block, const QString &resourceId, const QUrl &attachment, const QUrl &target);
     Q_INVOKABLE QUrl mediaSource(const QVariantMap &block, const QString &resourceId) const;
 signals:
+    void mediaSaved(QString path);
     void blockExportRequested(QVariantMap block);
     void blockExported(QString path);
     void serviceStateChanged();

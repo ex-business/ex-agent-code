@@ -176,8 +176,8 @@ FocusScope {
     }
     Design.ContextMenu {
         id: textMenu
-        Design.ContextMenuItem { text: "复制"; enabled: root.selectionManager ? root.selectionManager.document.selectionLength > 0 : editor.selectionStart !== editor.selectionEnd; onTriggered: { if (root.selectionManager) root.selectionManager.copySelection(); else { SelectionCoordinator.activate(root); SelectionCoordinator.copy() } } }
-        Design.ContextMenuItem { visible: root.selectionManager !== null; text: "全选已加载聊天"; onTriggered: root.selectionManager.selectLoaded() }
-        Design.ContextMenuItem { text: "全选当前段落"; onTriggered: { editor.forceActiveFocus(); if (root.selectionManager) { SelectionCoordinator.activate(root.selectionManager.document); root.selectionManager.document.select(root.messageId, root.blockIndex, 0, root.messageId, root.blockIndex, editor.length) } else editor.selectAll() } }
+        Design.ContextMenuItem { text: "复制"; iconName: "copy"; shortcutLabel: Qt.platform.os === "osx" ? "⌘C" : ""; enabled: root.selectionManager ? root.selectionManager.document.selectionLength > 0 : editor.selectionStart !== editor.selectionEnd; onTriggered: { if (root.selectionManager) root.selectionManager.copySelection(); else { SelectionCoordinator.activate(root); SelectionCoordinator.copy() } } }
+        Design.ContextMenuItem { visible: root.selectionManager !== null; text: "全选已加载聊天"; iconName: "select"; shortcutLabel: Qt.platform.os === "osx" ? "⌘A" : ""; onTriggered: root.selectionManager.selectLoaded() }
+        Design.ContextMenuItem { text: "全选当前段落"; iconName: "select"; onTriggered: { editor.forceActiveFocus(); if (root.selectionManager) { SelectionCoordinator.activate(root.selectionManager.document); root.selectionManager.document.select(root.messageId, root.blockIndex, 0, root.messageId, root.blockIndex, editor.length) } else editor.selectAll() } }
     }
 }

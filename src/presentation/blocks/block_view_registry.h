@@ -12,6 +12,12 @@ class BlockViewRegistry final : public QObject {
     Q_PROPERTY(QVariantList detachedBlocks READ detachedBlocks NOTIFY viewsChanged)
     Q_PROPERTY(int revision READ revision NOTIFY changed)
 public:
+    enum Placement { Inline = 1, Windowed = 2 };
+    Q_ENUM(Placement)
+    enum Expansion { Expanded = 1, Collapsed = 2 };
+    Q_ENUM(Expansion)
+    enum Visibility { Visible = 1, Hidden = 2 };
+    Q_ENUM(Visibility)
     explicit BlockViewRegistry(ContentBlockStore &store, QObject *parent = nullptr);
     BlockWindowModel *windowModel() { return &m_windows; }
     int revision() const { return m_revision; }

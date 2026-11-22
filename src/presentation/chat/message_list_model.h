@@ -1,6 +1,7 @@
 #pragma once
 
 #include "domain/chat/chat_message.h"
+#include "activity_group_projection.h"
 #include <QAbstractListModel>
 #include <QCache>
 #include <QPointer>
@@ -26,7 +27,7 @@ public:
     enum Kind { User = 1, Assistant = 2, Tool = 3, Notice = 4 };
     Q_ENUM(Kind)
     enum Roles { IdRole = Qt::UserRole + 1, KindRole, ContentRole, TitleRole,
-                 StatusRole, ExpandedRole, BlocksRole, TimeRole, FilesRole, ActivityRole, AttachmentsRole };
+                 StatusRole, ExpandedRole, BlocksRole, TimeRole, FilesRole, ActivityRole, AttachmentsRole, GroupRole };
     explicit MessageListModel(QObject *parent = nullptr);
     ~MessageListModel() override { if (m_pageCancel) m_pageCancel->store(true); }
     int rowCount(const QModelIndex &parent = {}) const override;
@@ -48,6 +49,7 @@ public:
     void upsertServiceMessage(ChatMessage message);
     void appendText(const QString &messageId, const QString &delta);
     Q_INVOKABLE void toggleExpanded(int row);
+    Q_INVOKABLE void toggleActivityGroup(int row);
     void setDark(bool dark);
     QStringList selectionBlocks(int row) const;
     QStringList selectionBlockKeys(int row) const;
@@ -61,6 +63,8 @@ signals:
     void pageFailure(QString error);
 
 private:
+    void refreshGroups();
+    ActivityGroupProjection m_groups;
     ContentBlockStore m_fallbackBlocks;
     QPointer<ContentBlockStore> m_contentStore;
     QString m_conversationId = QStringLiteral("messages");
