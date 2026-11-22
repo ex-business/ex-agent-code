@@ -27,6 +27,10 @@ private:
     int m_lastSystemCursor = -2;
     std::vector<double> m_intervals;
     std::vector<double> m_latency;
+    std::vector<double> m_syncDurations;
+    std::vector<double> m_renderDurations;
+    double m_syncStarted = -1;
+    double m_renderStarted = -1;
     std::vector<double> m_dragLatency;
     std::vector<double> m_wheelLatency;
     double m_lastInput = -1000;
@@ -35,6 +39,7 @@ private:
     double m_budget = 16.67;
     int m_inputCount = 0;
     int m_presentedInput = 0;
+    int m_syncedInputCount = 0;
     bool m_dirty = false;
     QString m_path;
 };
