@@ -11,12 +11,12 @@ QVariantMap MarkdownFormatter::userPresentation(const QString &content, const QF
     QTextDocument document;
     document.setDefaultFont(font);
     document.setDocumentMargin(0);
-    document.setMarkdown(content);
+    // 用户输入作为字面文本生成 HTML，让显示与复制保留标记和换行。
+    document.setPlainText(content);
     document.setTextWidth(-1);
     auto html = document.toHtml();
     html.replace(QRegularExpression("<body[^>]*>"), "<body>");
     html.replace(QRegularExpression("margin-(?:top|bottom):[^;]+;"), "margin-top:0px; margin-bottom:0px;");
-    // HTML 实体和用户 Markdown 在展示边界解码，资源原文及存储不改变。
     return {{"html", html}, {"width", document.idealWidth()}};
 }
 namespace {

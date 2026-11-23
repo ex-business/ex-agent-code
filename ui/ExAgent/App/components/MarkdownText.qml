@@ -17,7 +17,6 @@ Item {
     onPreparationLaneChanged: Design.PerformanceTrace.contentPhase(root, 6, preparationLane)
     readonly property bool layoutReady: preparation.state === RichTextPreparation.Ready || preparation.state === RichTextPreparation.Failed
     signal linkActivated(string link)
-    readonly property bool fastPreview: preparation.state !== RichTextPreparation.Ready && preparation.state !== RichTextPreparation.Failed
     readonly property string layoutKey: root.messageId + ':' + (root.block.blockId || root.blockIndex)
     readonly property real rememberedHeight: root.renderPolicy ? root.renderPolicy.heightFor(layoutKey, width) : 0
     // 减速后异步排版尚未完成时继续保留预估高度，避免预览突然缩回一行。
@@ -33,8 +32,8 @@ Item {
         source: root.block.text || ""
         font: prose.font
         layoutWidth: root.width
-        // 离屏预加载项先完成最终排版；只推迟正在阅读的可见项和回收项。
-        holdLayout: root.pooled || (root.preparationLane === 0 && Boolean(root.renderPolicy && root.renderPolicy.scrolling))
+        // 正文首帧直接发布完整富文本，避免持续滚动使可见消息长期空白。
+        holdLayout: root.pooled
         preparationPriority: root.renderPolicy ? root.renderPolicy.priorityForLane(root.preparationLane) : (root.pooled ? -1 : 100)
         deferUncached: preparationPriority < 0
         dark: Design.Theme.dark
@@ -43,22 +42,9 @@ Item {
     }
     Text {
         visible: preparation.state === RichTextPreparation.Failed
-        text: preparation.state === RichTextPreparation.Failed ? "内容准备失败，原文仍保留" : "正在准备内容…"
+        text: "内容准备失败，原文仍保留"
         color: Design.Theme.muted
         font.pixelSize: 12
-    }
-    Text {
-        visible: root.fastPreview
-        width: parent.width
-        height: parent.height
-        text: (root.block.text || "").slice(0, 800)
-        textFormat: Text.PlainText
-        wrapMode: Text.Wrap
-        maximumLineCount: Math.max(1, Math.floor(height / 22))
-        elide: Text.ElideRight
-        font.pixelSize: 14
-        color: Design.Theme.secondary
-        // 未就绪时保留有界原文预览和测量高度，不把整段正文替换成一行加载文案。
     }
     Design.SelectableText {
         id: prose

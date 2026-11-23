@@ -26,8 +26,8 @@ Item {
         onStateChanged: if (state === RichTextPreparation.Running) Design.PerformanceTrace.contentPhase(root, 7, root.preparationLane)
         source: root.displayText
         layoutWidth: root.width * 0.85
-        // 离屏预加载项先完成最终排版；只推迟正在阅读的可见项和回收项。
-        holdLayout: root.pooled || (root.preparationLane === 0 && Boolean(root.renderPolicy && root.renderPolicy.scrolling))
+        // 正文首帧直接发布完整富文本，避免持续滚动使可见消息长期空白。
+        holdLayout: root.pooled
         preparationPriority: root.renderPolicy ? root.renderPolicy.priorityForLane(root.preparationLane) : (root.pooled ? -1 : 100)
         font: messageText.font
         deferUncached: preparationPriority < 0
@@ -38,24 +38,21 @@ Item {
     Rectangle {
         id: bubble
         anchors.right: parent.right
+        visible: root.layoutReady
         // 字形前进宽度保留取整余量，避免末字被挤成单独一行。
         width: Math.min(Math.max(42, (preparation.state === RichTextPreparation.Ready ? Math.ceil(root.naturalTextWidth) + 36 : Number(preparation.layoutHint.bubbleWidth || root.width * 0.85))), root.width * 0.85)
-        // 复用命中时先使用后台测量高度；首次未命中使用同宽原文占位，避免72px省略号气泡。
-        height: (preparation.state === RichTextPreparation.Ready ? messageText.implicitHeight : Number(preparation.layoutHint.height || preview.implicitHeight)) + 24
+        // 未就绪时只预留空间，避免把截断的用户输入绘制成另一种气泡。
+        readonly property real estimatedLines: Math.ceil(root.displayText.length / Math.max(1, (width - 32) / 8))
+        readonly property real reservedHeight: Number(preparation.layoutHint.height || Math.max(20, Math.min(480, estimatedLines * 20)))
+        height: (preparation.state === RichTextPreparation.Ready ? messageText.implicitHeight : reservedHeight) + 24
         radius: 18
         color: Design.Theme.dark ? "#eeeeee" : "#000000"
         Text {
-            id: preview
-            x: 16; y: 12
-            width: parent.width - 32
-            visible: preparation.state !== RichTextPreparation.Ready
-            text: root.displayText.slice(0, 800)
-            textFormat: Text.PlainText
-            wrapMode: Text.Wrap
-            maximumLineCount: 24
-            elide: Text.ElideRight
+            anchors.centerIn: parent
+            visible: preparation.state === RichTextPreparation.Failed
+            text: "内容准备失败"
+            color: messageText.color
             font: messageText.font
-            color: Design.Theme.dark ? "#202020" : "#ffffff"
         }
         Design.SelectableText {
             id: messageText
