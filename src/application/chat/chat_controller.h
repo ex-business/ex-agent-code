@@ -1,6 +1,8 @@
 #pragma once
 
-#include "infrastructure/storage/session_repository.h"
+#include "infrastructure/storage/project_repository.h"
+#include "application/project/project_navigator.h"
+#include "conversation_transfer.h"
 #include "infrastructure/storage/conversation_resource_repository.h"
 #include "presentation/chat/message_list_model.h"
 #include "presentation/chat/session_list_model.h"
@@ -21,6 +23,13 @@ class ChatController final : public QObject {
     QML_UNCREATABLE("聊天控制器由应用注入")
     Q_PROPERTY(exagent::MessageListModel *messages READ messages CONSTANT)
     Q_PROPERTY(exagent::SessionListModel *sessions READ sessions CONSTANT)
+    Q_PROPERTY(exagent::ConversationTransfer *transfer READ transfer CONSTANT)
+    Q_PROPERTY(exagent::ProjectNavigator *projects READ projects CONSTANT)
+    Q_PROPERTY(QString projectName READ projectName NOTIFY workspaceChanged)
+    Q_PROPERTY(QString currentProjectId READ currentProjectId NOTIFY workspaceChanged)
+    Q_PROPERTY(QString currentWorkspaceId READ currentWorkspaceId NOTIFY workspaceChanged)
+    Q_PROPERTY(QString workspacePath READ workspacePath NOTIFY workspaceChanged)
+    Q_PROPERTY(QString currentResourceId READ currentResourceId NOTIFY sessionChanged)
     Q_PROPERTY(QString currentSessionId READ currentSessionId NOTIFY sessionChanged)
     Q_PROPERTY(QString sessionTitle READ sessionTitle NOTIFY sessionChanged)
     Q_PROPERTY(QString draft READ draft WRITE setDraft NOTIFY draftChanged)
@@ -44,7 +53,17 @@ public:
     BlockViewRegistry *blockViews() { return &m_blockViews; }
     MessageListModel *messages();
     SessionListModel *sessions();
+    ConversationTransfer *transfer() { return &m_transfer; }
+    ProjectNavigator *projects() { return &m_projects; }
+    QString projectName() const;
+    QString currentProjectId() const { return !m_preview && m_current >= 0 ? m_sessions[m_current].projectId : QString{}; }
+    QString currentWorkspaceId() const { return !m_preview && m_current >= 0 ? m_sessions[m_current].workspaceId : QString{}; }
+    QString workspacePath() const;
+    QString currentResourceId() const { return m_projects.catalog.selectedResource; }
     QString currentSessionId() const;
+    Q_INVOKABLE void newGroupSession(const QString &project, const QString &workspace);
+    Q_INVOKABLE void openGroup(const QString &project, const QString &workspace);
+    Q_INVOKABLE bool moveToGroup(const QString &project, const QString &workspace);
     QString sessionTitle() const;
     QString draft() const;
     QString errorMessage() const;
@@ -79,6 +98,7 @@ public:
     Q_INVOKABLE void cancelInternalTask();
     Q_INVOKABLE void requestBlockExport(const QVariantMap &block) { emit blockExportRequested(block); }
     Q_INVOKABLE void exportBlock(const QVariantMap &block, const QUrl &target);
+    Q_INVOKABLE void attachImage(const QUrl &file);
     Q_INVOKABLE void openImageSequence(const QUrl &folder);
     Q_INVOKABLE void saveMedia(const QVariantMap &block, const QString &resourceId, const QUrl &attachment, const QUrl &target);
     Q_INVOKABLE QUrl mediaSource(const QVariantMap &block, const QString &resourceId) const;
@@ -89,6 +109,7 @@ signals:
     void serviceStateChanged();
     void backgroundTaskChanged();
     void sessionChanged();
+    void workspaceChanged();
     void draftChanged();
     void errorChanged();
     void resourcesChanged();
@@ -103,9 +124,11 @@ private:
     QString createId() const;
     MessageListModel m_messages;
     SessionListModel m_sessionModel;
-    SessionRepository m_repository;
+    ProjectNavigator m_projects;
+    ProjectRepository m_repository;
     ConversationResourceRepository m_resources;
     QList<ChatSession> m_sessions;
+    ConversationTransfer m_transfer{m_sessions, m_projects.catalog, m_repository};
     int m_current = -1;
     bool m_preview = false;
     bool m_storageWritable = true;

@@ -26,6 +26,7 @@ public:
     QString source() const;
     QString language() const;
     QString error() const { return m_error; }
+    Q_INVOKABLE void bindFolder(const QString &path, bool preview);
     Q_INVOKABLE void refresh();
     Q_INVOKABLE void open(const QString &path);
     Q_INVOKABLE void selectTab(int index);
@@ -40,6 +41,7 @@ private:
     void scan(const QString &directory, int depth);
     void fail(const QString &message);
     QString m_root;
+    QString m_previewRoot;
     QString m_error;
     QVariantList m_entries;
     QList<File> m_files;

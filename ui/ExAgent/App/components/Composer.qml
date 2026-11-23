@@ -53,6 +53,7 @@ ColumnLayout {
                 clip: true
                 ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
                 TextArea {
+                    readOnly: !root.controller.projects.writable
                     id: editor
                     function clearSelection() { deselect() }
                     onActiveFocusChanged: if (activeFocus) SelectionCoordinator.activate(null)

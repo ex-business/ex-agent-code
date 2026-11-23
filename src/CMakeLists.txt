@@ -21,6 +21,11 @@ qt_add_qml_module(ex_agent_chat
     URI ExAgent.Chat
     VERSION 1.0
     SOURCES
+        domain/project/project_catalog.h domain/project/project_catalog.cpp
+        application/project/project_navigator.h application/project/project_navigator.cpp
+        infrastructure/storage/conversation_image.h infrastructure/storage/conversation_image.cpp
+        infrastructure/storage/project_repository.h infrastructure/storage/project_repository.cpp
+        application/chat/conversation_transfer.h application/chat/conversation_transfer.cpp
         application/chat/chat_controller.h application/chat/chat_controller.cpp
         application/services/internal_content_task.h application/services/internal_content_task.cpp
         application/services/media_file_exporter.h application/services/media_file_exporter.cpp

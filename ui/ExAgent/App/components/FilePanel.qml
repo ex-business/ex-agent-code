@@ -24,7 +24,7 @@ Rectangle {
                 Layout.fillWidth: true
                 implicitHeight: 34; radius: 17
                 color: Design.Theme.background; border.color: Design.Theme.border
-                Text { anchors.fill: parent; anchors.leftMargin: 12; anchors.rightMargin: 12; verticalAlignment: Text.AlignVCenter; text: root.mode === 1 ? root.workspace.activePath.replace(/\//g, "  ›  ") : root.workspace.rootPath.replace(/\//g, "  ›  "); elide: Text.ElideLeft; color: Design.Theme.secondary; font.pixelSize: 12 }
+                Text { anchors.fill: parent; anchors.leftMargin: 12; anchors.rightMargin: 12; verticalAlignment: Text.AlignVCenter; text: root.mode === 1 ? root.workspace.activePath.replace(/\//g, "  ›  ") : !root.workspace.rootPath ? "此会话暂无可用工作区" : root.workspace.rootPath.replace(/\//g, "  ›  "); elide: Text.ElideLeft; color: Design.Theme.secondary; font.pixelSize: 12 }
             }
             Design.IconButton { iconName: root.mode === 0 ? "file" : "folder"; tooltip: root.mode === 0 ? "查看文件预览" : "浏览工作区文件"; enabled: root.mode === 1 || root.workspace.activePath.length > 0; onClicked: root.mode = root.mode === 0 ? 1 : 0 }
             Design.IconButton { visible: root.mode === 1 && root.workspace.language === "md"; iconName: "code"; tooltip: root.renderedMarkdown ? "查看源代码" : "查看格式化文档"; onClicked: root.renderedMarkdown = !root.renderedMarkdown }

@@ -8,6 +8,14 @@ Design.ContextMenu {
     id: root
     required property ChatController controller
     signal imageSequenceRequested()
+    signal organizeRequested()
+    signal attachRequested()
+    Design.ContextMenuItem { text: "添加图片…"; iconName: "image"; enabled: root.controller.projects.writable; onTriggered: root.attachRequested() }
+    Design.ContextMenuItem {
+        text: "整理会话…"; iconName: "folder"
+        enabled: root.controller.projects.writable && !root.controller.previewMode && root.controller.messages.count > 0
+        onTriggered: root.organizeRequested()
+    }
     Design.ContextMenuItem { text: "新聊天"; iconName: "new"; shortcutLabel: Qt.platform.os === "osx" ? "⌘N" : ""; onTriggered: root.controller.newSession() }
     Design.ContextMenu {
         title: "本地会话与展示资源"

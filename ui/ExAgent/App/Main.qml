@@ -26,8 +26,14 @@ ApplicationWindow {
     property bool sidebarVisible: true
     property bool filesVisible: true
     WorkspaceController { id: workspaceController }
-    Design.ChatMenu { id: chatMenu; controller: window.controller; onImageSequenceRequested: imageFolder.open() }
+    Design.ConversationTransferDialog { id: transferDialog; controller: window.controller }
+    Design.ChatMenu { id: chatMenu; onOrganizeRequested: transferDialog.begin(); onAttachRequested: imageAttachment.open(); controller: window.controller; onImageSequenceRequested: imageFolder.open() }
     Design.BlockWindowManager { controller: window.controller; hostWindow: window }
+    FileDialog {
+        id: imageAttachment; title: "将图片加入会话"
+        nameFilters: ["图片 (*.png *.jpg *.jpeg *.webp *.gif *.bmp)"]
+        onAccepted: window.controller.attachImage(selectedFile)
+    }
     FolderDialog { id: imageFolder; title: "选择图片序列目录"; onAccepted: window.controller.openImageSequence(selectedFolder) }
     FileDialog {
         id: exportDialog
@@ -49,7 +55,7 @@ ApplicationWindow {
         id: titleBar
         windowHandle: window
         workspace: workspaceController
-        sessionTitle: window.diagnosticLabel ? window.diagnosticLabel + " · " + window.controller.sessionTitle : window.controller.sessionTitle
+        sessionTitle: window.diagnosticLabel ? window.diagnosticLabel + " · " + window.controller.sessionTitle : [window.controller.projectName, window.controller.workspacePath.split("/").pop(), window.controller.sessionTitle].filter(Boolean).join("  ›  ")
         navigationWidth: 50 + (sidebar.visible ? sidebar.width + 8 : 0)
         filesWidth: filePanel.visible ? filePanel.width + 8 : 0
         onSidebarRequested: window.sidebarVisible = !window.sidebarVisible
@@ -61,8 +67,7 @@ ApplicationWindow {
     Component.onCompleted: {
         if (layoutSettings.splitState) workspaceSplit.restoreState(layoutSettings.splitState)
         controller.setDarkTheme(Design.Theme.dark)
-        // 真实会话资源保存在本机；新安装没有资源时正常显示空聊天。
-        if (controller.resourceConversations.some(entry => entry.id === "webchat-go")) controller.loadResourceConversation("webchat-go")
+        workspaceController.bindFolder(controller.workspacePath, controller.previewMode)
     }
 
     Shortcut { sequence: StandardKey.New; onActivated: window.controller.newSession() }
@@ -70,7 +75,7 @@ ApplicationWindow {
     Shortcut { sequence: "Ctrl+B"; onActivated: window.sidebarVisible = !window.sidebarVisible }
     Shortcut {
         sequence: "Ctrl+K"
-        onActivated: { window.sidebarVisible = true; sidebar.searchField.forceActiveFocus() }
+        onActivated: { window.sidebarVisible = true; sidebar.showSearch() }
     }
     RowLayout {
         anchors.fill: parent
@@ -212,6 +217,7 @@ ApplicationWindow {
     }
     Connections {
         target: window.controller
+        function onWorkspaceChanged() { workspaceController.bindFolder(window.controller.workspacePath, window.controller.previewMode) }
         function onSessionChanged() {
             // 定位任务属于原会话，切换后不能继续加载另一段历史。
             transcript.resetForSession()

@@ -1,4 +1,6 @@
 #include "session_repository.h"
+#include "conversation_image.h"
+#include <QUrl>
 
 #include <QDir>
 #include <QFile>
@@ -10,9 +12,10 @@
 
 namespace exagent {
 
-SessionRepository::SessionRepository(QString directory) : m_directory(std::move(directory)) {}
+SessionRepository::SessionRepository(QString directory, QString filename)
+    : m_directory(std::move(directory)), m_filename(std::move(filename)) {}
 
-QString SessionRepository::filePath() const { return QDir(m_directory).filePath("sessions.json"); }
+QString SessionRepository::filePath() const { return QDir(m_directory).filePath(m_filename); }
 
 QList<ChatSession> SessionRepository::load(QString *error) const
 {
@@ -37,6 +40,7 @@ QList<ChatSession> SessionRepository::load(QString *error) const
         ChatSession session;
         session.id = object.value("id").toString();
         session.title = object.value("title").toString();
+        session.transfers = object.value("transfers").toArray().toVariantList();
         session.draft = object.value("draft").toString();
         session.updatedAt = QDateTime::fromString(object.value("updatedAt").toString(), Qt::ISODateWithMs);
         if (session.id.isEmpty() || !object.value("messages").isArray()) {
@@ -53,6 +57,9 @@ QList<ChatSession> SessionRepository::load(QString *error) const
                 return {};
             }
             ChatMessage message;
+            message.startsTurn = messageObject.value("startsTurn").toBool(false);
+            message.originSession = messageObject.value("originSession").toString();
+            message.originMessage = messageObject.value("originMessage").toString();
             message.id = messageObject.value("id").toString();
             message.role = static_cast<MessageRole>(role);
             message.status = static_cast<MessageStatus>(status);
@@ -61,6 +68,14 @@ QList<ChatSession> SessionRepository::load(QString *error) const
             message.files = messageObject.value("files").toArray().toVariantList();
             message.activity = messageObject.value("activity").toObject().toVariantMap();
             message.attachments = messageObject.value("attachments").toArray().toVariantList();
+            for (auto &value : message.attachments) {
+                auto attachment = value.toMap();
+                if (!attachment.contains("asset")) continue;
+                const auto path = conversationImagePath(m_directory, attachment.value("asset").toString());
+                if (path.isEmpty()) { *error = QStringLiteral("会话图片索引不合法。"); return {}; }
+                attachment.insert("url", QUrl::fromLocalFile(path).toString());
+                value = attachment;
+            }
             message.expanded = messageObject.value("expanded").toBool();
             message.createdAt = QDateTime::fromString(messageObject.value("createdAt").toString(), Qt::ISODateWithMs);
             session.messages.append(message);
@@ -80,15 +95,21 @@ bool SessionRepository::save(const QList<ChatSession> &sessions, QString *error)
     for (const auto &session : sessions) {
         QJsonArray messages;
         for (const auto &message : session.messages) {
+            auto attachments = message.attachments;
+            for (auto &value : attachments) {
+                auto attachment = value.toMap();
+                if (attachment.contains("asset")) { attachment.remove("url"); value = attachment; }
+            }
             messages.append(QJsonObject{
-                {"id", message.id}, {"role", static_cast<int>(message.role)},
+                {"id", message.id}, {"startsTurn", message.startsTurn}, {"originSession", message.originSession}, {"originMessage", message.originMessage}, {"role", static_cast<int>(message.role)},
                 {"status", static_cast<int>(message.status)}, {"content", message.content},
                 {"title", message.title}, {"expanded", message.expanded}, {"files", QJsonArray::fromVariantList(message.files)},
-                {"activity", QJsonObject::fromVariantMap(message.activity)}, {"attachments", QJsonArray::fromVariantList(message.attachments)},
+                {"activity", QJsonObject::fromVariantMap(message.activity)}, {"attachments", QJsonArray::fromVariantList(attachments)},
                 {"createdAt", message.createdAt.toString(Qt::ISODateWithMs)}});
         }
         sessionArray.append(QJsonObject{
             {"id", session.id}, {"title", session.title}, {"draft", session.draft},
+            {"transfers", QJsonArray::fromVariantList(session.transfers)},
             {"updatedAt", session.updatedAt.toString(Qt::ISODateWithMs)}, {"messages", messages}});
     }
     QSaveFile file(filePath());

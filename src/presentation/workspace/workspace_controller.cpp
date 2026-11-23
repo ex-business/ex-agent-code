@@ -9,20 +9,41 @@
 namespace exagent {
 WorkspaceController::WorkspaceController(QObject *parent) : QObject(parent)
 {
-    QDir candidate(QCoreApplication::applicationDirPath());
-    for (int level = 0; level < 10; ++level) {
-        if (candidate.exists(".git") && candidate.exists("CMakeLists.txt")) { m_root = candidate.canonicalPath(); break; }
-        if (!candidate.cdUp()) break;
+}
+
+void WorkspaceController::bindFolder(const QString &path, bool preview)
+{
+    if (preview && m_previewRoot.isEmpty()) {
+        // 只有历史样例沿用开发仓库预览；普通聊天无需在启动时访问开发者目录。
+        QDir candidate(QCoreApplication::applicationDirPath());
+        for (int level = 0; level < 10; ++level) {
+            if (candidate.exists(".git") && candidate.exists("CMakeLists.txt")) {
+                m_previewRoot = candidate.canonicalPath();
+                break;
+            }
+            if (!candidate.cdUp()) break;
+        }
+        if (m_previewRoot.isEmpty()) m_previewRoot = QFileInfo(QCoreApplication::applicationDirPath() + "/../Resources").canonicalFilePath();
     }
-    // 安装包不猜测用户目录；没有开发仓库时仅展示应用自己的资源目录。
-    if (m_root.isEmpty()) m_root = QFileInfo(QCoreApplication::applicationDirPath() + "/../Resources").canonicalFilePath();
-    refresh();
+    const auto folder = preview ? m_previewRoot : path;
+    const auto root = !folder.isEmpty() && QFileInfo(folder).isDir() ? QFileInfo(folder).canonicalFilePath() : QString{};
+    if (root != m_root) {
+        // 标签页和已展开的相对路径属于之前的根目录，换目录时一并切换。
+        m_root = root;
+        m_files.clear();
+        m_expanded.clear();
+        m_active = -1;
+        refresh();
+        emit previewChanged();
+    }
+    fail(!folder.isEmpty() && root.isEmpty() ? QStringLiteral("工作区目录已移动或不可用。") : QString{});
 }
 QString WorkspaceController::resolve(const QString &path) const
 {
     const QString local = path.startsWith("file:") ? QUrl(path).toLocalFile() : path;
     const auto resolved = QFileInfo(QDir(m_root).absoluteFilePath(local)).canonicalFilePath();
-    return !m_root.isEmpty() && (resolved == m_root || resolved.startsWith(m_root + '/')) ? resolved : QString();
+    const auto prefix = m_root.endsWith('/') ? m_root : m_root + '/';
+    return !m_root.isEmpty() && (resolved == m_root || resolved.startsWith(prefix)) ? resolved : QString{};
 }
 void WorkspaceController::refresh() { m_entries.clear(); if (!m_root.isEmpty()) scan(m_root, 0); emit filesChanged(); }
 void WorkspaceController::scan(const QString &directory, int depth)

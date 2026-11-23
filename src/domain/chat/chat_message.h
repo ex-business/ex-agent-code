@@ -21,6 +21,10 @@ struct ChatMessage {
     QVariantList files;
     QVariantMap activity;
     QVariantList attachments;
+    QString originSession;
+    QString originMessage;
+    bool startsTurn = false;
+    bool operator==(const ChatMessage &) const = default;
 };
 
 struct ChatSession {
@@ -29,6 +33,10 @@ struct ChatSession {
     QString draft;
     QDateTime updatedAt = QDateTime::currentDateTimeUtc();
     QList<ChatMessage> messages;
+    QString projectId;
+    QString workspaceId;
+    QVariantList transfers;
+    bool operator==(const ChatSession &) const = default;
 };
 
 } // namespace exagent

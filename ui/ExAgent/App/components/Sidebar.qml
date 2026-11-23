@@ -1,6 +1,7 @@
 pragma ComponentBehavior: Bound
 import QtQuick
 import QtQuick.Controls
+import QtQuick.Dialogs
 import QtQuick.Layouts
 import ExAgent.App as Design
 import ExAgent.Chat
@@ -10,102 +11,116 @@ Rectangle {
     required property ChatController controller
     signal collapseRequested()
     property alias searchField: searchInput
+    property var folded: ({})
+    readonly property var resources: controller.resourceConversations
+    readonly property var rows: {
+        const all = controller.projects.rows.slice()
+        if (resources.length) {
+            all.push({kind: ProjectNavigator.ProjectRow, project: "@resources", workspace: "", title: "历史资源"})
+            for (const item of resources)
+                all.push({kind: ProjectNavigator.SessionRow, project: "@resources", workspace: "", resource: item.id, title: item.title})
+        }
+        const query = searchInput.text.trim().toLocaleLowerCase()
+        const matches = new Set()
+        if (query) for (const item of all) {
+            if (item.title.toLocaleLowerCase().includes(query)) {
+                matches.add(item.project)
+                if (item.workspace) matches.add(item.workspace)
+            }
+        }
+        return all.filter(item => {
+            if (query) return item.title.toLocaleLowerCase().includes(query)
+                || (item.kind === ProjectNavigator.ProjectRow && matches.has(item.project))
+                || (item.kind === ProjectNavigator.WorkspaceRow && matches.has(item.workspace))
+            if (item.kind !== ProjectNavigator.ProjectRow && folded[item.project]) return false
+            return item.kind !== ProjectNavigator.SessionRow || !item.workspace || !folded[item.workspace]
+        })
+    }
+    function toggle(key: string) {
+        const next = Object.assign({}, folded)
+        next[key] = !next[key]
+        folded = next
+    }
+    function showSearch() { searchInput.visible = true; searchInput.forceActiveFocus() }
     color: Design.Theme.sidebar
+    FolderDialog {
+        id: folder
+        property string project
+        title: "添加本地工作区"
+        onAccepted: root.controller.projects.bindWorkspace(project, selectedFolder)
+    }
+    Dialog {
+        id: createDialog
+        title: "新建项目"
+        anchors.centerIn: Overlay.overlay
+        modal: true; width: 310
+        standardButtons: Dialog.Ok | Dialog.Cancel
+        onOpened: {
+            standardButton(Dialog.Ok).text = "创建"
+            standardButton(Dialog.Cancel).text = "取消"
+            standardButton(Dialog.Ok).enabled = false
+            projectName.clear()
+            projectName.forceActiveFocus()
+        }
+        onAccepted: root.controller.projects.createProject(projectName.text)
+        contentItem: TextField {
+            id: projectName
+            Accessible.name: "项目名称"; placeholderText: "项目名称"; maximumLength: 120
+            onTextChanged: if (createDialog.visible) createDialog.standardButton(Dialog.Ok).enabled = text.trim().length > 0
+            onAccepted: if (text.trim()) createDialog.accept()
+        }
+    }
     ColumnLayout {
         anchors.fill: parent
-        anchors.leftMargin: 9; anchors.rightMargin: 13; anchors.topMargin: 10; anchors.bottomMargin: 10
-        spacing: 0
+        anchors.margins: 10; spacing: 5
         RowLayout {
-            Layout.fillWidth: true; Layout.leftMargin: 8; Layout.bottomMargin: 10
-            Text { text: "ChatGPT ⌄"; color: Design.Theme.text; font.pixelSize: 18; font.weight: Font.Medium; Layout.fillWidth: true }
-            Design.IconButton { implicitWidth: 26; iconName: "bell"; tooltip: "通知样式展示，尚未连接" }
-            Design.IconButton { iconName: "search"; tooltip: "搜索聊天"; onClicked: { searchInput.visible = !searchInput.visible; if (searchInput.visible) searchInput.forceActiveFocus() } }
-        }
-        Button {
-            id: newChat
-            HoverHandler { cursorShape: Qt.PointingHandCursor }
-            Accessible.name: "新聊天"
-            Layout.fillWidth: true; implicitHeight: 33
-            onClicked: root.controller.newSession()
-            background: Rectangle { radius: 8; color: newChat.hovered ? Design.Theme.hover : "transparent" }
-            contentItem: RowLayout {
-                Design.Icon { name: "new"; implicitWidth: 15; implicitHeight: 15 }
-                Text { text: "新聊天"; color: Design.Theme.text; font.pixelSize: 14; Layout.fillWidth: true }
-            }
-        }
-        RowLayout {
-            Layout.fillWidth: true; Layout.leftMargin: 8; Layout.topMargin: 5; Layout.bottomMargin: 17
-            Text { text: "💜 你的 Dot"; color: Design.Theme.text; font.pixelSize: 14; Layout.fillWidth: true }
-            Rectangle {
-                visible: Number(root.controller.navigationInfo.unreadCount || 0) > 0
-                implicitWidth: 20; implicitHeight: 20; radius: 10; color: Design.Theme.dark ? "#484848" : "#d5d5d5"
-                Text { anchors.centerIn: parent; text: root.controller.navigationInfo.unreadCount || 0; color: Design.Theme.text; font.pixelSize: 11 }
-            }
+            Layout.fillWidth: true
+            Text { text: "项目"; font.pixelSize: 17; font.weight: Font.DemiBold; color: Design.Theme.text; Layout.fillWidth: true }
+            Design.IconButton { iconName: "plus"; tooltip: "新建项目"; enabled: root.controller.projects.writable; onClicked: createDialog.open() }
+            Design.IconButton { iconName: "new"; tooltip: "新聊天"; enabled: root.controller.projects.writable; onClicked: root.controller.newSession() }
+            Design.IconButton { iconName: "search"; tooltip: "搜索项目与聊天"; onClicked: root.showSearch() }
         }
         TextField {
             id: searchInput
-            visible: false
-            Layout.fillWidth: true
-            implicitHeight: 32
-            placeholderText: "搜索聊天"; font.pixelSize: 12
-            color: Design.Theme.text
-            background: Rectangle { radius: 8; color: Design.Theme.surface }
+            visible: false; Layout.fillWidth: true
+            placeholderText: "搜索项目、工作区或聊天"
+            Keys.onEscapePressed: { clear(); visible = false }
         }
         ListView {
-            id: projects
+            id: tree
+            Layout.fillWidth: true; Layout.fillHeight: true
+            clip: true; reuseItems: true; model: root.rows
             property bool pixelWheelEnabled: true
             property bool pixelWheelAnimated: Design.Theme.motionEnabled
-            readonly property bool pixelWheelMoving: projectsWheel.kineticRunning
-            function pixelScrollBy(x: real, y: real): point { return Qt.point(0, projectsWheel.consumePixels(y)) }
+            readonly property bool pixelWheelMoving: wheel.kineticRunning
+            function pixelScrollBy(x: real, y: real): point { return Qt.point(0, wheel.consumePixels(y)) }
             signal pixelScrollStarted()
-            Layout.fillWidth: true; Layout.fillHeight: true
-            clip: true; reuseItems: true; cacheBuffer: 100
-            pixelAligned: true
-            Design.SmoothWheel { id: projectsWheel; view: projects }
-            model: root.controller.navigationEntries
-            ScrollBar.vertical: ScrollBar { width: 4; policy: ScrollBar.AsNeeded }
-            delegate: Item {
-                id: entry
+            Design.SmoothWheel { id: wheel; view: tree }
+            ScrollBar.vertical: ScrollBar { width: 4 }
+            delegate: Design.ProjectTreeRow {
                 required property var modelData
-                readonly property bool selected: root.controller.previewMode && modelData.title === root.controller.sessionTitle
-                width: projects.width
-                height: searchInput.text.length === 0 || modelData.title.toLowerCase().includes(searchInput.text.toLowerCase()) ? (modelData.kind === 0 ? 42 : 31) : 0
-                visible: height > 0
-                Button {
-                    id: projectButton
-                    HoverHandler { cursorShape: Qt.PointingHandCursor; enabled: projectButton.enabled }
-                    anchors.fill: parent
-                    enabled: entry.modelData.kind !== 0
-                    leftPadding: entry.modelData.kind === 3 || entry.modelData.kind === 4 ? 31 : 8
-                    // 侧栏按参考图展示条目；只有当前对话有实际展示数据，不伪造其他会话内容。
-                    onClicked: {
-                        if (entry.modelData.resourceId) root.controller.loadResourceConversation(entry.modelData.resourceId)
-                    }
-                    Accessible.name: entry.modelData.title + (entry.selected ? "，当前聊天" : "，导航样例")
-                    background: Rectangle { radius: 9; color: entry.selected && root.controller.previewMode ? Design.Theme.selected : projectButton.hovered ? Design.Theme.hover : "transparent" }
-                    contentItem: RowLayout {
-                        spacing: 8
-                        Design.Icon { visible: entry.modelData.kind === 2; name: "folder"; implicitWidth: 15; implicitHeight: 15 }
-                        Text { text: entry.modelData.title; Layout.fillWidth: true; elide: Text.ElideRight; color: entry.modelData.kind === 0 || entry.modelData.kind === 4 ? Design.Theme.muted : Design.Theme.text; font.pixelSize: 14 }
+                entry: modelData; width: tree.width; height: 31
+                readonly property string key: entry.workspace || entry.project
+                readonly property bool library: entry.project === "@resources"
+                writable: !library && root.controller.projects.writable
+                collapsed: !!root.folded[key]
+                canMove: !root.controller.previewMode && entry.project === root.controller.currentProjectId
+                    && entry.workspace !== root.controller.currentWorkspaceId
+                selected: root.controller.previewMode ? !!entry.resource && entry.resource === root.controller.currentResourceId
+                    : !!entry.session && entry.session === root.controller.currentSessionId
+                onToggled: root.toggle(key)
+                onOpened: {
+                    if (entry.resource) root.controller.loadResourceConversation(entry.resource)
+                    else if (library) root.toggle(key)
+                    else if (entry.session) root.controller.selectSession(entry.session)
+                    else {
+                        if (collapsed) root.toggle(key)
+                        root.controller.openGroup(entry.project, entry.workspace)
                     }
                 }
-            }
-            footer: Column {
-                width: projects.width
-                Repeater {
-                    model: root.controller.sessions
-                    delegate: Button {
-                        id: localSession
-                        HoverHandler { cursorShape: Qt.PointingHandCursor }
-                        required property string sessionTitle
-                        required property string sessionId
-                        width: projects.width; height: 31
-                        text: sessionTitle
-                        onClicked: root.controller.selectSession(sessionId)
-                        background: Rectangle { radius: 8; color: localSession.hovered ? Design.Theme.hover : "transparent" }
-                        contentItem: Text { text: localSession.text; color: Design.Theme.secondary; elide: Text.ElideRight; font.pixelSize: 13; leftPadding: 8 }
-                    }
-                }
+                onNewChat: { if (collapsed) root.toggle(key); root.controller.newGroupSession(entry.project, entry.workspace) }
+                onBindFolder: { if (collapsed) root.toggle(key); folder.project = entry.project; folder.open() }
+                onMoveHere: { if (collapsed) root.toggle(key); root.controller.moveToGroup(entry.project, entry.workspace) }
             }
         }
     }

@@ -1,4 +1,5 @@
 #include "chat_controller.h"
+#include "infrastructure/storage/conversation_image.h"
 #include "application/services/media_file_exporter.h"
 
 #include <QClipboard>
@@ -24,6 +25,7 @@ ChatController::ChatController(QObject *parent)
       m_repository(QStandardPaths::writableLocation(QStandardPaths::AppDataLocation)), m_service(this), m_blocks(this), m_blockViews(m_blocks, this), m_externalBlocks(m_blocks), m_internalTask(m_blocks, this), m_mediaCatalog(QStandardPaths::writableLocation(QStandardPaths::AppDataLocation), this), m_mediaTask(m_blocks, m_mediaCatalog, this)
 {
     m_exporter.setMaxThreadCount(1);
+    connect(this, &ChatController::sessionChanged, this, &ChatController::workspaceChanged);
     m_service.setEventSink([this](const QString &method, const QJsonObject &event, QString *error) { return m_externalBlocks.apply(method, event, error); });
     m_blockUpdateTimer.setSingleShot(true); m_blockUpdateTimer.setInterval(16);
     connect(&m_blockUpdateTimer, &QTimer::timeout, this, &ChatController::drainServiceBlocks);
@@ -49,17 +51,32 @@ ChatController::ChatController(QObject *parent)
     connect(&m_mediaCatalog, &MediaCatalog::failure, this, &ChatController::setError);
     connect(&m_blockViews, &BlockViewRegistry::failure, this, &ChatController::setError);
     connect(&m_internalTask, &InternalContentTask::failure, this, &ChatController::setError);
+    connect(&m_transfer, &ConversationTransfer::failure, this, &ChatController::setError);
+    connect(&m_transfer, &ConversationTransfer::published, this, [this](const QString &selected) {
+        if (!m_preview) selectSession(selected);
+        else {
+            // 异步复制期间用户已进入只读历史。新会话插入首位后重新定位后台会话下标。
+            for (int i = 0; i < m_sessions.size(); ++i)
+                if (m_sessions[i].id == selected) { m_current = i; break; }
+            refreshSessions();
+        }
+    });
     QString error;
-    m_sessions = m_repository.load(&error);
+    m_sessions = m_repository.load(m_projects.catalog, &error);
     m_storageWritable = error.isEmpty();
-    // 旧进程已不再存活；只修正本服务创建的运行记录，不改导入资源和其他工具历史。
-    for (auto &session : m_sessions) for (auto &message : session.messages) {
-        const auto serviceId = message.activity.value("serviceId").toString();
-        if ((serviceId != "local-service" && serviceId != "internal-analysis") || message.status != MessageStatus::Running) continue;
-        message.status = MessageStatus::Failed;
-        message.activity.insert("taskState", int(ipc::TaskState::Interrupted));
-        message.activity.insert("summary", message.title + QStringLiteral(" · 结果待确认"));
-        message.content += QStringLiteral("\n应用已重新启动，原后台任务不自动恢复，已有内容保留。\n");
+    m_projects.setWritable(m_storageWritable);
+    connect(&m_projects, &ProjectNavigator::openGroup, this, &ChatController::openGroup);
+    connect(&m_projects, &ProjectNavigator::failure, this, &ChatController::setError);
+    // 仅持有仓库写锁的宿主执行重启恢复；只读窗口看到的任务可能仍由另一实例运行。
+    if (m_storageWritable) {
+        for (auto &session : m_sessions) for (auto &message : session.messages) {
+            const auto serviceId = message.activity.value("serviceId").toString();
+            if ((serviceId != "local-service" && serviceId != "internal-analysis") || message.status != MessageStatus::Running) continue;
+            message.status = MessageStatus::Failed;
+            message.activity.insert("taskState", int(ipc::TaskState::Interrupted));
+            message.activity.insert("summary", message.title + QStringLiteral(" · 结果待确认"));
+            message.content += QStringLiteral("\n应用已重新启动，原后台任务不自动恢复，已有内容保留。\n");
+        }
     }
     if (!error.isEmpty()) setError(error);
     m_saveTimer.setSingleShot(true);
@@ -68,8 +85,19 @@ ChatController::ChatController(QObject *parent)
     connect(&m_messages, &MessageListModel::pageFailure, this, &ChatController::setError);
     connect(&m_messages, &MessageListModel::contentUpdated, this, &ChatController::persistCurrent);
     connect(&m_messages, &MessageListModel::presentationChanged, this, &ChatController::persistCurrent);
-    if (m_sessions.isEmpty()) newSession();
-    else selectSession(m_sessions.first().id);
+    const auto previousResource = m_projects.catalog.selectedResource;
+    const bool firstOpen = m_sessions.isEmpty();
+    if (firstOpen) newSession();
+    else {
+        const auto selected = m_projects.catalog.selectedSession;
+        selectSession(selected);
+        if (m_current < 0) selectSession(m_sessions.first().id);
+    }
+    if (!previousResource.isEmpty()) loadResourceConversation(previousResource);
+    else if (firstOpen) {
+        for (const auto &entry : resourceConversations())
+            if (entry.toMap().value("id") == "webchat-go") { loadResourceConversation("webchat-go"); break; }
+    }
 }
 
 ChatController::~ChatController()
@@ -98,6 +126,7 @@ QString ChatController::createId() const { return QUuid::createUuid().toString(Q
 
 void ChatController::setDraft(const QString &text)
 {
+    if (!m_storageWritable) return;
     if (m_preview) {
         if (m_previewDraft != text) { m_previewDraft = text; emit draftChanged(); }
         return;
@@ -108,13 +137,65 @@ void ChatController::setDraft(const QString &text)
     m_saveTimer.start();
 }
 
+QString ChatController::projectName() const
+{
+    const auto *project = m_projects.catalog.find(currentProjectId());
+    return project ? project->name : QString{};
+}
+
+QString ChatController::workspacePath() const
+{
+    if (m_current < 0 || m_preview) return {};
+    const auto &session = m_sessions[m_current];
+    const auto *workspace = m_projects.catalog.workspace(session.projectId, session.workspaceId);
+    return workspace ? workspace->path : QString{};
+}
+
+void ChatController::openGroup(const QString &project, const QString &workspace)
+{
+    for (const auto &session : m_sessions) {
+        if (session.projectId == project && session.workspaceId == workspace) {
+            selectSession(session.id);
+            return;
+        }
+    }
+    newGroupSession(project, workspace);
+}
+
+bool ChatController::moveToGroup(const QString &project, const QString &workspace)
+{
+    if (m_preview || m_current < 0 || !m_storageWritable) return false;
+    auto &session = m_sessions[m_current];
+    if (session.projectId != project || (!workspace.isEmpty() && !m_projects.catalog.workspace(project, workspace))) return false;
+    session.workspaceId = workspace;
+    refreshSessions();
+    // 只更新导航和文件区，移动会话时保留正文的阅读位置和选区。
+    emit workspaceChanged();
+    m_saveTimer.start();
+    return true;
+}
+
 void ChatController::newSession()
 {
+    if (m_current >= 0 && !m_preview) {
+        const auto session = m_sessions.at(m_current);
+        newGroupSession(session.projectId, session.workspaceId);
+    } else newGroupSession(ProjectCatalog::inboxId(), {});
+}
+
+void ChatController::newGroupSession(const QString &project, const QString &workspace)
+{
+    if (!m_projects.catalog.find(project) || (!workspace.isEmpty() && !m_projects.catalog.workspace(project, workspace))) return;
+    if (!m_storageWritable && !m_sessions.isEmpty()) { setError(QStringLiteral("项目目录只读，无法新建聊天。")); return; }
     ChatSession session;
+    session.projectId = project;
+    session.workspaceId = workspace;
     session.id = createId();
     session.title = QStringLiteral("新聊天");
     m_sessions.prepend(session);
     m_current = 0;
+    m_projects.catalog.selectedSession = session.id;
+    m_projects.catalog.selectedResource.clear();
     m_preview = false;
     m_messages.setContentContext(session.id, &m_blocks);
     m_messages.replace({});
@@ -130,6 +211,9 @@ void ChatController::selectSession(const QString &id)
     for (int i = 0; i < m_sessions.size(); ++i) {
         if (m_sessions[i].id != id) continue;
         m_current = i;
+        m_projects.catalog.selectedSession = id;
+        m_projects.catalog.selectedResource.clear();
+        m_saveTimer.start();
         m_preview = false;
         m_messages.setContentContext(id, &m_blocks);
         m_messages.replace(m_sessions[i].messages);
@@ -144,6 +228,7 @@ void ChatController::selectSession(const QString &id)
 bool ChatController::sendMessage()
 {
     const auto text = draft().trimmed();
+    if (!m_storageWritable) { setError(QStringLiteral("项目目录只读，无法保存消息。")); return false; }
     if (m_current < 0 || text.isEmpty()) return false;
     if (text.size() > 64 * 1024) {
         setError(QStringLiteral("单条消息不能超过 64K 字符，请拆分后发送。"));
@@ -191,6 +276,8 @@ void ChatController::loadResourceConversation(const QString &id)
     if (!error.isEmpty()) { setError(error); return; }
     // 导入的历史是只读资源，不写回原始 Codex 会话，也不覆盖本地聊天。
     m_preview = true;
+    m_projects.catalog.selectedResource = id;
+    m_saveTimer.start();
     m_previewTitle = resource.title;
     m_changeSummary = resource.changeSummary;
     m_activityStatus = resource.activityStatus;
@@ -313,6 +400,46 @@ void ChatController::exportBlock(const QVariantMap &block, const QUrl &target)
         return file.write(bytes) == bytes.size() && file.commit();
     }));
 }
+void ChatController::attachImage(const QUrl &file)
+{
+    if (!m_storageWritable || !file.isLocalFile() || m_exportPending) {
+        setError(QStringLiteral("请选择本地图片，并等待当前文件操作完成。"));
+        return;
+    }
+    if (m_preview) newSession();
+    if (m_current < 0) return;
+    const auto id = currentSessionId();
+    const auto directory = m_repository.sessionDirectory(currentProjectId(), id);
+    ++m_exportPending;
+    auto *watcher = new QFutureWatcher<ImageImport>(this);
+    connect(watcher, &QFutureWatcher<ImageImport>::finished, this, [this, watcher, id] {
+        --m_exportPending;
+        const auto imported = watcher->result();
+        watcher->deleteLater();
+        if (!imported.error.isEmpty()) { setError(imported.error); return; }
+        // 导入完成时用户可能已切换聊天；始终按选择图片时的会话身份发布。
+        for (auto &session : m_sessions) {
+            if (session.id != id) continue;
+            ChatMessage image;
+            image.id = createId();
+            image.role = MessageRole::Tool;
+            image.title = QStringLiteral("图片");
+            image.activity = {{"kind", 3}, {"summary", imported.attachment.value("name")}};
+            image.expanded = true;
+            image.attachments = {imported.attachment};
+            session.messages.append(image);
+            session.updatedAt = QDateTime::currentDateTimeUtc();
+            if (!m_preview && currentSessionId() == id) m_messages.append(image);
+            refreshSessions();
+            flush();
+            break;
+        }
+    });
+    watcher->setFuture(QtConcurrent::run(&m_exporter, [path = file.toLocalFile(), directory] {
+        return importConversationImage(path, directory, QFileInfo(path).fileName());
+    }));
+}
+
 void ChatController::openImageSequence(const QUrl &folder)
 {
     if (!folder.isLocalFile()) { setError(QStringLiteral("请选择本机图片目录")); return; }
@@ -430,7 +557,7 @@ void ChatController::persistCurrent()
     m_saveTimer.start();
 }
 
-void ChatController::refreshSessions() { m_sessionModel.replace(m_sessions); }
+void ChatController::refreshSessions() { m_sessionModel.replace(m_sessions); m_projects.refresh(m_sessions); }
 void ChatController::setError(const QString &message)
 {
     if (message == m_error) return;
@@ -443,7 +570,7 @@ void ChatController::flush()
     m_saveTimer.stop();
     if (!m_storageWritable) return;
     QString error;
-    if (!m_repository.save(m_sessions, &error)) setError(error);
+    if (!m_repository.save(m_projects.catalog, m_sessions, &error)) setError(error);
 }
 
 } // namespace exagent
