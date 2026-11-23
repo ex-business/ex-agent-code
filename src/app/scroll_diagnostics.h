@@ -4,9 +4,11 @@
 #include <QJsonArray>
 #include <QHash>
 #include <QTimer>
+#include <QPointer>
 #include <mutex>
 #include <vector>
 class QQuickWindow;
+class QQuickItem;
 
 // 仅 --profile-scroll 启用；记录帧间隔与输入类型，不记录聊天或键盘内容。
 class ScrollDiagnostics final : public QObject {
@@ -19,7 +21,8 @@ public:
     void recordDispatch(double begin, double end);
     void recordQtTiming(const QString &message);
     Q_INVOKABLE void recordWheelMotion(int phase, qreal position, qreal velocity, qreal destination, qreal input);
-    Q_INVOKABLE void recordLayoutAnchor(qreal correction, qreal drift);
+    Q_INVOKABLE void recordTextLayout(const QString &key, bool cached, double reserved, double actual, double beforeY, double afterY, double scrollDelta, double viewport, double rowDelta, int blockIndex);
+    Q_INVOKABLE void recordLayoutAnchor(qreal correction, qreal drift, bool usedBlock);
     Q_INVOKABLE void recordContentPhase(QObject *loader, int kind, int phase);
 protected:
     bool eventFilter(QObject *object, QEvent *event) override;
@@ -29,6 +32,7 @@ private:
     QElapsedTimer m_clock;
     QTimer m_saveTimer;
     std::mutex m_mutex;
+    QJsonArray m_textLayouts;
     QJsonArray m_inputs;
     QJsonArray m_cursorShapes;
     QJsonArray m_frames;
@@ -65,5 +69,7 @@ private:
     int m_syncedDisclosureCount = 0;
     bool m_dirty = false;
     QString m_path;
+    QPointer<QQuickItem> m_view;
+    bool m_verboseTiming = false;
     bool m_disclosureMode = false;
 };

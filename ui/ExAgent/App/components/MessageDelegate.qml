@@ -44,6 +44,10 @@ Item {
     // 每行只保留一层高度补间，防止父层不断追赶子层高度而残留空白。
     Design.DisclosureHeight on implicitHeight { id: rowDisclosure; allowed: root.groupTransition && !root.groupHead && root.groupCollapsed }
     readonly property var bodyContent: body.item
+    function readingBlock(view: Item): Item {
+        const content = root.isNotice ? body.item as Design.MessageContent : root.bodyContent?.blockLayout
+        return content ? content.readingBlock(view) : null
+    }
     Design.MessageLayoutReservation {
         id: rowReservation
         policy: root.outerWheel && root.outerWheel.view ? root.outerWheel.view.renderPolicy : null
@@ -133,11 +137,13 @@ Item {
     Component {
         id: assistantBody
         ColumnLayout {
+            readonly property alias blockLayout: assistantContent
             readonly property bool layoutReady: assistantContent.layoutReady
             spacing: 14
             Design.MessageContent { pooled: root.pooled; id: assistantContent; Layout.fillWidth: true; blocks: root.contentBlocks; messageId: root.messageId; controller: root.controller; outerWheel: root.outerWheel; onLinkActivated: (link) => root.openLink(link) }
             Design.MessageAttachments { visible: root.attachments.length > 0; Layout.fillWidth: true; attachments: root.attachments; onImageRequested: (image) => root.imageRequested(image) }
             Design.MessageActions {
+                pooled: root.pooled
                 text: root.content
                 onCopyRequested: (text) => root.controller.copyText(text)
             }

@@ -10,6 +10,11 @@ Item {
     property var outerWheel: null
     property var linkedWheel: null
     property var selectionManager: outerWheel ? outerWheel.selectionManager : null
+    property alias responseRate: wheelMotion.responseRate
+    property alias settlingRate: wheelMotion.settlingRate
+    property alias paceFrames: wheelMotion.paceFrames
+    property alias maxSpeed: wheelMotion.maxSpeed
+    property alias maxFrameStep: wheelMotion.maxFrameStep
     readonly property bool kineticRunning: wheelMotion.running
     readonly property bool animating: view.moving || observer.active || wheelMotion.running
     signal scrollingStarted()

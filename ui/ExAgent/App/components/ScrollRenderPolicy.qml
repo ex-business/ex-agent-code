@@ -54,9 +54,16 @@ QtObject {
             policy.beginScroll()
         }
     }
+    // 同一绘制帧的多次输入共享最后的视口位置，避免重复调整后台任务顺序。
+    property real frameY: 0
+    property Connections frameChanges: Connections {
+        target: policy.view.Window.window
+        enabled: policy.scrolling
+        function onAfterAnimating() { policy.frameY = policy.view.contentY }
+    }
     function laneFor(item: Item): int {
         if (!item || !item.parent) return 2
-        const top = item.mapToItem(view.contentItem, 0, 0).y - view.contentY
+        const top = item.mapToItem(view.contentItem, 0, 0).y - (scrolling ? frameY : view.contentY)
         const bottom = top + Math.max(24, item.height)
         // 上下各准备两屏；反向只交换排版优先级，避免重新扩大缓存。
         if (bottom >= 0 && top <= view.height) return 0
@@ -70,7 +77,7 @@ QtObject {
         if (lane === 1) return 20
         return lane === 4 ? 10 : -1
     }
-    function beginScroll() { scrolling = true; quiet.restart() }
+    function beginScroll() { if (!scrolling) frameY = view.contentY; scrolling = true; quiet.restart() }
     function reset() { scrolling = false; fast = false; direction = 0; speed = 0; slowSamples = 0; previousMs = 0; quiet.stop(); heights = ({}); order = [] }
     function heightFor(key: string, width: real): real {
         const revision = heightRevision

@@ -72,7 +72,13 @@ ColumnLayout {
             id: detailsLayout
             width: parent.width
             spacing: 6
-    Design.MessageAttachments { visible: (root.expanded || root.disclosureActive) && root.attachments.length > 0; Layout.fillWidth: true; attachments: root.attachments; onImageRequested: (image) => root.imageRequested(image) }
+            Design.MessageAttachments {
+                compact: true
+                visible: (root.expanded || root.disclosureActive) && root.attachments.length > 0
+                Layout.fillWidth: true
+                attachments: root.attachments
+                onImageRequested: (image) => root.imageRequested(image)
+            }
     Loader {
         id: detailsLoader
         asynchronous: true

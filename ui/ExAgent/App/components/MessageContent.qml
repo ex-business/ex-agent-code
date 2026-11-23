@@ -22,6 +22,17 @@ ColumnLayout {
         }
         return slots.count === root.blocks.length
     }
+    // 只在排版即将发布时查找当前消息的可见块；使用槽位，异步正文尚未创建也能定位。
+    function readingBlock(view: Item): Item {
+        for (let index = 0; index < slots.count; ++index) {
+            const slot = slots.itemAt(index) as Design.BlockRenderer
+            if (!slot || slot.pooled || !slot.visible || slot.height <= 0) continue
+            const top = slot.mapToItem(view, 0, 0).y
+            if (top >= view.height) break
+            if (top + slot.height > 0) return slot
+        }
+        return null
+    }
     spacing: 14
     Repeater {
         id: slots

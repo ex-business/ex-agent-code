@@ -8,6 +8,7 @@ Design.BlockRendererContent {
     Design.CodeBlock {
         id: code
         width: parent.width
+        knownLineCount: root.block.codeLineCount ?? -1
         code: root.block.text || ""
         language: root.block.language || (root.block.data || {}).language || (root.block.rendererKind === 7 ? "diff" : "text")
         controller: root.controller

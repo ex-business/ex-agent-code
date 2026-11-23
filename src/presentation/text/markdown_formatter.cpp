@@ -109,6 +109,7 @@ QVariantList MarkdownFormatter::split(const QString &content) const
     QString language;
     QString fence;
     bool inCode = false;
+    int codeLines = 0;
     const auto append = [&](qsizetype end) {
         auto text = content.mid(start, end - start);
         if (text.endsWith('\n')) text.chop(1);
@@ -118,6 +119,8 @@ QVariantList MarkdownFormatter::split(const QString &content) const
         block.insert("kind", inCode ? 1 : 0);
         block.insert("text", text);
         block.insert("language", language);
+        // 分割围栏时已经逐行经过代码；复用行数预留视口，无须等待高亮索引或再次扫描原文。
+        if (inCode) block.insert("codeLineCount", text.isEmpty() ? 0 : codeLines);
         result.append(block);
     };
     static const QRegularExpression opening("^ {0,3}(`{3,}|~{3,})([^`]*)$");
@@ -134,6 +137,9 @@ QVariantList MarkdownFormatter::split(const QString &content) const
             if (!inCode) { fence = match.captured(1); language = match.captured(2).trimmed(); }
             inCode = !inCode;
             start = end + 1;
+            codeLines = 0;
+        } else if (inCode) {
+            ++codeLines;
         }
         offset = end + 1;
     }

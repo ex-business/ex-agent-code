@@ -152,11 +152,14 @@ ApplicationWindow {
                     }
                     onSeekRequested: (fraction) => transcript.seekFraction(fraction)
                 }
+            }
+            // 为历史定位预留固定高度，按钮显隐不会覆盖文字或改变列表视口。
+            Item {
+                Layout.fillWidth: true
+                implicitHeight: window.controller.messages.count > 0 ? 36 : 0
                 Design.IconButton {
+                    anchors.centerIn: parent
                     visible: transcript.visible && !transcript.followingEnd && !transcript.atYEnd
-                    anchors.bottom: parent.bottom
-                    anchors.bottomMargin: 12
-                    anchors.horizontalCenter: parent.horizontalCenter
                     iconName: "down"
                     tooltip: "回到最新消息"
                     background: Rectangle { radius: 16; color: Design.Theme.surface; border.color: Design.Theme.border }

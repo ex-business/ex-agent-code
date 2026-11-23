@@ -50,10 +50,10 @@ RowLayout {
             Design.ContextMenuItem { text: "Pi · 后续扩展"; enabled: false }
         }
     }
-    Design.IconButton { iconName: "mic"; implicitWidth: 26; implicitHeight: 30; iconColor: Design.Theme.text; tooltip: "语音输入样式展示，尚未连接" }
+    Design.IconButton { enabled: false; opacity: 0.45; iconName: "mic"; implicitWidth: 26; implicitHeight: 30; iconColor: Design.Theme.text; tooltip: "语音输入样式展示，尚未连接" }
     Design.SendButton {
         objectName: "sendMessage"
         hasText: root.hasText
-        onTriggered: { if (root.hasText) root.sendRequested(); else engineMenu.popup(engineButton, 0, -engineMenu.height) }
+        onTriggered: root.sendRequested()
     }
 }

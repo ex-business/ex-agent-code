@@ -30,7 +30,7 @@ Item {
         holdLayout: root.pooled
         preparationPriority: root.renderPolicy ? root.renderPolicy.priorityForLane(root.preparationLane) : (root.pooled ? -1 : 100)
         font: messageText.font
-        deferUncached: preparationPriority < 0
+        // 负优先级已由准备队列延后执行；避免同一通知反复触发布局绑定。
         mode: RichTextPreparation.User
         onLayoutAboutToChange: if (root.selectionManager) root.selectionManager.layoutChangeStarting()
         onLayoutChanged: if (root.selectionManager) root.selectionManager.layoutChangeFinished()

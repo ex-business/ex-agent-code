@@ -12,10 +12,13 @@ Item {
     implicitHeight: 30
     scale: Design.Theme.motionEnabled && mouse.pressed ? 0.94 : 1
     Behavior on scale { NumberAnimation { duration: Design.Theme.pressDuration; easing.type: Easing.OutCubic } }
-    activeFocusOnTab: true
+    // 未接入语音时保留波形位置，只在草稿可发送时接受输入。
+    enabled: hasText
+    opacity: enabled ? 1 : 0.45
+    activeFocusOnTab: enabled
     Accessible.role: Accessible.Button
     Accessible.name: hasText ? "发送消息" : "语音样式展示，未连接"
-    Accessible.onPressAction: triggered()
+    Accessible.onPressAction: if (enabled) triggered()
     Rectangle { anchors.fill: parent; radius: width / 2; color: Design.Theme.dark ? "#eeeeee" : "#000000" }
     Design.Icon { x: 6; y: 6; width: 18; height: 18; name: "arrow"; visible: root.hasText; color: Design.Theme.dark ? "#202020" : "#ffffff" }
     Repeater {

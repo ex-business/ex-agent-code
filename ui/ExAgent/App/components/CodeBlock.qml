@@ -1,5 +1,6 @@
 pragma ComponentBehavior: Bound
 import QtQuick
+import "BlockGeometry.js" as Geometry
 import QtQuick.Controls
 import QtQuick.Layouts
 import ExAgent.App as Design
@@ -14,12 +15,14 @@ Rectangle {
     property string messageId: ""
     property int blockIndex: 0
     readonly property var selectionManager: outerWheel ? outerWheel.selectionManager : null
-    property int maximumCodeHeight: 330
-    readonly property int lineHeight: 22
-    readonly property int viewportHeight: Math.min(maximumCodeHeight, Math.max(lineHeight, lines.lineCount * lineHeight) + 24)
+    property int maximumCodeHeight: Geometry.inlineCodeLimit
+    property int knownLineCount: -1
+    readonly property int layoutLineCount: knownLineCount >= 0 ? knownLineCount : lines.lineCount
+    readonly property int lineHeight: Geometry.codeLineHeight
+    readonly property int viewportHeight: Geometry.codeViewport(layoutLineCount, maximumCodeHeight)
     readonly property int firstVisibleLine: Math.max(1, Math.floor(codeView.contentY / lineHeight) + 1)
     readonly property int lastVisibleLine: Math.min(lines.lineCount, firstVisibleLine + Math.ceil(codeView.height / lineHeight) - 1)
-    implicitHeight: 38 + viewportHeight + (lines.lineCount > 15 ? 27 : 0)
+    implicitHeight: Geometry.codeHeight(layoutLineCount, maximumCodeHeight)
     radius: 18
     color: Design.Theme.code
     border.color: Design.Theme.border
@@ -108,7 +111,7 @@ Rectangle {
     Item {
         id: codeHeader
         width: parent.width
-        height: 38
+        height: Geometry.codeHeaderHeight
         RowLayout {
             anchors.fill: parent
             anchors.leftMargin: 15
@@ -238,7 +241,7 @@ Rectangle {
         anchors.right: parent.right
         anchors.leftMargin: 15
         anchors.rightMargin: 15
-        height: 27
+        height: Geometry.codeFooterHeight
         Text { text: root.firstVisibleLine + "–" + root.lastVisibleLine + " / " + lines.lineCount + " 行"; color: Design.Theme.muted; font.pixelSize: 10 }
         Item { Layout.fillWidth: true }
         Text { text: "在代码区域内滚动"; color: Design.Theme.muted; font.pixelSize: 10 }

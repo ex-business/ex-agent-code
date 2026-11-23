@@ -22,11 +22,11 @@ qt_add_qml_module(ex_agent_workbench
         components/ComposerToolbar.qml components/MessageActions.qml
         components/UserMessageBubble.qml
         components/SelectionSurface.qml components/SelectableText.qml components/SendButton.qml
-        components/MessageLayoutReservation.qml components/ScrollRenderPolicy.qml components/ChatScrollView.qml components/ChatSelectionLayer.qml components/ChatSelectionPart.qml
+        components/MessageLayoutReservation.qml components/ScrollRenderPolicy.qml components/HistoryPagePreloader.qml components/ChatScrollView.qml components/ChatSelectionLayer.qml components/ChatSelectionPart.qml
         components/SelectionAutoScroll.qml
         components/WorkspaceTabs.qml components/WorkbenchTitleBar.qml components/FilePreview.qml
         components/ChatMenu.qml
-        components/MarkdownText.qml
+        components/BlockGeometry.js components/MarkdownText.qml
         components/ToolActivityRow.qml components/MessageAttachments.qml
         components/ImagePreview.qml components/ChangesSummary.qml
         components/MessageContent.qml

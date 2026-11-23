@@ -33,7 +33,7 @@ ListView {
         onLayoutChangeFinished: Qt.callLater(transcript.restoreLayoutAnchor)
     }
     function captureLayoutAnchor() {
-        if (followingEnd || layoutAnchor || loadingOlder || moving || renderPolicy.scrolling) return
+        if (followingEnd || layoutAnchor || loadingOlder || moving) return
         // 顶部可能落在消息间距或折叠行上；按实际相交的可见消息找锚点，不能因此放弃位置保持。
         let message = null
         for (const child of contentItem.children) {
@@ -41,7 +41,11 @@ ListView {
             if (!row || row.height <= 0 || row.y + row.height <= contentY || row.y >= contentY + height) continue
             if (!message || row.y < message.y) message = row
         }
-        if (message) layoutAnchor = {id: message.messageId, offset: contentY - message.y}
+        if (!message) return
+        const block = message.readingBlock()
+        layoutAnchor = {id: message.messageId, offset: contentY - message.y, scrollY: contentY,
+                        duringScroll: renderPolicy.scrolling, block: block, blockId: block?.blockId,
+                        index: block?.blockIndex, blockY: block ? block.mapToItem(transcript, 0, 0).y : 0}
     }
     property string disclosureGroupId: ""
     function beginContentDisclosure() {
@@ -86,17 +90,24 @@ ListView {
     }
     function restoreLayoutAnchor() {
         const anchor = layoutAnchor; layoutAnchor = null
-        if (!anchor || followingEnd || loadingOlder || moving || renderPolicy.scrolling) return
+        if (!anchor || followingEnd || loadingOlder || moving) return
+        // 滚动中的发布只补偿同一输入位置的重排；新滚轮位移或列表自行调整后不回拉。
+        if ((anchor.duringScroll || renderPolicy.scrolling) && anchor.scrollY !== contentY) return
         renderPolicy.adjustingLayout = true
         try {
             forceLayout()
             const row = selectionDocument.orderOf(anchor.id)
-            if (row >= 0 && !itemAtIndex(row)) positionViewAtIndex(row, ListView.Beginning)
+            if (row >= 0 && !itemAtIndex(row) && !anchor.duringScroll && !renderPolicy.scrolling) positionViewAtIndex(row, ListView.Beginning)
             const item = row >= 0 ? itemAtIndex(row) : null
             if (item) {
                 const before = contentY
-                contentY = Math.max(originY - topMargin, Math.min(Math.max(originY - topMargin, originY + contentHeight - height + bottomMargin), item.y + anchor.offset))
-                Design.PerformanceTrace.layoutAnchor(contentY - before, contentY - item.y - anchor.offset)
+                // 保持可见块相对视口的位置；槽位被复用、销毁或关闭时退回原消息锚点。
+                const block = anchor.block
+                const validBlock = block && !block.pooled && block.visible && block.height > 0 &&
+                        block.messageId === anchor.id && block.blockId === anchor.blockId && block.blockIndex === anchor.index
+                const target = validBlock ? before + block.mapToItem(transcript, 0, 0).y - anchor.blockY : item.y + anchor.offset
+                contentY = Math.max(originY - topMargin, Math.min(Math.max(originY - topMargin, originY + contentHeight - height + bottomMargin), target))
+                Design.PerformanceTrace.layoutAnchor(contentY - before, contentY - target, Boolean(validBlock))
             }
         } finally { renderPolicy.adjustingLayout = false }
     }
@@ -128,23 +139,22 @@ ListView {
     property bool followingEnd: true
     property bool loadingOlder: false
     property bool waitingOlder: false
-    function prefetchInTravelDirection() {
-        // 仅前往历史方向时读下一页，反向不追加预读；数据层仍保持单页缓存和代次取消。
-        if (renderPolicy.direction < 0 && contentY - originY < renderPolicy.aheadPixels && controller.messages.hasOlder)
-            controller.messages.prefetchOlder()
-    }
-    onContentYChanged: prefetchInTravelDirection()
-    Connections {
-        target: renderPolicy
-        function onDirectionChanged() { transcript.prefetchInTravelDirection() }
-        function onAheadPixelsChanged() { transcript.prefetchInTravelDirection() }
+    Design.HistoryPagePreloader {
+        view: transcript
+        messages: transcript.controller.messages
+        policy: renderPolicy
+        suspended: transcript.followingEnd || transcript.loadingOlder || transcript.jumpTarget >= 0
+                   || transcriptScrollBar.pressed || Boolean(selectionLayer.origin)
     }
     Connections {
         target: transcript.controller.messages
         function onPageFailure(error: string) { transcript.waitingOlder = false; transcript.jumpTarget = -1 }
         function onOlderPageReady() {
             if (transcript.jumpTarget >= 0) jumpPage.restart()
-            else if (transcript.waitingOlder) { transcript.waitingOlder = false; transcript.loadPreviousPage() }
+            else if (transcript.waitingOlder) {
+                transcript.waitingOlder = false
+                if (transcript.contentY - transcript.originY < 120) transcript.loadPreviousPage()
+            }
         }
     }
     property int jumpTarget: -1
@@ -170,6 +180,12 @@ ListView {
     }
     Design.SmoothWheel {
         id: transcriptWheel
+        // 聊天正文减缓滚轮脉冲的速度峰值；长帧最多推进约 33 毫秒，余量在后续帧完成。
+        paceFrames: true
+        responseRate: 32
+        settlingRate: 50
+        maxFrameStep: 1 / 30
+        maxSpeed: Math.max(1, transcript.height) * 8
         view: transcript
         selectionManager: selectionLayer
         onScrollingStarted: { renderPolicy.beginScroll(); transcript.layoutAnchor = null; transcript.pinnedMessage = ""; pinLayout.stop(); groupDisclosure.stop(); transcript.disclosureGroupId = ""; transcript.followingEnd = false }
@@ -268,6 +284,7 @@ ListView {
         Component.onCompleted: Design.PerformanceTrace.contentPhase(messageRow, 5, 0)
         ListView.onPooled: { pooled = true; Design.PerformanceTrace.contentPhase(messageRow, 5, 1) }
         ListView.onReused: { pooled = false; Design.PerformanceTrace.contentPhase(messageRow, 5, 2) }
+        function readingBlock(): Item { return messageView.readingBlock(transcript) }
         readonly property bool disclosureAnimating: messageView.disclosureAnimating
         Design.MessageDelegate {
             id: messageView

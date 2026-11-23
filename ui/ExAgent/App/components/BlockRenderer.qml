@@ -1,5 +1,6 @@
 pragma ComponentBehavior: Bound
 import QtQuick
+import "BlockGeometry.js" as Geometry
 import QtQuick.Controls
 import QtQuick.Layouts
 import ExAgent.Chat
@@ -75,7 +76,20 @@ Item {
     Label { visible: !root.showContent && root.viewState.placement === BlockViewRegistry.Windowed; text: "内容已在独立窗口打开"; color: Design.Theme.secondary; font.pixelSize: 12 }
     Item {
         Layout.fillWidth: true
-        Layout.preferredHeight: root.showContent ? ((renderer.item as Item)?.implicitHeight ?? 24) : 0
+        // 异步加载器尚未绑定到本块时，静态代码按真实行数占位，正文优先使用同宽缓存。
+        readonly property var content: renderer.item as Design.BlockRendererContent
+        Layout.preferredHeight: {
+            if (!root.showContent) return 0
+            if (root.staticCode && root.block.codeLineCount !== undefined)
+                return Geometry.codeHeight(root.block.codeLineCount, Geometry.inlineCodeLimit)
+            if (content && content.messageId === root.messageId && content.blockIndex === root.blockIndex && (content.block.blockId || "") === root.blockId && content.implicitHeight > 0) return content.implicitHeight
+            if (root.rendererKind === 1 && Number(root.block.contentMode) !== 2) {
+                const key = root.messageId + ':' + (root.blockId || root.blockIndex)
+                const policy = root.outerWheel?.view?.renderPolicy
+                return policy?.heightFor(key, root.width) || Geometry.estimatedProse(root.block.text || "", root.width)
+            }
+            return content?.implicitHeight ?? 24
+        }
         Loader {
             id: renderer
             width: parent.width

@@ -38,14 +38,17 @@ void timingHandler(QtMsgType type, const QMessageLogContext &context, const QStr
 
 ScrollDiagnostics::ScrollDiagnostics(QQuickWindow *window) : QObject(window)
 {
+    // 主聊天列表在根窗口加载完成后已创建；同步回调只读取弱引用，避免逐帧遍历对象树。
+    m_view = window->findChild<QQuickItem *>("messageList");
     m_clock.start();
     m_disclosureMode = QCoreApplication::arguments().contains("--profile-disclosure");
+    m_verboseTiming = m_disclosureMode && !QCoreApplication::arguments().contains("--light-frame-trace");
     if (window->screen() && window->screen()->refreshRate() > 0) m_budget = 1000.0 / window->screen()->refreshRate();
     const auto directory = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation) + "/diagnostics";
     QDir().mkpath(directory);
     m_path = directory + QString("/scroll-%1.json").arg(QCoreApplication::applicationPid());
     window->installEventFilter(this);
-    if (m_disclosureMode) {
+    if (m_verboseTiming) {
         {
             std::lock_guard guard(timingHandlerMutex);
             timingTarget = this;
@@ -53,10 +56,10 @@ ScrollDiagnostics::ScrollDiagnostics(QQuickWindow *window) : QObject(window)
         }
         // 沿用用户环境中的规则，仅在本次诊断进程增加Qt原生布局耗时输出。
         QLoggingCategory::setFilterRules(qEnvironmentVariable("QT_LOGGING_RULES") + "\nqt.scenegraph.time.renderloop.debug=true");
-#ifdef Q_OS_MACOS
-        startDrawableTiming();
-#endif
     }
+#ifdef Q_OS_MACOS
+    if (m_disclosureMode) startDrawableTiming();
+#endif
     connect(window, &QQuickWindow::afterAnimating, this, [this] {
         std::lock_guard guard(m_mutex);
         m_afterAnimating = timestamp();
@@ -72,7 +75,7 @@ ScrollDiagnostics::ScrollDiagnostics(QQuickWindow *window) : QObject(window)
         m_syncedInputCount = m_inputCount;
         m_syncedDisclosureCount = m_disclosures.size();
         // 同步时GUI已阻塞，将视口与输入绑定到同一提交帧，不能在渲染线程读取后来的GUI状态。
-        const auto *view = window->findChild<QQuickItem *>("messageList");
+        const auto *view = m_view.data();
         m_frameViewY = view ? view->property("contentY").toDouble() : 0;
         m_frameOriginY = view ? view->property("originY").toDouble() : 0;
         m_frameKinetic = view && view->property("pixelWheelMoving").toBool();
@@ -102,16 +105,16 @@ ScrollDiagnostics::ScrollDiagnostics(QQuickWindow *window) : QObject(window)
 }
 ScrollDiagnostics::~ScrollDiagnostics()
 {
-    if (m_disclosureMode) {
+    if (m_verboseTiming) {
         {
             std::lock_guard guard(timingHandlerMutex);
             timingTarget = nullptr;
             qInstallMessageHandler(previousHandler);
         }
-#ifdef Q_OS_MACOS
-        stopDrawableTiming();
-#endif
     }
+#ifdef Q_OS_MACOS
+    if (m_disclosureMode) stopDrawableTiming();
+#endif
     save();
 }
 bool ScrollDiagnostics::eventFilter(QObject *, QEvent *event)
@@ -152,7 +155,7 @@ bool ScrollDiagnostics::eventFilter(QObject *, QEvent *event)
     if (now - m_lastInput > 350) m_activeStart = now;
     m_lastInput = now;
     ++m_inputCount;
-    const auto *view = parent()->findChild<QQuickItem *>("messageList");
+    const auto *view = m_view.data();
     if (m_inputs.size() < 2000) m_inputs.append(QJsonObject{{"ms", now}, {"inputCount", m_inputCount}, {"kind", clickInput ? 3 : (wheelInput ? 1 : 2)},
         {"pixelY", wheel ? wheel->pixelDelta().y() : 0}, {"angleY", wheel ? wheel->angleDelta().y() : 0},
         {"deviceType", wheel && wheel->device() ? int(wheel->device()->type()) : 0},
@@ -199,12 +202,23 @@ void ScrollDiagnostics::recordWheelMotion(int phase, qreal position, qreal veloc
         {"velocity", velocity}, {"destination", destination}, {"input", input}});
     m_dirty = true;
 }
-void ScrollDiagnostics::recordLayoutAnchor(qreal correction, qreal drift)
+void ScrollDiagnostics::recordTextLayout(const QString &key, bool cached, double reserved, double actual,
+                                         double beforeY, double afterY, double scrollDelta, double viewport, double rowDelta, int blockIndex)
+{
+    // 仅在诊断进程记录匿名块标识及几何数据，用于匹配同一块的冷加载和回滚。
+    std::lock_guard guard(m_mutex);
+    if (m_textLayouts.size() >= 2048) m_textLayouts.removeFirst();
+    m_textLayouts.append(QJsonObject{{"block", QString::number(qHash(key))}, {"cached", cached},
+        {"reserved", reserved}, {"actual", actual}, {"beforeY", beforeY}, {"afterY", afterY},
+        {"rowDelta", rowDelta}, {"blockIndex", blockIndex}, {"scrollDelta", scrollDelta}, {"viewport", viewport}, {"ms", timestamp()}});
+    m_dirty = true;
+}
+void ScrollDiagnostics::recordLayoutAnchor(qreal correction, qreal drift, bool usedBlock)
 {
     // 仅记录像素补偿和残余误差，不记录消息身份或正文；保留最近256次，避免诊断无限增长。
     std::lock_guard guard(m_mutex);
     if (m_layoutAnchors.size() >= 256) m_layoutAnchors.removeFirst();
-    m_layoutAnchors.append(QJsonObject{{"ms", timestamp()}, {"correctionPx", correction}, {"driftPx", drift}});
+    m_layoutAnchors.append(QJsonObject{{"ms", timestamp()}, {"correctionPx", correction}, {"driftPx", drift}, {"usedBlock", usedBlock}});
     m_dirty = true;
 }
 void ScrollDiagnostics::recordContentPhase(QObject *loader, int kind, int phase)
@@ -286,7 +300,7 @@ void ScrollDiagnostics::save()
         if (systemCursor != m_lastSystemCursor) { m_lastSystemCursor = systemCursor; m_dirty = true; }
     }
 #endif
-    QJsonArray inputs, cursorShapes, frames, disclosures, dispatches, contentPhases, qtTimings, layoutAnchors, wheelMotions;
+    QJsonArray textLayouts, inputs, cursorShapes, frames, disclosures, dispatches, contentPhases, qtTimings, layoutAnchors, wheelMotions;
     std::vector<double> intervals, latency, dragLatency, wheelLatency, syncDurations, renderDurations;
     int inputCount, inactiveHoverCount;
     {
@@ -294,6 +308,7 @@ void ScrollDiagnostics::save()
         // 停止输入后继续保留短暂读数，用于核对视口是否仍在漂移，不制造动画或新绘制。
         if (!m_dirty && m_clock.nsecsElapsed() / 1000000.0 - m_lastInput > 2000) return;
         m_dirty = false;
+        textLayouts = m_textLayouts;
         dispatches = m_dispatches; contentPhases = m_contentPhases; qtTimings = m_qtTimings; layoutAnchors = m_layoutAnchors; wheelMotions = m_wheelMotions;
         disclosures = m_disclosures; frames = m_frames; inputs = m_inputs; intervals = m_intervals; latency = m_latency; inputCount = m_inputCount;
         dragLatency = m_dragLatency; wheelLatency = m_wheelLatency;
@@ -313,8 +328,8 @@ void ScrollDiagnostics::save()
     QSaveFile file(m_path);
     if (!file.open(QIODevice::WriteOnly)) return;
     file.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner);
-    const auto *view = parent()->findChild<QQuickItem *>("messageList");
-    file.write(QJsonDocument(QJsonObject{{"schemaVersion", 5}, {"pid", QCoreApplication::applicationPid()}, {"executable", QCoreApplication::applicationFilePath()}, {"renderLoop", qEnvironmentVariable("QSG_RENDER_LOOP", "default")}, {"updatedAt", QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs)},
+    const auto *view = m_view.data();
+    file.write(QJsonDocument(QJsonObject{{"schemaVersion", 6}, {"verboseTiming", m_verboseTiming}, {"pid", QCoreApplication::applicationPid()}, {"executable", QCoreApplication::applicationFilePath()}, {"renderLoop", qEnvironmentVariable("QSG_RENDER_LOOP", "default")}, {"updatedAt", QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs)},
         {"sampleMs", m_clock.nsecsElapsed() / 1000000.0},
         {"active", qobject_cast<QQuickWindow *>(parent())->isActive()},
         {"viewFastScrolling", view ? view->property("fastScrolling").toBool() : false},
@@ -337,6 +352,6 @@ void ScrollDiagnostics::save()
         {"systemCursorShape", systemCursor},
 #endif
         {"inputToFrame", statistics(latency)}, {"dragInputToFrame", statistics(dragLatency)},
-        {"wheelInputToFrame", statistics(wheelLatency)}, {"inputs", inputs}, {"frameIntervalsMs", frameIntervals}, {"frames", frames}, {"disclosures", disclosures}, {"dispatches", dispatches}, {"contentPhases", contentPhases}, {"qtTimings", qtTimings}, {"layoutAnchors", layoutAnchors}, {"wheelMotions", wheelMotions}}).toJson());
+        {"wheelInputToFrame", statistics(wheelLatency)}, {"textLayouts", textLayouts}, {"inputs", inputs}, {"frameIntervalsMs", frameIntervals}, {"frames", frames}, {"disclosures", disclosures}, {"dispatches", dispatches}, {"contentPhases", contentPhases}, {"qtTimings", qtTimings}, {"layoutAnchors", layoutAnchors}, {"wheelMotions", wheelMotions}}).toJson());
     file.commit();
 }

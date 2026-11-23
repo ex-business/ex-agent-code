@@ -7,8 +7,8 @@ QtObject {
     function wheelMotion(phase: int, position: real, velocity: real, destination: real, input: real) {
         if (sink) sink.recordWheelMotion(phase, position, velocity, destination, input)
     }
-    function layoutAnchor(correction: real, drift: real) {
-        if (sink) sink.recordLayoutAnchor(correction, drift)
+    function layoutAnchor(correction: real, drift: real, usedBlock: bool) {
+        if (sink) sink.recordLayoutAnchor(correction, drift, usedBlock)
     }
     function contentPhase(loader: QtObject, kind: int, phase: int) {
         if (sink) sink.recordContentPhase(loader, kind, phase)
