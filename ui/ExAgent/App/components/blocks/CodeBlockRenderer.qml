@@ -8,6 +8,9 @@ Design.BlockRendererContent {
     Design.CodeBlock {
         id: code
         width: parent.width
+        shell: root.block.shell === true
+        command: root.block.command || ""
+        commandStatus: Number(root.block.messageStatus || 0)
         knownLineCount: root.block.codeLineCount ?? -1
         code: root.block.text || ""
         language: root.block.language || (root.block.data || {}).language || (root.block.rendererKind === 7 ? "diff" : "text")

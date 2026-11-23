@@ -475,11 +475,23 @@ bool AgentController::consume(const QString &, const QJsonObject &e, QString *er
         msg.activity.insert("turnId", e["turnId"].toString());
         msg.activity.insert("taskState", int(State::Running));
         msg.content = QStringLiteral("Codex 正在执行");
+    } else if (kind == "reasoningPhase") {
+        const auto phase = e["state"].toInt(-1);
+        if (phase != int(State::Running) && phase != int(State::Complete)) {
+            *error = QStringLiteral("未知的思考阶段状态。");
+            return false;
+        }
+        msg.content = phase == int(State::Running) ? QStringLiteral("正在思考") : QStringLiteral("Codex 正在执行");
     } else if (kind == "itemEnd") {
         if (ix == s->messages.cend())
             return true;
         msg.status = messageStatus(e["state"].toInt());
         msg.activity.insert("taskState", e["state"].toInt());
+        const auto readPath = e["readPath"].toString();
+        if (!readPath.isEmpty()) {
+            msg.activity.insert("readPath", readPath);
+            msg.activity.insert("summary", QStringLiteral("已读取 %1").arg(QFileInfo(readPath).fileName()));
+        }
         if (e["exitCode"].isDouble())
             msg.activity.insert("exitCode", e["exitCode"].toInt());
     } else if (kind == "output") {

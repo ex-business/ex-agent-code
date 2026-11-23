@@ -7,6 +7,7 @@ import ExAgent.Chat
 // 正文选择由 SelectableText 统一处理；表格分隔线是轻量装饰，不截获鼠标。
 Item {
     id: root
+    property bool runningNotice: false
     required property var block
     property string messageId: ""
     property int blockIndex: 0
@@ -67,6 +68,11 @@ Item {
         text: root.preparation?.value.html || ""
         textFormat: TextEdit.RichText
         Accessible.name: "助手消息"
+        Loader {
+            anchors.fill: parent
+            active: root.runningNotice && root.hasPresentation && !root.pooled
+            sourceComponent: Design.ExecutionIndicator { label: prose; running: true; sweepColor: Design.Theme.dark ? "#888888" : "#999999" }
+        }
         // 在当前布局完成后读取最新身份和高度，避免测量过程中反写缓存触发绑定环。
         onImplicitHeightChanged: Qt.callLater(root.rememberLayout)
         onLinkActivated: (link) => root.linkActivated(link)

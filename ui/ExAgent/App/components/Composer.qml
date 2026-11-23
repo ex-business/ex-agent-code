@@ -14,7 +14,7 @@ ColumnLayout {
     signal approvalRequested()
     spacing: 0
     function send() {
-        if (controller.sendMessage()) submitted()
+        if (!controller.agent.busy && controller.sendMessage()) submitted()
     }
     function setPrompt(prompt: string) {
         controller.draft = prompt
@@ -92,6 +92,12 @@ ColumnLayout {
                         } else event.accepted = false
                     }
                 }
+            }
+            Label {
+                visible: root.controller.agent.busy && (root.controller.agent.stopping || !!root.controller.agent.approval.token)
+                text: root.controller.agent.stopping ? "正在停止…" : "等待你批准操作"
+                color: Design.Theme.secondary
+                font.pixelSize: 12
             }
             Label { visible: root.controller.agent.contextLabel.length > 0; text: root.controller.agent.contextLabel }
             ColumnLayout {

@@ -9,6 +9,9 @@ import ExAgent.Chat
 Rectangle {
     id: root
     required property string code
+    property bool shell: false
+    property string command: ""
+    property int commandStatus: 0
     property string language: ""
     required property ChatController controller
     property var outerWheel: null
@@ -22,10 +25,10 @@ Rectangle {
     readonly property int viewportHeight: Geometry.codeViewport(layoutLineCount, maximumCodeHeight)
     readonly property int firstVisibleLine: Math.max(1, Math.floor(codeView.contentY / lineHeight) + 1)
     readonly property int lastVisibleLine: Math.min(lines.lineCount, firstVisibleLine + Math.ceil(codeView.height / lineHeight) - 1)
-    implicitHeight: Geometry.codeHeight(layoutLineCount, maximumCodeHeight)
-    radius: 18
-    color: Design.Theme.code
-    border.color: Design.Theme.border
+    implicitHeight: shell ? codeHeader.height + viewportHeight + Geometry.codeFooterHeight : Geometry.codeHeight(layoutLineCount, maximumCodeHeight)
+    radius: shell ? 9 : 18
+    color: shell && Design.Theme.dark ? "#2d2d2d" : Design.Theme.code
+    border.color: shell && Design.Theme.dark ? "#505050" : Design.Theme.border
     clip: true
     activeFocusOnTab: true
     function selectCode() {
@@ -111,8 +114,20 @@ Rectangle {
     Item {
         id: codeHeader
         width: parent.width
-        height: Geometry.codeHeaderHeight
+        height: root.shell ? shellHeading.implicitHeight + 14 : Geometry.codeHeaderHeight
+        Column {
+            id: shellHeading
+            visible: root.shell
+            x: 10; y: 6; width: parent.width - 20; spacing: 8
+            Text { text: "Shell"; color: Design.Theme.secondary; font.pixelSize: 12 }
+            Text {
+                width: parent.width; text: "$ " + root.command; textFormat: Text.PlainText
+                font.family: Design.Theme.monoFont; font.pixelSize: 12; color: Design.Theme.secondary
+                maximumLineCount: 2; wrapMode: Text.Wrap; elide: Text.ElideRight
+            }
+        }
         RowLayout {
+            visible: !root.shell
             anchors.fill: parent
             anchors.leftMargin: 15
             anchors.rightMargin: 8
@@ -235,16 +250,16 @@ Rectangle {
         delegate: CodeRow {}
     }
     RowLayout {
-        visible: lines.lineCount > 15
+        visible: root.shell || lines.lineCount > 15
         anchors.top: codeView.bottom
         anchors.left: parent.left
         anchors.right: parent.right
         anchors.leftMargin: 15
         anchors.rightMargin: 15
         height: Geometry.codeFooterHeight
-        Text { text: root.firstVisibleLine + "–" + root.lastVisibleLine + " / " + lines.lineCount + " 行"; color: Design.Theme.muted; font.pixelSize: 10 }
+        Text { visible: !root.shell; text: root.firstVisibleLine + "–" + root.lastVisibleLine + " / " + lines.lineCount + " 行"; color: Design.Theme.muted; font.pixelSize: 10 }
         Item { Layout.fillWidth: true }
-        Text { text: "在代码区域内滚动"; color: Design.Theme.muted; font.pixelSize: 10 }
+        Text { text: root.shell ? ["✓ 成功", "执行中", "执行失败", "已取消"][root.commandStatus] || "" : "在代码区域内滚动"; color: Design.Theme.muted; font.pixelSize: 10 }
     }
     Timer { id: copyTimer; interval: 1800 }
     Design.ContextMenu {

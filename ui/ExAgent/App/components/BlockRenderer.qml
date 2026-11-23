@@ -8,6 +8,7 @@ import ExAgent.App as Design
 
 Item {
     id: root
+    property bool runningNotice: false
     required property var block
     required property ChatController controller
     property string messageId: ""
@@ -127,7 +128,10 @@ Item {
                 const content = item as Design.BlockRendererContent
                 if (!content) return
                 const textRenderer = item as Design.TextBlockRenderer
-                if (textRenderer) textRenderer.preparation = Qt.binding(() => proseJob.item as Design.ProsePreparation)
+                if (textRenderer) {
+                    textRenderer.runningNotice = Qt.binding(() => root.runningNotice)
+                    textRenderer.preparation = Qt.binding(() => proseJob.item as Design.ProsePreparation)
+                }
                 content.block = Qt.binding(() => root.block)
                 content.controller = Qt.binding(() => root.controller)
                 content.messageId = Qt.binding(() => root.messageId)

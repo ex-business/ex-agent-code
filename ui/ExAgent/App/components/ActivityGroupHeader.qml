@@ -12,12 +12,19 @@ RowLayout {
     spacing: 7
     Design.Icon { name: "activity"; implicitWidth: 15; implicitHeight: 15; color: Number(header.group.status) === 2 ? Design.Theme.danger : Design.Theme.muted }
     Design.SelectableText {
+        id: summaryLabel
         Layout.fillWidth: true
         text: header.group.summary || "工具操作"
         textFormat: TextEdit.PlainText
-        font.pixelSize: 13; color: Design.Theme.secondary
+        font.family: Design.Theme.font; font.pixelSize: 13; font.weight: Font.Medium
+        color: Design.Theme.secondary
         messageId: header.messageId; blockIndex: 0; selectionManager: header.visible ? header.selectionManager : null
         onTapped: header.toggleRequested()
+        Design.ExecutionIndicator {
+            anchors.fill: parent
+            label: summaryLabel
+            running: Number(header.group.status) === 1
+        }
     }
     Design.IconButton {
         iconName: Number(header.group.expansion) === 2 ? "right" : "down"

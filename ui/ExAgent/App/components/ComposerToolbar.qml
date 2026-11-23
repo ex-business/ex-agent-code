@@ -52,11 +52,12 @@ RowLayout {
 
     }
     Design.IconButton { enabled: false; opacity: 0.45; iconName: "mic"; implicitWidth: 26; implicitHeight: 30; iconColor: Design.Theme.text; tooltip: "语音输入样式展示，尚未连接" }
-    Design.IconButton { visible: root.agent.busy; iconName: "close"; tooltip: "停止执行"; onClicked: root.agent.stop() }
+
     Design.SendButton {
-        visible: !root.agent.busy
+        running: root.agent.busy
+        stopping: root.agent.stopping
         objectName: "sendMessage"
         hasText: root.hasText
-        onTriggered: root.sendRequested()
+        onTriggered: { if (root.agent.busy) root.agent.stop(); else root.sendRequested() }
     }
 }

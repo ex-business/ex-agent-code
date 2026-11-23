@@ -82,7 +82,7 @@ Item {
 
     Component {
         id: noticeBody
-        Design.MessageContent { pooled: root.pooled; blocks: root.contentBlocks; messageId: root.messageId; controller: root.controller; outerWheel: root.outerWheel; onLinkActivated: (link) => root.openLink(link) }
+        Design.MessageContent { runningNotice: root.messageStatus === 1 && root.activity.serviceId === "codex-agent" && !root.controller.agent.stopping && !root.controller.agent.approval.token; pooled: root.pooled; blocks: root.contentBlocks; messageId: root.messageId; controller: root.controller; outerWheel: root.outerWheel; onLinkActivated: (link) => root.openLink(link) }
     }
 
     Component {
@@ -146,6 +146,7 @@ Item {
             Design.MessageContent { pooled: root.pooled; id: assistantContent; Layout.fillWidth: true; blocks: root.contentBlocks; messageId: root.messageId; controller: root.controller; outerWheel: root.outerWheel; onLinkActivated: (link) => root.openLink(link) }
             Design.MessageAttachments { visible: root.attachments.length > 0; Layout.fillWidth: true; attachments: root.attachments; onImageRequested: (image) => root.imageRequested(image) }
             Design.MessageActions {
+                visible: root.messageStatus !== 1
                 pooled: root.pooled
                 text: root.content
                 onCopyRequested: (text) => root.controller.copyText(text)

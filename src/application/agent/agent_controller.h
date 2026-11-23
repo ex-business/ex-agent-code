@@ -13,6 +13,7 @@ class AgentController final : public QObject {
     Q_PROPERTY(QString model READ model NOTIFY changed)
     Q_PROPERTY(bool fullAccess READ fullAccess NOTIFY changed)
     Q_PROPERTY(bool workspaceWrite READ workspaceWrite NOTIFY changed)
+    Q_PROPERTY(bool stopping READ stopping NOTIFY changed)
     Q_PROPERTY(bool busy READ busy NOTIFY changed)
     Q_PROPERTY(QVariantMap approval READ approval NOTIFY changed)
     Q_PROPERTY(QStringList models READ models NOTIFY changed)
@@ -33,6 +34,10 @@ public:
     bool fullAccess() const { return config().value("fullAccess").toBool(); }
     bool workspaceWrite() const;
     bool busy() const;
+    bool stopping() const {
+        const auto run = m_active.constFind(m_selected);
+        return run != m_active.cend() && run->stopping;
+    }
     QVariantMap approval() const;
     bool authenticating() const { return m_login.state() != QProcess::NotRunning; }
     bool submit(const QString &text, const QString &cwd);

@@ -7,6 +7,7 @@ import ExAgent.App as Design
 // 正文与过程说明共享 Markdown/代码渲染；操作栏由消息外层决定是否显示。
 ColumnLayout {
     id: root
+    property bool runningNotice: false
     required property var blocks
     required property ChatController controller
     required property string messageId
@@ -59,6 +60,7 @@ ColumnLayout {
             readonly property var modelData: root.blocks[index] || ({})
             required property int index
             Layout.fillWidth: true
+            runningNotice: root.runningNotice
             pooled: root.pooled
             block: modelData
             controller: root.controller

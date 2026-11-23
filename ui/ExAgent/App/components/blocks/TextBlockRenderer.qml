@@ -4,6 +4,7 @@ import ExAgent.App as Design
 
 Design.BlockRendererContent {
     id: root
+    property bool runningNotice: false
     property Design.ProsePreparation preparation: null
     layoutReady: Boolean(content.item) && (root.block.contentMode === 2 || markdownItem && markdownItem.layoutReady)
     readonly property var markdownItem: content.item
@@ -28,6 +29,7 @@ Design.BlockRendererContent {
     Component {
         id: markdown
         Design.MarkdownText {
+            runningNotice: root.runningNotice
             preparation: root.preparation
             pooled: root.pooled
             width: root.width

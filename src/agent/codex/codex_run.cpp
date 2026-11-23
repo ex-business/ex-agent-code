@@ -298,6 +298,11 @@ void Run::notification(const QString &method, const QJsonObject &params)
         output(itemId, "terminal", params["delta"].toString(), false);
     else if (method == "item/started" || method == "item/completed") {
         const auto type = item["type"].toString();
+        // 仅传递引擎思考阶段的起止，不读取或存储推理内容。
+        if (type == "reasoning") {
+            emitEvent({ { "kind", "reasoningPhase" }, { "state", int(method == "item/started" ? State::Running : State::Complete) } });
+            return;
+        }
         if (type == "agentMessage" && method == "item/completed")
             output(itemId, "assistant", item["text"].toString(), true);
         else if (type == "commandExecution" && (method == "item/started" || item["aggregatedOutput"].isString()))
@@ -315,8 +320,16 @@ void Run::notification(const QString &method, const QJsonObject &params)
             flushOutput();
             const auto failed
                 = item["status"] == "failed" || item["status"] == "declined" || item["exitCode"].toInt() != 0;
-            emitEvent({ { "kind", "itemEnd" }, { "item", itemId },
-                { "state", int(failed ? State::Failed : State::Complete) }, { "exitCode", item["exitCode"] } });
+            QJsonObject end { { "kind", "itemEnd" }, { "item", itemId },
+                { "state", int(failed ? State::Failed : State::Complete) }, { "exitCode", item["exitCode"] } };
+            // 只把引擎确认成功的单文件读取显示为阅读记录，复合命令仍保留 Shell 摘要。
+            const auto actions = item["commandActions"].toArray();
+            if (!failed && type == "commandExecution" && actions.size() == 1) {
+                const auto action = actions.first().toObject();
+                if (action["type"] == "read" && !action["path"].toString().isEmpty())
+                    end.insert("readPath", action["path"]);
+            }
+            emitEvent(end);
         }
     } else if (method == "turn/completed") {
         const auto status = turn["status"].toString();
