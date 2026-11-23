@@ -21,11 +21,12 @@ Dialog {
         contextPreview = ({})
         mode.currentIndex = agent.account
         modelName.text = agent.model
+        fullAccess.checked = agent.fullAccess
         writeAccess.checked = agent.workspaceWrite
         feedback.text = ""
     }
     onAccepted: {
-        agent.configure(mode.currentIndex, modelName.text, writeAccess.checked)
+        agent.configure(mode.currentIndex, modelName.text, writeAccess.checked, fullAccess.checked)
         if (attachHistory.checked && mode.currentIndex > 0 && contextPreview.text)
             agent.includeHistory(first.currentIndex,last.currentIndex)
         else agent.includeHistory(-1,-1)
@@ -90,10 +91,11 @@ Dialog {
                 text: root.contextPreview.error || ((root.contextPreview.names || []).join("、") + "\n" + (root.contextPreview.text || ""))
             }
         }
-        CheckBox { id: writeAccess; visible: mode.currentIndex > 0; text: "允许写入当前工作区" }
+        CheckBox { id: fullAccess; visible: mode.currentIndex > 0; text: "完全访问（文件、网络，执行时免审批）" }
+        CheckBox { id: writeAccess; enabled: !fullAccess.checked; visible: mode.currentIndex > 0; text: "允许写入当前工作区" }
         Label {
             visible: mode.currentIndex > 0; Layout.fillWidth: true; wrapMode: Text.Wrap; textFormat: Text.PlainText
-            text: root.controller.workspacePath || (writeAccess.checked
+            text: root.controller.workspacePath || (fullAccess.checked || writeAccess.checked
                 ? "要写入文件，请先将会话移入工作区。" : "普通聊天 · 无需绑定工作区")
         }
         Label {

@@ -137,14 +137,15 @@ bool AgentController::save()
     }
     return true;
 }
-void AgentController::configure(int account, const QString &model, bool write)
+void AgentController::configure(int account, const QString &model, bool write, bool fullAccess)
 {
     auto *s = find(m_selected);
     if (!s || !m_writable || busy() || account < 0 || account > 2 || model.size() > 128)
         return;
     s->agent.insert("account", account);
     s->agent.insert("model", model.trimmed());
-    s->agent.insert("write", write);
+    s->agent.insert("write", write || fullAccess);
+    s->agent.insert("fullAccess", fullAccess);
     save();
     emit changed();
 }
@@ -281,7 +282,7 @@ bool AgentController::submit(const QString &text, const QString &cwd)
     }
     const auto run = newId();
     QJsonObject spec { { "conversationId", s->id }, { "runId", run }, { "prompt", text }, { "cwd", directory },
-        { "model", model() }, { "write", workspaceWrite() }, { "account", account() } };
+        { "model", model() }, { "write", workspaceWrite() }, { "fullAccess", fullAccess() }, { "account", account() } };
     if (s->agent.value("boundAccount").toInt() == account() && s->agent.value("boundCwd").toString() == directory)
         spec.insert("threadId", s->agent.value("threadId").toString());
     spec.insert("identity", s->agent.value("identity").toString());

@@ -33,7 +33,7 @@ RowLayout {
     RowLayout {
         spacing: 4
         Design.Icon { name: "shield"; color: Design.Theme.dark ? Design.Theme.warning : "#ae542c"; implicitWidth: 13; implicitHeight: 13 }
-        Text { text: !root.agent.account ? "本地" : root.agent.workspaceWrite ? "工作区写入" : "只读"; color: Design.Theme.dark ? Design.Theme.warning : "#ae542c"; font.pixelSize: 12 }
+        Text { text: !root.agent.account ? "本地" : root.agent.fullAccess ? "完全访问" : root.agent.workspaceWrite ? "工作区写入" : "只读"; color: Design.Theme.dark ? Design.Theme.warning : "#ae542c"; font.pixelSize: 12 }
     }
     Item { Layout.fillWidth: true }
     Button {

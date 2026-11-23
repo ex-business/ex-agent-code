@@ -49,9 +49,8 @@ ListView {
     }
     property string disclosureGroupId: ""
     function beginContentDisclosure() {
-        // 主动折叠时退出贴底，不能在每帧高度变化时再次拉动整页。
+        // 展开内容只停止惯性，沿用用户当前的阅读模式。
         transcriptWheel.stop()
-        followingEnd = false
     }
     function beginGroupDisclosure(id: string) { beginContentDisclosure(); disclosureGroupId = id; groupDisclosure.restart() }
     Timer {
@@ -69,7 +68,7 @@ ListView {
     property string pinnedMessage: ""
     property int pinPass: 0
     function pinMessageAnchor(id: string, viewportY: real) {
-        followingEnd = false
+        if (followingEnd) return
         layoutAnchor = {id: id, offset: -viewportY}
         pinnedMessage = id
         pinPass = 0
@@ -81,6 +80,7 @@ ListView {
         repeat: true
         onTriggered: {
             // ListView会分批修正回收行的高度；短暂复核，保证折叠后的标题仍可见。
+            if (transcript.followingEnd) { stop(); return }
             const row = transcript.selectionDocument.orderOf(transcript.pinnedMessage)
             if (row < 0) { stop(); return }
             transcript.forceLayout()
@@ -247,7 +247,7 @@ ListView {
             background: Rectangle { radius: 8; color: olderMessagesButton.hovered ? Design.Theme.hover : "transparent" }
         }
     }
-    onMovementStarted: followingEnd = false
+    onDraggingChanged: if (dragging) followingEnd = false
     onMovementEnded: {
         if (!selectionLayer.origin && !transcriptScrollBar.pressed && atYEnd) followingEnd = true
         if (!transcriptScrollBar.pressed && !transcriptWheel.animating && contentY - originY < 120 && transcript.controller.messages.hasOlder) loadPreviousPage()
@@ -257,17 +257,21 @@ ListView {
         width: 6
         policy: ScrollBar.AsNeeded
         // cancelFlick 会同步触发 movementEnded，必须最后再关闭自动贴底。
-        onPressedChanged: if (pressed) { transcriptWheel.stop(); transcript.followingEnd = false }
+        onPressedChanged: {
+            if (pressed) { transcriptWheel.stop(); transcript.followingEnd = false }
+            else if (transcript.atYEnd) transcript.revealLatest()
+        }
     }
     function revealLatest() {
         followingEnd = true
-        Qt.callLater(() => transcript.positionViewAtEnd())
+        latestLayout.start()
     }
     // 合并同一页的数量与高度变化，执行时复核贴底状态，避免新滚动被旧定位拉回。
-    onCountChanged: if (followingEnd) latestLayout.restart()
+    onHeightChanged: if (followingEnd) latestLayout.start()
+    onCountChanged: if (followingEnd) latestLayout.start()
     onContentHeightChanged: {
         // 富文本完成布局后再贴齐底部，避免误显示“回到最新消息”。
-        if (followingEnd) latestLayout.restart()
+        if (followingEnd) latestLayout.start()
     }
     Timer {
         id: latestLayout

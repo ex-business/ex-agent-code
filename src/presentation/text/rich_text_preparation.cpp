@@ -169,7 +169,7 @@ void RichTextPreparation::setLayoutWidth(qreal width)
 {
     width = qMax(0.0, width);
     if (qFuzzyCompare(m_layoutWidth, width)) return;
-    m_layoutWidth = width; schedule();
+    m_layoutWidth = width; schedule(true);
 }
 void RichTextPreparation::setHoldLayout(bool hold)
 {
@@ -187,18 +187,31 @@ void RichTextPreparation::setDeferUncached(bool defer)
     if (!defer && m_waiting) m_schedule.start(0);
     queue()->requestPump();
 }
-void RichTextPreparation::setSource(const QString &source) { if (m_source != source) { m_source = source; schedule(); } }
+void RichTextPreparation::setPresentationId(const QString &id)
+{
+    if (m_presentationId == id) return;
+    m_presentationId = id;
+    schedule();
+}
+void RichTextPreparation::setSource(const QString &source)
+{
+    if (m_source == source) return;
+    // 同一内容块追加文字时保留上次排版，复用或替换原文时立即失效。
+    const bool append = !m_presentationId.isEmpty() && source.startsWith(m_source);
+    m_source = source;
+    schedule(append);
+}
 void RichTextPreparation::setFont(const QFont &font) { if (m_font != font) { m_font = font; schedule(); } }
 void RichTextPreparation::setDark(bool dark) { if (m_dark != dark) { m_dark = dark; schedule(); } }
 void RichTextPreparation::setMode(int mode) { if (mode >= Prose && mode <= User && mode != m_mode) { m_mode = mode; schedule(); } }
 void RichTextPreparation::setState(State state) { if (m_state != state) { m_state = state; emit stateChanged(); } }
-void RichTextPreparation::schedule()
+void RichTextPreparation::schedule(bool keepVisible)
 {
     m_pendingValue.clear();
     m_layoutHint = m_source.isEmpty() ? QVariantMap{} : queue()->layoutHint({m_source, m_font, m_dark, m_mode, m_layoutWidth});
     ++m_generation; if (m_cancel) m_cancel->store(true);
     m_waiting = false;
-    if (!m_value.isEmpty()) { emit layoutAboutToChange(); m_value.clear(); emit valueChanged(); emit layoutChanged(); }
+    if (!keepVisible && !m_value.isEmpty()) { emit layoutAboutToChange(); m_value.clear(); emit valueChanged(); emit layoutChanged(); }
     setState(m_source.isEmpty() ? Idle : Queued);
     m_schedule.start(0); emit inputChanged();
 }

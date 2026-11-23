@@ -20,10 +20,12 @@ Item {
     readonly property string displayText: text.replace(/[\r\n]+$/, "")
     readonly property var presentation: preparation.value
     readonly property real naturalTextWidth: Number(presentation.width || 0)
+    readonly property bool hasPresentation: !!presentation.html && preparation.state !== RichTextPreparation.Failed
     implicitHeight: bubble.height
     RichTextPreparation {
         id: preparation
         onStateChanged: if (state === RichTextPreparation.Running) Design.PerformanceTrace.contentPhase(root, 7, root.preparationLane)
+        presentationId: root.messageId
         source: root.displayText
         layoutWidth: root.width * 0.85
         // 正文首帧直接发布完整富文本，避免持续滚动使可见消息长期空白。
@@ -38,13 +40,13 @@ Item {
     Rectangle {
         id: bubble
         anchors.right: parent.right
-        visible: root.layoutReady
+        visible: root.hasPresentation || root.layoutReady
         // 字形前进宽度保留取整余量，避免末字被挤成单独一行。
-        width: Math.min(Math.max(42, (preparation.state === RichTextPreparation.Ready ? Math.ceil(root.naturalTextWidth) + 36 : Number(preparation.layoutHint.bubbleWidth || root.width * 0.85))), root.width * 0.85)
+        width: Math.min(Math.max(42, (root.hasPresentation ? Math.ceil(root.naturalTextWidth) + 36 : Number(preparation.layoutHint.bubbleWidth || root.width * 0.85))), root.width * 0.85)
         // 未就绪时只预留空间，避免把截断的用户输入绘制成另一种气泡。
         readonly property real estimatedLines: Math.ceil(root.displayText.length / Math.max(1, (width - 32) / 8))
         readonly property real reservedHeight: Number(preparation.layoutHint.height || Math.max(20, Math.min(480, estimatedLines * 20)))
-        height: (preparation.state === RichTextPreparation.Ready ? messageText.implicitHeight : reservedHeight) + 24
+        height: (root.hasPresentation ? messageText.implicitHeight : reservedHeight) + 24
         radius: 18
         color: Design.Theme.dark ? "#eeeeee" : "#000000"
         Text {
@@ -56,7 +58,7 @@ Item {
         }
         Design.SelectableText {
             id: messageText
-            visible: preparation.state === RichTextPreparation.Ready
+            visible: root.hasPresentation
             x: 16; y: 12
             width: parent.width - 32
             messageId: root.messageId

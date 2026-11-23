@@ -19,7 +19,8 @@ Item {
     signal linkActivated(string link)
     readonly property string layoutKey: root.messageId + ':' + (root.block.blockId || root.blockIndex)
     readonly property real rememberedHeight: root.renderPolicy ? root.renderPolicy.heightFor(layoutKey, width) : 0
-    implicitHeight: preparation?.state === RichTextPreparation.Ready ? prose.implicitHeight
+    readonly property bool hasPresentation: !!preparation?.value.html && preparation.state !== RichTextPreparation.Failed
+    implicitHeight: hasPresentation ? prose.implicitHeight
                   : Math.max(24, rememberedHeight || Number(preparation?.layoutHint.height || 0) || Geometry.estimatedProse(block.text || "", width))
     clip: true
     function rememberLayout() {
@@ -57,7 +58,7 @@ Item {
     }
     Design.SelectableText {
         id: prose
-        visible: root.preparation?.state === RichTextPreparation.Ready
+        visible: root.hasPresentation
         width: parent.width
         messageId: root.messageId
         blockIndex: root.blockIndex
@@ -72,6 +73,6 @@ Item {
     }
     Design.TableRulesOverlay {
         surface: prose
-        rules: root.preparation?.state === RichTextPreparation.Ready ? root.preparation.value.tableRules || [] : []
+        rules: root.hasPresentation ? root.preparation.value.tableRules || [] : []
     }
 }

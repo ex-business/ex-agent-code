@@ -61,6 +61,7 @@ Item {
         id: proseJob
         active: root.rendererKind === 1 && Number(root.block.contentMode) !== 2 && root.showContent
         sourceComponent: Design.ProsePreparation {
+            presentationId: JSON.stringify([root.messageId, root.blockIndex])
             slot: root
             source: root.block.text || ""
             pooled: root.pooled

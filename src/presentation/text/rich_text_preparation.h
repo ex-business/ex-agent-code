@@ -13,6 +13,7 @@ class PreparationQueue;
 class RichTextPreparation : public QObject {
     Q_OBJECT
     QML_NAMED_ELEMENT(RichTextPreparation)
+    Q_PROPERTY(QString presentationId READ presentationId WRITE setPresentationId NOTIFY inputChanged)
     Q_PROPERTY(QString source READ source WRITE setSource NOTIFY inputChanged)
     Q_PROPERTY(QFont font READ font WRITE setFont NOTIFY inputChanged)
     Q_PROPERTY(bool dark READ dark WRITE setDark NOTIFY inputChanged)
@@ -31,6 +32,8 @@ public:
     Q_ENUM(Mode)
     explicit RichTextPreparation(QObject *parent = nullptr);
     ~RichTextPreparation() override;
+    QString presentationId() const { return m_presentationId; }
+    void setPresentationId(const QString &id);
     QString source() const { return m_source; }
     QFont font() const { return m_font; }
     bool dark() const { return m_dark; }
@@ -58,11 +61,11 @@ signals:
     void layoutChanged();
 private:
     friend class PreparationQueue;
-    void schedule();
+    void schedule(bool keepVisible = false);
     void submit();
     void setState(State state);
     void apply(quint64 generation, QVariantMap value, bool cached = false);
-    QString m_source;
+    QString m_source, m_presentationId;
     QFont m_font;
     bool m_dark = false, m_waiting = false, m_deferUncached = false;
     int m_mode = Prose;

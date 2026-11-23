@@ -11,6 +11,7 @@ class AgentController final : public QObject {
     QML_UNCREATABLE("由宿主注入")
     Q_PROPERTY(int account READ account NOTIFY changed)
     Q_PROPERTY(QString model READ model NOTIFY changed)
+    Q_PROPERTY(bool fullAccess READ fullAccess NOTIFY changed)
     Q_PROPERTY(bool workspaceWrite READ workspaceWrite NOTIFY changed)
     Q_PROPERTY(bool busy READ busy NOTIFY changed)
     Q_PROPERTY(QVariantMap approval READ approval NOTIFY changed)
@@ -29,12 +30,13 @@ public:
     Q_INVOKABLE void includeHistory(int first, int last);
     int account() const;
     QString model() const;
+    bool fullAccess() const { return config().value("fullAccess").toBool(); }
     bool workspaceWrite() const;
     bool busy() const;
     QVariantMap approval() const;
     bool authenticating() const { return m_login.state() != QProcess::NotRunning; }
     bool submit(const QString &text, const QString &cwd);
-    Q_INVOKABLE void configure(int account, const QString &model, bool write);
+    Q_INVOKABLE void configure(int account, const QString &model, bool write, bool fullAccess = false);
     Q_INVOKABLE void login(QString key);
     Q_INVOKABLE void logout();
     Q_INVOKABLE void stop();

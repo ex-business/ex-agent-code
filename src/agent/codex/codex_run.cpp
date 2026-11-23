@@ -129,9 +129,10 @@ void Run::result(const QString &method, const QJsonObject &value)
             request("thread/read", { { "threadId", m_thread }, { "includeTurns", true } });
             return;
         }
-        QJsonObject options { { "cwd", m_spec["cwd"] }, { "approvalPolicy", "on-request" },
+        // 完全访问仅对当前会话明确启用，恢复线程时也校验引擎实际采用的权限。
+        QJsonObject options { { "cwd", m_spec["cwd"] }, { "approvalPolicy", m_spec["fullAccess"].toBool() ? "never" : "on-request" },
             { "approvalsReviewer", "user" },
-            { "sandbox", m_spec["write"].toBool() ? "workspace-write" : "read-only" } };
+            { "sandbox", m_spec["fullAccess"].toBool() ? "danger-full-access" : m_spec["write"].toBool() ? "workspace-write" : "read-only" } };
         if (!m_spec["model"].toString().isEmpty())
             options.insert("model", m_spec["model"]);
         const auto bound = m_spec["threadId"].toString();
@@ -169,9 +170,9 @@ void Run::result(const QString &method, const QJsonObject &value)
         }
         if (!rootsMatch || m_thread.isEmpty()
             || (method == "thread/resume" && m_thread != m_spec["threadId"].toString())
-            || cwd != m_spec["cwd"].toString() || value["approvalPolicy"] != "on-request"
+            || cwd != m_spec["cwd"].toString() || value["approvalPolicy"] != (m_spec["fullAccess"].toBool() ? "never" : "on-request")
             || value["approvalsReviewer"] != "user"
-            || sandbox["type"] != (m_spec["write"].toBool() ? "workspaceWrite" : "readOnly")) {
+            || sandbox["type"] != (m_spec["fullAccess"].toBool() ? "dangerFullAccess" : m_spec["write"].toBool() ? "workspaceWrite" : "readOnly")) {
             finish(int(State::Failed), QStringLiteral("引擎返回的目录、线程或权限与派发设置不符。"));
             return;
         }

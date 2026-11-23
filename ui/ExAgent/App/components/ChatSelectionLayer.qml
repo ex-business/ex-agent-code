@@ -45,7 +45,6 @@ Item {
     }
     function begin(part, start, end, selectionUnit, extendExisting) {
         view.cancelFlick()
-        view.followingEnd = false
         origin = true
         originPart = part
         if (extendExisting && document.selectionLength > 0) {
@@ -142,7 +141,10 @@ Item {
             root.view.cancelFlick()
             const low = root.view.originY - root.view.topMargin
             const high = Math.max(low, root.view.originY + root.view.contentHeight - root.view.height + root.view.bottomMargin)
+            // 只有拖选实际卷动聊天视口时才切换阅读模式。
+            if (dy < 0 && root.view.contentY > low) root.view.followingEnd = false
             root.view.contentY = Math.max(low, Math.min(high, root.view.contentY + Math.max(-2250, Math.min(2250, dy * 28.125)) * seconds))
+            if (dy > 0 && root.view.atYEnd) root.view.followingEnd = true
             if (dy < 0 && root.view.contentY - root.view.originY < 100) root.olderPageRequested()
             root.extendAt(root.pointer)
         }
