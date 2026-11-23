@@ -3,6 +3,7 @@
 #include "infrastructure/storage/project_repository.h"
 #include "application/project/project_navigator.h"
 #include "conversation_transfer.h"
+#include "application/agent/agent_controller.h"
 #include "infrastructure/storage/conversation_resource_repository.h"
 #include "presentation/chat/message_list_model.h"
 #include "presentation/chat/session_list_model.h"
@@ -23,6 +24,7 @@ class ChatController final : public QObject {
     QML_UNCREATABLE("聊天控制器由应用注入")
     Q_PROPERTY(exagent::MessageListModel *messages READ messages CONSTANT)
     Q_PROPERTY(exagent::SessionListModel *sessions READ sessions CONSTANT)
+    Q_PROPERTY(exagent::AgentController *agent READ agent CONSTANT)
     Q_PROPERTY(exagent::ConversationTransfer *transfer READ transfer CONSTANT)
     Q_PROPERTY(exagent::ProjectNavigator *projects READ projects CONSTANT)
     Q_PROPERTY(QString projectName READ projectName NOTIFY workspaceChanged)
@@ -53,6 +55,7 @@ public:
     BlockViewRegistry *blockViews() { return &m_blockViews; }
     MessageListModel *messages();
     SessionListModel *sessions();
+    AgentController *agent() { return &m_agent; }
     ConversationTransfer *transfer() { return &m_transfer; }
     ProjectNavigator *projects() { return &m_projects; }
     QString projectName() const;
@@ -73,8 +76,8 @@ public:
     QVariantList navigationEntries() const;
     QVariantMap navigationInfo() const;
     QString resourcePath() const;
-    QVariantMap changeSummary() const { return m_preview ? m_changeSummary : QVariantMap{}; }
-    int activityStatus() const { return m_preview ? m_activityStatus : 0; }
+    QVariantMap changeSummary() const { return m_preview ? m_changeSummary : m_current < 0 ? QVariantMap{} : m_sessions[m_current].history.value("changeSummary").toMap(); }
+    int activityStatus() const { return m_preview ? m_activityStatus : m_current < 0 ? 0 : m_sessions[m_current].history.value("activityStatus").toInt(); }
     void setDraft(const QString &text);
     Q_INVOKABLE void newSession();
     Q_INVOKABLE void selectSession(const QString &id);
@@ -128,6 +131,7 @@ private:
     ProjectRepository m_repository;
     ConversationResourceRepository m_resources;
     QList<ChatSession> m_sessions;
+    AgentController m_agent{m_sessions, m_projects.catalog, m_repository};
     ConversationTransfer m_transfer{m_sessions, m_projects.catalog, m_repository};
     int m_current = -1;
     bool m_preview = false;

@@ -95,11 +95,16 @@ QVariantMap ConversationTransfer::preview(int mode, const QString &sourceId, con
         if (msg.originSession.isEmpty()) { msg.originSession = sourceId; msg.originMessage = msg.id; }
         msg.id = newId();
         // 只传可见快照；工具的活跃任务、窗口和块控制权仍归原会话。
+        const bool agentOutput = msg.activity.value("serviceId") == "codex-agent";
+        if (agentOutput) {
+            // 整理历史只复制输出，目标会话不能复用原线程或回合的控制身份。
+            for (const auto *field : {"runId","turnId","threadId","boundAccount","account","identity","cwd"}) msg.activity.remove(field);
+        }
         msg.activity.remove("taskId");
         msg.activity.remove("serviceId");
         msg.activity.remove("blockId");
         msg.activity.remove("taskState");
-        if (msg.role == MessageRole::Tool && msg.status == MessageStatus::Running) {
+        if ((agentOutput || msg.role == MessageRole::Tool) && msg.status == MessageStatus::Running) {
             // 复制已完成的是这一刻的输出快照，原任务仍可继续运行。
             msg.status = MessageStatus::Complete;
             msg.activity.insert("summary", msg.title + QStringLiteral(" · 运行时快照"));

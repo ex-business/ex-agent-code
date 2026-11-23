@@ -1,0 +1,331 @@
+#include "codex_run.h"
+#include <QDir>
+#include <QFileInfo>
+#include <QJsonArray>
+#include <QUuid>
+#include "domain/content/content_block.h"
+
+namespace exagent::codex {
+using State = content::TaskState;
+Run::Run(QJsonObject spec, QObject *parent)
+    : QObject(parent)
+    , m_spec(std::move(spec))
+{
+    m_deadline.setSingleShot(true);
+    m_deadline.setInterval(30000);
+    connect(&m_deadline, &QTimer::timeout, this,
+        [this] { finish(int(State::Interrupted), QStringLiteral("引擎应答超时，未自动重新派发。")); });
+    m_flush.setSingleShot(true);
+    m_flush.setInterval(32);
+    connect(&m_flush, &QTimer::timeout, this, &Run::flushOutput);
+    connect(&m_connection, &Connection::failure, this,
+        [this](const QString &reason) { finish(int(State::Interrupted), reason); });
+    connect(&m_connection, &Connection::frame, this, &Run::receive);
+    connect(&m_connection, &Connection::ready, this, [this] {
+        request("initialize",
+            { { "clientInfo",
+                QJsonObject {
+                    { "name", "ex_agent_code" }, { "title", "EX Agent Code" }, { "version", "0.1" } } } });
+    });
+}
+void Run::start()
+{
+    m_deadline.start();
+    m_connection.start(Account(m_spec["account"].toInt()), m_spec["cwd"].toString());
+}
+void Run::emitEvent(QJsonObject data)
+{
+    data.insert("conversationId", m_spec["conversationId"]);
+    data.insert("runId", m_spec["runId"]);
+    emit produced(data);
+}
+void Run::request(const QString &method, const QJsonObject &params)
+{
+    const int id = ++m_id;
+    m_pending.insert(id, method);
+    m_deadline.start();
+    if (!m_connection.send({ { "id", id }, { "method", method }, { "params", params } }))
+        finish(int(State::Interrupted), QStringLiteral("无法向 Codex 写入请求。"));
+}
+void Run::finish(int state, const QString &detail)
+{
+    if (m_done)
+        return;
+    m_done = true;
+    m_deadline.stop();
+    flushOutput();
+    if (m_spec["reconcile"].toBool() && !m_dispatched)
+        state = int(State::Interrupted);
+    emitEvent({ { "kind", "end" }, { "state", state }, { "detail", detail } });
+    emit ended();
+}
+void Run::interrupt()
+{
+    if (m_done || m_stopping)
+        return;
+    m_stopping = true;
+    if (!m_dispatched) {
+        finish(int(State::Cancelled), QStringLiteral("已取消派发。"));
+        return;
+    }
+    if (!m_turn.isEmpty())
+        request("turn/interrupt", { { "threadId", m_thread }, { "turnId", m_turn } });
+}
+void Run::receive(const QJsonObject &frame)
+{
+    if (m_done)
+        return;
+    const auto method = frame["method"].toString();
+    const auto params = frame["params"].toObject();
+    if (!method.isEmpty()) {
+        if (frame.contains("id"))
+            approval(method, frame["id"], params);
+        else
+            notification(method, params);
+        return;
+    }
+    const auto pending = m_pending.take(frame["id"].toInt(-1));
+    if (pending.isEmpty())
+        return;
+    if (m_pending.isEmpty())
+        m_deadline.stop();
+    if (frame.contains("error")) {
+        finish(int(State::Failed),
+            QStringLiteral("Codex 拒绝 %1（错误码 %2）。")
+                .arg(pending)
+                .arg(frame["error"].toObject()["code"].toInt()));
+        return;
+    }
+    result(pending, frame["result"].toObject());
+}
+void Run::result(const QString &method, const QJsonObject &value)
+{
+    if (method == "initialize") {
+        m_connection.send({ { "method", "initialized" } });
+        request("account/read", { { "refreshToken", false } });
+    } else if (method == "account/read") {
+        const auto account = value["account"].toObject();
+        if ((account.isEmpty() && value["requiresOpenaiAuth"].toBool(true))
+            || (m_spec["account"].toInt() == Dedicated && account["type"] != "apiKey")) {
+            finish(int(State::Failed), QStringLiteral("所选账号未登录，请先配置 Codex 凭据。"));
+            return;
+        }
+        const auto owner = identity(Account(m_spec["account"].toInt()), account);
+        const auto previous = m_spec["identity"].toString();
+        if (!m_spec["threadId"].toString().isEmpty() && (owner.isEmpty() || owner != previous)) {
+            if (m_spec["reconcile"].toBool() && !previous.isEmpty()) {
+                finish(int(State::Interrupted), QStringLiteral("原回合的账号已变化，无法核对。"));
+                return;
+            }
+            // 旧记录可以由用户显式读取；新一轮缺少可靠身份时从当前输入开始。
+            if (!m_spec["reconcile"].toBool())
+                m_spec.remove("threadId");
+        }
+        m_spec.insert("identity", owner);
+        if (m_spec["reconcile"].toBool()) {
+            // 对账只读取原线程。断线后没有可靠 turnId 时不能猜测或重新执行。
+            m_thread = m_spec["threadId"].toString();
+            m_turn = m_spec["turnId"].toString();
+            request("thread/read", { { "threadId", m_thread }, { "includeTurns", true } });
+            return;
+        }
+        QJsonObject options { { "cwd", m_spec["cwd"] }, { "approvalPolicy", "on-request" },
+            { "approvalsReviewer", "user" },
+            { "sandbox", m_spec["write"].toBool() ? "workspace-write" : "read-only" } };
+        if (!m_spec["model"].toString().isEmpty())
+            options.insert("model", m_spec["model"]);
+        const auto bound = m_spec["threadId"].toString();
+        if (!bound.isEmpty())
+            options.insert("threadId", bound);
+        request(bound.isEmpty() ? "thread/start" : "thread/resume", options);
+    } else if (method == "thread/read") {
+        const auto thread = value["thread"].toObject();
+        if (thread["id"] == m_thread)
+            for (const auto &entry : thread["turns"].toArray()) {
+                const auto turn = entry.toObject();
+                if (turn["id"] != m_turn)
+                    continue;
+                // 仅用引擎快照修复已知回合的展示；永不重发该回合的工具调用。
+                m_dispatched = true;
+                for (const auto &item : turn["items"].toArray())
+                    notification(
+                        "item/completed", { { "threadId", m_thread }, { "turnId", m_turn }, { "item", item } });
+                if (turn["status"] == "inProgress")
+                    finish(int(State::Interrupted), QStringLiteral("引擎回合仍在进行，可稍后再次核对。"));
+                else
+                    notification("turn/completed", { { "threadId", m_thread }, { "turn", turn } });
+                return;
+            }
+        finish(int(State::Interrupted), QStringLiteral("引擎历史中尚未找到原回合。"));
+    } else if (method == "thread/start" || method == "thread/resume") {
+        const auto sandbox = value["sandbox"].toObject();
+        m_thread = value["thread"].toObject()["id"].toString();
+        const auto cwd = QFileInfo(value["cwd"].toString()).canonicalFilePath();
+        bool rootsMatch = true;
+        for (const auto &root : sandbox["writableRoots"].toArray()) {
+            const auto path = QFileInfo(root.toString()).canonicalFilePath();
+            if (path.isEmpty() || (path != cwd && !path.startsWith(cwd + '/')))
+                rootsMatch = false;
+        }
+        if (!rootsMatch || m_thread.isEmpty()
+            || (method == "thread/resume" && m_thread != m_spec["threadId"].toString())
+            || cwd != m_spec["cwd"].toString() || value["approvalPolicy"] != "on-request"
+            || value["approvalsReviewer"] != "user"
+            || sandbox["type"] != (m_spec["write"].toBool() ? "workspaceWrite" : "readOnly")) {
+            finish(int(State::Failed), QStringLiteral("引擎返回的目录、线程或权限与派发设置不符。"));
+            return;
+        }
+        emitEvent({ { "kind", "thread" }, { "identity", m_spec["identity"] }, { "threadId", m_thread },
+            { "model", value["model"] } });
+        m_dispatched = true;
+        QJsonArray input;
+        if (!m_spec["context"].toString().isEmpty())
+            input.append(QJsonObject { { "type", "text" },
+                { "text", QStringLiteral("以下为用户选择的历史记录：\n") + m_spec["context"].toString() } });
+        for (const auto &image : m_spec["images"].toArray())
+            input.append(QJsonObject { { "type", "localImage" }, { "path", image } });
+        input.append(QJsonObject { { "type", "text" }, { "text", m_spec["prompt"] } });
+        request("turn/start", { { "threadId", m_thread }, { "input", input } });
+    } else if (method == "turn/start") {
+        const auto id = value["turn"].toObject()["id"].toString();
+        if (id.isEmpty() || (!m_turn.isEmpty() && id != m_turn)) {
+            finish(int(State::Interrupted), QStringLiteral("无法核对本次回合标识。"));
+            return;
+        }
+        const bool newlyBound = m_turn.isEmpty();
+        m_turn = id;
+        emitEvent({ { "kind", "turn" }, { "turnId", id } });
+        if (m_stopping && newlyBound)
+            request("turn/interrupt", { { "threadId", m_thread }, { "turnId", id } });
+    } else if (method == "turn/interrupt") {
+        // 停止已受理；只有引擎终态可以证明工具确实结束。
+        m_deadline.start();
+    }
+}
+void Run::approval(const QString &method, const QJsonValue &id, const QJsonObject &params)
+{
+    const bool scope
+        = m_dispatched && !m_turn.isEmpty() && params["threadId"] == m_thread && params["turnId"] == m_turn;
+    if (method != "item/commandExecution/requestApproval" && method != "item/fileChange/requestApproval") {
+        m_connection.send({ { "id", id },
+            { "error", QJsonObject { { "code", -32601 }, { "message", "Unsupported client request" } } } });
+        return;
+    }
+    if (!scope || m_stopping || m_approvals.size() >= 8) {
+        m_connection.send({ { "id", id }, { "result", QJsonObject { { "decision", "decline" } } } });
+        return;
+    }
+    const auto token = QUuid::createUuid().toString(QUuid::WithoutBraces);
+    m_approvals.insert(token, id);
+    const auto action
+        = method.startsWith("item/fileChange") ? QStringLiteral("修改文件") : QStringLiteral("执行命令");
+    const auto text = action + '\n' + params["command"].toString() + '\n' + params["reason"].toString() + '\n'
+        + params["grantRoot"].toString() + '\n' + params["cwd"].toString(m_spec["cwd"].toString());
+    if (text.size() > 32000) {
+        decide(token, false);
+        return;
+    }
+    emitEvent({ { "kind", "approval" }, { "token", token }, { "detail", text } });
+}
+bool Run::decide(const QString &token, bool allow)
+{
+    auto it = m_approvals.find(token);
+    if (m_done || it == m_approvals.end())
+        return false;
+    const auto id = it.value();
+    m_approvals.erase(it);
+    return m_connection.send(
+        { { "id", id }, { "result", QJsonObject { { "decision", allow ? "accept" : "decline" } } } });
+}
+void Run::output(const QString &item, const QString &kind, const QString &text, bool replace, const QString &title)
+{
+    if (item.isEmpty())
+        return;
+    // 合并相邻增量，最终快照单独发布；限制单个宿主帧，避免长输出阻塞控制消息。
+    if (!replace && !m_output.isEmpty() && m_output.last()["item"] == item
+        && m_output.last()["text"].toString().size() + text.size() < 20000) {
+        auto &last = m_output.last();
+        last.insert("text", last["text"].toString() + text);
+    } else {
+        for (qsizetype start = 0; start < qMax(qsizetype(1), text.size()); start += 20000) {
+            m_output.append({ { "kind", "output" }, { "item", item }, { "type", kind }, { "title", title },
+                { "replace", replace && start == 0 }, { "text", text.mid(start, 20000) } });
+            if (m_output.size() >= 16)
+                flushOutput();
+        }
+    }
+    if (!m_flush.isActive())
+        m_flush.start();
+}
+void Run::flushOutput()
+{
+    m_flush.stop();
+    const auto batch = std::exchange(m_output, {});
+    for (const auto &item : batch)
+        emitEvent(item);
+}
+void Run::notification(const QString &method, const QJsonObject &params)
+{
+    if (!m_dispatched || params["threadId"] != m_thread)
+        return;
+    if (method == "serverRequest/resolved") {
+        const auto token = m_approvals.key(params["requestId"]);
+        if (!token.isEmpty()) {
+            m_approvals.remove(token);
+            emitEvent({ { "kind", "approvalClosed" }, { "token", token } });
+        }
+        return;
+    }
+    const auto turn = params["turn"].toObject();
+    const auto id = params["turnId"].toString(turn["id"].toString());
+    // 此连接只发一轮；通知可能先于 turn/start 的响应，仍须核对线程和回合。
+    if (id.isEmpty() || (!m_turn.isEmpty() && id != m_turn))
+        return;
+    if (m_turn.isEmpty()) {
+        if (method != "turn/started")
+            return;
+        m_turn = id;
+        emitEvent({ { "kind", "turn" }, { "turnId", id } });
+        if (m_stopping)
+            request("turn/interrupt", { { "threadId", m_thread }, { "turnId", id } });
+    }
+    const auto item = params["item"].toObject();
+    const auto itemId = params["itemId"].toString(item["id"].toString());
+    if (method == "item/agentMessage/delta")
+        output(itemId, "assistant", params["delta"].toString(), false);
+    else if (method == "item/commandExecution/outputDelta")
+        output(itemId, "terminal", params["delta"].toString(), false);
+    else if (method == "item/started" || method == "item/completed") {
+        const auto type = item["type"].toString();
+        if (type == "agentMessage" && method == "item/completed")
+            output(itemId, "assistant", item["text"].toString(), true);
+        else if (type == "commandExecution" && (method == "item/started" || item["aggregatedOutput"].isString()))
+            output(itemId, "terminal", item["aggregatedOutput"].toString(), true, item["command"].toString());
+        else if (type == "fileChange") {
+            QString diff;
+            for (const auto &entry : item["changes"].toArray()) {
+                const auto change = entry.toObject();
+                diff += change["path"].toString() + '\n' + change["diff"].toString() + '\n';
+            }
+            output(itemId, "diff", diff, true, QStringLiteral("文件改动"));
+        }
+        if (method == "item/completed" && !itemId.isEmpty()
+            && (type == "commandExecution" || type == "fileChange")) {
+            flushOutput();
+            const auto failed
+                = item["status"] == "failed" || item["status"] == "declined" || item["exitCode"].toInt() != 0;
+            emitEvent({ { "kind", "itemEnd" }, { "item", itemId },
+                { "state", int(failed ? State::Failed : State::Complete) }, { "exitCode", item["exitCode"] } });
+        }
+    } else if (method == "turn/completed") {
+        const auto status = turn["status"].toString();
+        if (status == "completed")
+            finish(int(State::Complete), QStringLiteral("执行完成"));
+        else if (status == "interrupted")
+            finish(int(State::Cancelled), QStringLiteral("已停止"));
+        else
+            finish(status == "failed" ? int(State::Failed) : int(State::Interrupted),
+                QStringLiteral("执行未完成，请检查账号、模型权限和网络。"));
+    }
+}
+}

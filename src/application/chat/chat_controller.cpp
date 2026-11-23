@@ -24,6 +24,18 @@ ChatController::ChatController(QObject *parent)
     : QObject(parent), m_messages(this), m_sessionModel(this),
       m_repository(QStandardPaths::writableLocation(QStandardPaths::AppDataLocation)), m_service(this), m_blocks(this), m_blockViews(m_blocks, this), m_externalBlocks(m_blocks), m_internalTask(m_blocks, this), m_mediaCatalog(QStandardPaths::writableLocation(QStandardPaths::AppDataLocation), this), m_mediaTask(m_blocks, m_mediaCatalog, this)
 {
+    connect(this,&ChatController::sessionChanged,this,[this] {
+        m_agent.select(m_preview ? QString{} : currentSessionId(),m_storageWritable && !m_preview);
+    });
+    connect(&m_agent,&AgentController::failure,this,&ChatController::setError);
+    connect(&m_agent,&AgentController::saved,this,[this] {
+        refreshSessions(); emit sessionChanged(); emit draftChanged();
+    });
+    connect(&m_agent,&AgentController::rowChanged,this,[this](const QString &session,const ChatMessage &row) {
+        if (!m_preview && currentSessionId() == session) m_messages.upsertServiceMessage(row);
+        // 事件按会话写入；后台输出同样需要在空闲时保存。
+        m_saveTimer.start();
+    });
     m_exporter.setMaxThreadCount(1);
     connect(this, &ChatController::sessionChanged, this, &ChatController::workspaceChanged);
     m_service.setEventSink([this](const QString &method, const QJsonObject &event, QString *error) { return m_externalBlocks.apply(method, event, error); });
@@ -69,6 +81,7 @@ ChatController::ChatController(QObject *parent)
     connect(&m_projects, &ProjectNavigator::failure, this, &ChatController::setError);
     // 仅持有仓库写锁的宿主执行重启恢复；只读窗口看到的任务可能仍由另一实例运行。
     if (m_storageWritable) {
+        m_agent.restore();
         for (auto &session : m_sessions) for (auto &message : session.messages) {
             const auto serviceId = message.activity.value("serviceId").toString();
             if ((serviceId != "local-service" && serviceId != "internal-analysis") || message.status != MessageStatus::Running) continue;
@@ -234,6 +247,7 @@ bool ChatController::sendMessage()
         setError(QStringLiteral("单条消息不能超过 64K 字符，请拆分后发送。"));
         return false;
     }
+    if (!m_preview && m_agent.account()) return m_agent.submit(text,workspacePath());
     if (m_preview) {
         // 预览输入只创建新的本地会话，样例不混入真实聊天历史。
         newSession();
@@ -248,17 +262,25 @@ bool ChatController::sendMessage()
     message.id = createId();
     message.content = text;
     m_messages.append(message);
-    // 当前只交付聊天界面，明确提示未连接引擎，不生成伪造的助手回复。
+    // 仅本地模式只保存本条聊天；用户选择执行账号后由 Agent 模块处理派发。
     ChatMessage notice;
     notice.id = createId();
     notice.role = MessageRole::Notice;
-    notice.content = QStringLiteral("消息已保存在本地。Agent 引擎尚未连接，当前不会调用模型或执行工具。");
+    notice.content = QStringLiteral("消息已保存在本地。可在会话执行设置中选择 Codex。");
     m_messages.append(notice);
     flush();
     return true;
 }
 
-QVariantList ChatController::resourceConversations() const { return m_resources.list(); }
+QVariantList ChatController::resourceConversations() const
+{
+    // 已转为可写会话的历史只显示在项目树内，老版未迁移的资源仍可直接预览。
+    QSet<QString> imported;
+    for (const auto &session : m_sessions) imported.insert(session.history.value("resourceId").toString());
+    auto entries = m_resources.list();
+    entries.removeIf([&imported](const QVariant &entry) { return imported.contains(entry.toMap().value("id").toString()); });
+    return entries;
+}
 QVariantList ChatController::navigationEntries() const { return m_resources.navigation(); }
 QVariantMap ChatController::navigationInfo() const { return m_resources.navigationInfo(); }
 QString ChatController::resourcePath() const { return m_resources.rootPath(); }

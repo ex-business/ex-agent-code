@@ -109,7 +109,7 @@ QString LocalServiceProcess::request(const QString &method, const QJsonObject &p
     if (m_state != ServiceState::Ready || !m_channel) return {};
     auto scoped = params;
     // 有副作用的请求绑定已协商代次，不能在新进程里自动重跑旧命令。
-    if (method == "task.start" || method == "task.cancel") scoped.insert("producerEpoch", m_epoch);
+    if (method == "task.start" || method == "task.cancel" || method.startsWith("agent.")) scoped.insert("producerEpoch", m_epoch);
     return m_channel->request(method, scoped);
 }
 void LocalServiceProcess::acceptConnection()
@@ -173,7 +173,8 @@ void LocalServiceProcess::handleEvent(const QString &method, const QJsonObject &
 {
     if (!m_channel || m_stopping) return;
     if (method == "stream.gap") { fail(QStringLiteral("断线位置早于后台重放窗口，已有内容已保留，请重新启动任务")); return; }
-    if (!method.startsWith("block.") || params.value("producerEpoch").toString() != m_epoch
+    const bool known = m_launch.producerId == "codex-agent" ? method == "agent.event" : method.startsWith("block.");
+    if (!known || params.value("producerEpoch").toString() != m_epoch
         || !identifier(params.value("eventId")) || !integer(params.value("sequence"), 1, 9007199254740991LL)) {
         fail(QStringLiteral("后台事件标识或代次无效")); return;
     }

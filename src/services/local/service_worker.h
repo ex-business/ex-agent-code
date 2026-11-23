@@ -1,5 +1,6 @@
 #pragma once
 #include "infrastructure/ipc/rpc_channel.h"
+#include "agent/codex/codex_worker.h"
 #include <QHash>
 #include <QPointer>
 
@@ -7,8 +8,11 @@ namespace exagent {
 class ServiceWorker final : public QObject {
     Q_OBJECT
 public:
-    ServiceWorker(QString socketName, QString token, QObject *parent = nullptr);
+    ServiceWorker(QString socketName, QString token, bool agentMode, QObject *parent = nullptr);
 private:
+    codex::Worker *m_agent = nullptr;
+    bool publishEvent(const QString &method, QJsonObject payload);
+    void drainAgent();
     struct Task {
         QString conversationId, blockId, title;
         int step = 0, revision = 0;

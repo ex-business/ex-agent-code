@@ -18,7 +18,7 @@ qt_add_qml_module(ex_agent_workbench
         components/blocks/ImageSequenceRenderer.qml components/blocks/UnknownBlockRenderer.qml
         components/Icon.qml components/IconButton.qml
         components/ContextMenu.qml components/ContextMenuItem.qml
-        components/Sidebar.qml components/ProjectTreeRow.qml components/ConversationTransferDialog.qml components/Composer.qml
+        components/Sidebar.qml components/ProjectTreeRow.qml components/AgentApprovalDialog.qml components/AgentSettings.qml components/ConversationTransferDialog.qml components/Composer.qml
         components/ComposerToolbar.qml components/MessageActions.qml
         components/UserMessageBubble.qml
         components/SelectionSurface.qml components/SelectableText.qml components/SendButton.qml

@@ -40,6 +40,8 @@ QList<ChatSession> SessionRepository::load(QString *error) const
         ChatSession session;
         session.id = object.value("id").toString();
         session.title = object.value("title").toString();
+        session.agent = object.value("agent").toObject().toVariantMap();
+        session.history = object.value("history").toObject().toVariantMap();
         session.transfers = object.value("transfers").toArray().toVariantList();
         session.draft = object.value("draft").toString();
         session.updatedAt = QDateTime::fromString(object.value("updatedAt").toString(), Qt::ISODateWithMs);
@@ -63,6 +65,7 @@ QList<ChatSession> SessionRepository::load(QString *error) const
             message.id = messageObject.value("id").toString();
             message.role = static_cast<MessageRole>(role);
             message.status = static_cast<MessageStatus>(status);
+            message.originalContent = messageObject.value("originalContent").toString();
             message.content = messageObject.value("content").toString();
             message.title = messageObject.value("title").toString();
             message.files = messageObject.value("files").toArray().toVariantList();
@@ -77,7 +80,7 @@ QList<ChatSession> SessionRepository::load(QString *error) const
                 value = attachment;
             }
             message.expanded = messageObject.value("expanded").toBool();
-            message.createdAt = QDateTime::fromString(messageObject.value("createdAt").toString(), Qt::ISODateWithMs);
+            message.readTimestamp(messageObject.value("createdAt").toString());
             session.messages.append(message);
         }
         sessions.append(session);
@@ -100,17 +103,22 @@ bool SessionRepository::save(const QList<ChatSession> &sessions, QString *error)
                 auto attachment = value.toMap();
                 if (attachment.contains("asset")) { attachment.remove("url"); value = attachment; }
             }
-            messages.append(QJsonObject{
+            QJsonObject entry{
                 {"id", message.id}, {"startsTurn", message.startsTurn}, {"originSession", message.originSession}, {"originMessage", message.originMessage}, {"role", static_cast<int>(message.role)},
                 {"status", static_cast<int>(message.status)}, {"content", message.content},
                 {"title", message.title}, {"expanded", message.expanded}, {"files", QJsonArray::fromVariantList(message.files)},
                 {"activity", QJsonObject::fromVariantMap(message.activity)}, {"attachments", QJsonArray::fromVariantList(attachments)},
-                {"createdAt", message.createdAt.toString(Qt::ISODateWithMs)}});
+                {"createdAt", message.timestamp()}};
+            if (!message.originalContent.isNull()) entry.insert("originalContent", message.originalContent);
+            messages.append(entry);
         }
-        sessionArray.append(QJsonObject{
+        QJsonObject record{
             {"id", session.id}, {"title", session.title}, {"draft", session.draft},
             {"transfers", QJsonArray::fromVariantList(session.transfers)},
-            {"updatedAt", session.updatedAt.toString(Qt::ISODateWithMs)}, {"messages", messages}});
+            {"updatedAt", session.updatedAt.toString(Qt::ISODateWithMs)}, {"messages", messages}};
+        if (!session.agent.isEmpty()) record.insert("agent", QJsonObject::fromVariantMap(session.agent));
+        if (!session.history.isEmpty()) record.insert("history", QJsonObject::fromVariantMap(session.history));
+        sessionArray.append(record);
     }
     QSaveFile file(filePath());
     file.setDirectWriteFallback(false);

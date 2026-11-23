@@ -8,9 +8,13 @@ Q_LOGGING_CATEGORY(workerLog, "exagent.ipc.worker")
 
 namespace exagent {
 using namespace ipc;
-ServiceWorker::ServiceWorker(QString socketName, QString token, QObject *parent)
+ServiceWorker::ServiceWorker(QString socketName, QString token, bool agentMode, QObject *parent)
     : QObject(parent), m_socketName(std::move(socketName)), m_token(std::move(token)), m_epoch(newId())
 {
+    if (agentMode) {
+        m_agent = new codex::Worker(this);
+        connect(m_agent,&codex::Worker::available,this,&ServiceWorker::drainAgent);
+    }
     m_retry.setSingleShot(true);
     connect(&m_retry, &QTimer::timeout, this, &ServiceWorker::connectSocket);
     m_tick.setInterval(160);
@@ -68,8 +72,8 @@ void ServiceWorker::connectSocket()
         });
         connect(channel, &RpcChannel::writableChanged, this, &ServiceWorker::replay);
         m_hello = channel->request("protocol.hello", {{"version", Version}, {"token", m_token},
-            {"producerId", "local-service"}, {"producerEpoch", m_epoch},
-            {"capabilities", QJsonArray{"system.ping", "system.echo", "task.start", "task.cancel", "stream.resume"}},
+            {"producerId", m_agent ? "codex-agent" : "local-service"}, {"producerEpoch", m_epoch},
+            {"capabilities", m_agent ? QJsonArray{"system.ping","stream.resume","agent.start","agent.stop","agent.approve"} : QJsonArray{"system.ping", "system.echo", "task.start", "task.cancel", "stream.resume"}},
             {"blockKinds", QJsonArray{int(BlockKind::Text)}}}, 3000);
         if (m_hello.isEmpty()) channel->abort(QStringLiteral("握手请求未能排队"));
     });
@@ -98,13 +102,30 @@ bool ServiceWorker::publish(const QString &method, const QString &taskId, Task &
 {
     if (!m_ready || !m_channel || m_sequence - m_acknowledged >= EventWindow || m_lastSent != m_sequence) return false;
     auto payload = data;
-    payload.insert("eventId", newId()); payload.insert("producerEpoch", m_epoch);
-    payload.insert("sequence", double(++m_sequence)); payload.insert("revision", ++task.revision);
+    payload.insert("revision", ++task.revision);
     payload.insert("conversationId", task.conversationId); payload.insert("taskId", taskId); payload.insert("blockId", task.blockId);
+    return publishEvent(method,payload);
+}
+bool ServiceWorker::publishEvent(const QString &method,QJsonObject payload)
+{
+    if (!m_ready || !m_channel || m_sequence - m_acknowledged >= EventWindow || m_lastSent != m_sequence) return false;
+    payload.insert("eventId",newId()); payload.insert("producerEpoch",m_epoch);
+    payload.insert("sequence",double(++m_sequence));
     m_history.append({method, payload, m_sequence});
     while (m_history.size() > ReplayHistory && m_history.first().sequence <= m_acknowledged) m_history.removeFirst();
     replay();
     return true;
+}
+void ServiceWorker::drainAgent()
+{
+    if (!m_agent) return;
+    while (!m_agent->events.isEmpty()) {
+        auto next = m_agent->events.head();
+        const auto bytes = next.take("_bytes").toInteger();
+        if (!publishEvent("agent.event",next)) return;
+        m_agent->queuedBytes -= bytes;
+        m_agent->events.dequeue();
+    }
 }
 void ServiceWorker::request(const QString &id, const QString &method, const QJsonObject &params)
 {
@@ -122,6 +143,13 @@ void ServiceWorker::request(const QString &id, const QString &method, const QJso
         const auto after = qint64(params.value("afterSequence").toDouble());
         if (!m_history.isEmpty() && after < m_history.first().sequence - 1) { channel->reject(id, -32009, QStringLiteral("恢复位置早于内存重放窗口")); return; }
         channel->respond(id, QJsonObject{{"afterSequence", double(after)}}); resume(after); return;
+    }
+    if (m_agent) {
+        QString error;
+        if (params["producerEpoch"].toString() != m_epoch || !m_agent->command(method,params,&error))
+            channel->reject(id,-32602,error.isEmpty() ? QStringLiteral("后台代次已变化") : error);
+        else channel->respond(id,QJsonObject{});
+        return;
     }
     if ((method == "task.start" || method == "task.cancel") && params.value("producerEpoch").toString() != m_epoch) {
         channel->reject(id, -32007, QStringLiteral("后台代次不匹配，禁止重跑旧任务")); return;
@@ -157,6 +185,7 @@ void ServiceWorker::tick()
 {
     if (!m_ready || !m_channel) return;
     replay();
+    if (m_agent) { drainAgent(); return; }
     for (auto it = m_tasks.begin(); it != m_tasks.end(); ++it) {
         auto &task = it.value();
         if (task.finished) continue;
@@ -186,7 +215,8 @@ int runServiceWorker(int argc, char **argv)
     if (!input.open(stdin, QIODevice::ReadOnly)) return 2;
     const auto token = QString::fromUtf8(input.readLine(256)).trimmed();
     if (token.size() != 64) { qCritical("缺少有效的后台认证材料"); return 2; }
-    ServiceWorker worker(args[option + 1], token);
+    app.setOrganizationName("EX Business"); app.setApplicationName("EX Agent Code");
+    ServiceWorker worker(args[option + 1], token, args.contains("--agent-worker"));
     return app.exec();
 }
 }

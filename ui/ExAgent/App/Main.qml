@@ -26,6 +26,7 @@ ApplicationWindow {
     property bool sidebarVisible: true
     property bool filesVisible: true
     WorkspaceController { id: workspaceController }
+    Design.AgentApprovalDialog { id: agentApproval; controller: window.controller }
     Design.ConversationTransferDialog { id: transferDialog; controller: window.controller }
     Design.ChatMenu { id: chatMenu; onOrganizeRequested: transferDialog.begin(); onAttachRequested: imageAttachment.open(); controller: window.controller; onImageSequenceRequested: imageFolder.open() }
     Design.BlockWindowManager { controller: window.controller; hostWindow: window }
@@ -190,6 +191,7 @@ ApplicationWindow {
                 onFileRequested: (path) => { window.filesVisible = true; workspaceController.open(path) }
             }
             Design.Composer {
+                onApprovalRequested: agentApproval.open()
                 id: composer
                 Layout.fillWidth: true
                 Layout.maximumWidth: Math.min(parent.width - 30, 780)

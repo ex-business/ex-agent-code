@@ -55,13 +55,17 @@ ConversationResource ConversationResourceRepository::manifest(const QString &id,
     }
     const int activityStatus = object.value("activityStatus").toInt(0);
     if (activityStatus < 0 || activityStatus > 3) { *error = QStringLiteral("会话活动状态不合法。"); return {}; }
-    return {id, object.value("title").toString(), count, pages, object.value("changeSummary").toObject().toVariantMap(), activityStatus};
+    return {id, object.value("title").toString(), count, pages, object.value("changeSummary").toObject().toVariantMap(), activityStatus, object.value("source").toObject().toVariantMap()};
 }
-QVariantList ConversationResourceRepository::navigation() const
+QVariantList ConversationResourceRepository::navigation(QString *errorOut) const
 {
     QString error;
     const auto document = readDocument(rootPath() + "/navigation.json", rootPath(), &error);
-    if (!error.isEmpty() || document.object().value("schemaVersion").toInt() != 1) return {};
+    if (!error.isEmpty() || document.object().value("schemaVersion").toInt() != 1
+        || !document.object().value("entries").isArray()) {
+        if (errorOut) *errorOut = error.isEmpty() ? QStringLiteral("历史导航格式不正确。") : error;
+        return {};
+    }
     return document.object().value("entries").toArray().toVariantList();
 }
 QVariantMap ConversationResourceRepository::navigationInfo() const
@@ -81,7 +85,7 @@ QVariantList ConversationResourceRepository::list() const
     }
     return result;
 }
-QList<ChatMessage> ConversationResourceRepository::page(const ConversationResource &resource, int number, QString *error) const
+QList<ChatMessage> ConversationResourceRepository::page(const ConversationResource &resource, int number, QString *error, bool requireAllAttachments) const
 {
     if (number < 0 || number >= resource.pageCount) { *error = QStringLiteral("会话资源分页超出范围。"); return {}; }
     const auto path = rootPath() + '/' + resource.id + QString("/messages/%1.json").arg(number, 6, 10, QChar('0'));
@@ -102,6 +106,7 @@ QList<ChatMessage> ConversationResourceRepository::page(const ConversationResour
         message.role = static_cast<MessageRole>(role);
         message.status = static_cast<MessageStatus>(status);
         message.content = object.value("content").toString();
+        message.originalContent = object.value("originalContent").toString();
         message.title = object.value("title").toString();
         message.files = object.value("files").toArray().toVariantList();
         message.activity = object.value("activity").toObject().toVariantMap();
@@ -122,7 +127,12 @@ QList<ChatMessage> ConversationResourceRepository::page(const ConversationResour
             if (attachment.value("name").toString().isEmpty()) attachment.insert("name", QFileInfo(imagePath).fileName());
             message.attachments.append(attachment);
         }
-        message.createdAt = QDateTime::fromString(object.value("createdAt").toString(), Qt::ISODateWithMs);
+        // 预览允许略过不可读缩略图，持久化迁移必须完整，不能把缺图的副本发布为成功。
+        if (requireAllAttachments && message.attachments.size() != object.value("attachments").toArray().size()) {
+            *error = QStringLiteral("消息 %1 的图片缺失、超限或无法读取。").arg(message.id);
+            return {};
+        }
+        message.readTimestamp(object.value("createdAt").toString());
         result.append(message);
     }
     return result;

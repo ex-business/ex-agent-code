@@ -11,6 +11,7 @@ ColumnLayout {
     required property ChatController controller
     property alias input: editor
     signal submitted()
+    signal approvalRequested()
     spacing: 0
     function send() {
         if (controller.sendMessage()) submitted()
@@ -19,6 +20,7 @@ ColumnLayout {
         controller.draft = prompt
         editor.forceActiveFocus()
     }
+    Design.AgentSettings { id: agentSettings; controller: root.controller }
     Connections {
         target: root.controller
         function onDraftChanged() { if (editor.text !== root.controller.draft) editor.text = root.controller.draft }
@@ -91,7 +93,24 @@ ColumnLayout {
                     }
                 }
             }
+            Label { visible: root.controller.agent.contextLabel.length > 0; text: root.controller.agent.contextLabel }
+            ColumnLayout {
+                Layout.fillWidth: true
+                visible: !!root.controller.agent.approval.token
+                Label {
+                    Layout.fillWidth: true; textFormat: Text.PlainText; wrapMode: Text.Wrap
+                    text: root.controller.agent.approval.detail || ""
+                    maximumLineCount: 5; elide: Text.ElideRight
+                }
+                RowLayout {
+                    Button { text: "查看审批详情"; onClicked: root.approvalRequested() }
+                    Button { text: "拒绝"; onClicked: root.controller.agent.decide(root.controller.agent.approval.token, false) }
+                }
+            }
             Design.ComposerToolbar {
+                agent: root.controller.agent
+                configurable: root.controller.projects.writable && !root.controller.previewMode
+                onSettingsRequested: agentSettings.open()
                 Layout.fillWidth: true
                 hasText: editor.text.trim().length > 0
                 canPaste: editor.canPaste

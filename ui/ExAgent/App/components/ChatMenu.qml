@@ -33,6 +33,7 @@ Design.ContextMenu {
         }
         Design.ContextMenuItem { text: "复制本地会话文件路径"; onTriggered: root.controller.copyText(root.controller.storagePath) }
     }
+    Design.ContextMenuItem { text: "核对最近一次 Codex 执行"; enabled: !root.controller.previewMode && root.controller.projects.writable && !root.controller.agent.busy; onTriggered: root.controller.agent.reconcile() }
     MenuSeparator {}
     Design.ContextMenuItem {
         text: "运行后台通信任务"; iconName: "terminal"

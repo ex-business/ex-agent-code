@@ -2,6 +2,8 @@ add_library(ex_agent_domain INTERFACE)
 target_include_directories(ex_agent_domain INTERFACE "${CMAKE_CURRENT_SOURCE_DIR}")
 target_link_libraries(ex_agent_domain INTERFACE Qt6::Core)
 
+add_subdirectory(agent)
+
 # 通信底座只依赖Core/Network，后台模式不创建GUI或加载QML。
 qt_add_library(ex_agent_ipc STATIC
     domain/content/content_block.h
@@ -10,11 +12,14 @@ qt_add_library(ex_agent_ipc STATIC
     application/services/local_service_process.h application/services/local_service_process.cpp
     application/services/content_block_store.h application/services/content_block_store.cpp
     application/services/content_block_adapters.h application/services/content_block_adapters.cpp
-    services/local/service_worker.h services/local/service_worker.cpp
+
 )
 target_include_directories(ex_agent_ipc PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}")
 target_link_libraries(ex_agent_ipc PUBLIC Qt6::Core Qt6::Network)
 target_compile_options(ex_agent_ipc PRIVATE -Wall -Wextra -Wpedantic)
+
+qt_add_library(ex_agent_worker STATIC services/local/service_worker.h services/local/service_worker.cpp)
+target_link_libraries(ex_agent_worker PUBLIC ex_agent_ipc ex_agent_codex)
 
 qt_add_library(ex_agent_chat STATIC)
 qt_add_qml_module(ex_agent_chat
@@ -24,7 +29,10 @@ qt_add_qml_module(ex_agent_chat
         domain/project/project_catalog.h domain/project/project_catalog.cpp
         application/project/project_navigator.h application/project/project_navigator.cpp
         infrastructure/storage/conversation_image.h infrastructure/storage/conversation_image.cpp
+        infrastructure/storage/history_migration.h infrastructure/storage/history_migration.cpp
         infrastructure/storage/project_repository.h infrastructure/storage/project_repository.cpp
+        application/agent/history_context.h application/agent/history_context.cpp
+        application/agent/agent_controller.h application/agent/agent_controller.cpp
         application/chat/conversation_transfer.h application/chat/conversation_transfer.cpp
         application/chat/chat_controller.h application/chat/chat_controller.cpp
         application/services/internal_content_task.h application/services/internal_content_task.cpp
@@ -49,15 +57,15 @@ qt_add_qml_module(ex_agent_chat
         presentation/text/selection_coordinator.h presentation/text/selection_coordinator.cpp
         presentation/workspace/workspace_controller.h presentation/workspace/workspace_controller.cpp
 )
-target_link_libraries(ex_agent_chat PUBLIC ex_agent_domain ex_agent_ipc Qt6::Gui Qt6::Qml Qt6::Quick Qt6::Concurrent)
+target_link_libraries(ex_agent_chat PUBLIC ex_agent_domain ex_agent_ipc ex_agent_codex Qt6::Gui Qt6::Qml Qt6::Quick Qt6::Concurrent)
 target_include_directories(ex_agent_chat PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}"
-    PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/application/chat" "${CMAKE_CURRENT_SOURCE_DIR}/presentation/chat" "${CMAKE_CURRENT_SOURCE_DIR}/presentation/code")
+    PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/application/agent" "${CMAKE_CURRENT_SOURCE_DIR}/application/chat" "${CMAKE_CURRENT_SOURCE_DIR}/presentation/chat" "${CMAKE_CURRENT_SOURCE_DIR}/presentation/code")
 target_compile_options(ex_agent_chat PRIVATE -Wall -Wextra -Wpedantic)
 target_include_directories(ex_agent_chat PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/presentation/text")
 target_include_directories(ex_agent_chat PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/presentation/workspace")
 
 qt_add_executable(ex-agent-code MACOSX_BUNDLE app/main.cpp app/profiled_application.h app/disclosure_input_filter.h app/disclosure_input_filter.cpp app/scroll_diagnostics.h app/scroll_diagnostics.cpp app/pixel_scroll_filter.h app/pixel_scroll_filter.cpp)
-target_link_libraries(ex-agent-code PRIVATE ex_agent_chat ex_agent_chatplugin Qt6::Quick Qt6::QuickControls2)
+target_link_libraries(ex-agent-code PRIVATE ex_agent_worker ex_agent_chat ex_agent_chatplugin Qt6::Quick Qt6::QuickControls2)
 if(APPLE)
     target_sources(ex_agent_chat PRIVATE platform/macos/word_boundaries.cpp)
     target_link_libraries(ex_agent_chat PRIVATE "-framework CoreFoundation")
