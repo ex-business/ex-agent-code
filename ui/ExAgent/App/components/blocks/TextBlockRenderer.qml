@@ -4,6 +4,7 @@ import ExAgent.App as Design
 
 Design.BlockRendererContent {
     id: root
+    property Design.ProsePreparation preparation: null
     layoutReady: Boolean(content.item) && (root.block.contentMode === 2 || markdownItem && markdownItem.layoutReady)
     readonly property var markdownItem: content.item
     implicitHeight: (content.item as Item)?.implicitHeight ?? 24
@@ -27,6 +28,7 @@ Design.BlockRendererContent {
     Component {
         id: markdown
         Design.MarkdownText {
+            preparation: root.preparation
             pooled: root.pooled
             width: root.width
             block: root.block; messageId: root.messageId; blockIndex: root.blockIndex

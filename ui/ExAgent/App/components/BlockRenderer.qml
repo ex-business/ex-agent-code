@@ -56,6 +56,17 @@ Item {
     clip: true
     Design.DisclosureHeight on implicitHeight { id: blockDisclosure; allowed: root.disclosureActive && !root.showContent && !(root.outerWheel && root.outerWheel.animating) }
     readonly property bool staticCode: rendererKind === 2 && Number(block.contentMode) !== 2 && showContent && !detached
+    // 在异步渲染器开始实例化前启动静态正文排版，动态块和收起的块不占用排版任务。
+    Loader {
+        id: proseJob
+        active: root.rendererKind === 1 && Number(root.block.contentMode) !== 2 && root.showContent
+        sourceComponent: Design.ProsePreparation {
+            slot: root
+            source: root.block.text || ""
+            pooled: root.pooled
+            policy: root.outerWheel?.view?.renderPolicy ?? null
+        }
+    }
     HoverHandler { id: blockHover }
     Design.BlockHeader {
         id: blockHeader
@@ -114,6 +125,8 @@ Item {
                 root.retainedCode = root.cacheableCode
                 const content = item as Design.BlockRendererContent
                 if (!content) return
+                const textRenderer = item as Design.TextBlockRenderer
+                if (textRenderer) textRenderer.preparation = Qt.binding(() => proseJob.item as Design.ProsePreparation)
                 content.block = Qt.binding(() => root.block)
                 content.controller = Qt.binding(() => root.controller)
                 content.messageId = Qt.binding(() => root.messageId)

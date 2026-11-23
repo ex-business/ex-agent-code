@@ -21,6 +21,8 @@ QtObject {
     property var heights: ({})
     property var order: []
     readonly property int preloadPixels: Math.ceil(view.height * 2)
+    // 靠近视口的一屏先实例化，外圈仍按帧孵化；两侧总保留范围各为两屏。
+    readonly property int layoutMargin: Math.floor(preloadPixels / 2)
     property Timer quiet: Timer { interval: 150; onTriggered: { policy.scrolling = false; policy.fast = false; policy.direction = 0; policy.speed = 0 } }
     property Connections changes: Connections {
         target: policy.view
@@ -69,11 +71,14 @@ QtObject {
         if (bottom >= 0 && top <= view.height) return 0
         if (bottom < -preloadPixels || top > view.height + preloadPixels) return 2
         const behind = direction < 0 ? top > view.height : direction > 0 && bottom < 0
-        return behind ? 4 : 1
+        if (behind) return 4
+        const distance = top > view.height ? top - view.height : -bottom
+        return distance <= layoutMargin ? 5 : 1
     }
     function priorityForLane(lane: int): int {
-        // 沿用诊断编号：0可见、1前方或静止、2越界、3已回收、4后方。
+        // 沿用诊断编号：0可见、1前方或静止、2越界、3已回收、4后方，5即将可见。
         if (lane === 0) return 100
+        if (lane === 5) return 60
         if (lane === 1) return 20
         return lane === 4 ? 10 : -1
     }

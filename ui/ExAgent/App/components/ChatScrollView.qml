@@ -143,7 +143,9 @@ ListView {
     clip: true
     pixelAligned: true
     reuseItems: true
-    cacheBuffer: renderPolicy.preloadPixels
+    displayMarginBeginning: renderPolicy.layoutMargin
+    displayMarginEnd: renderPolicy.layoutMargin
+    cacheBuffer: renderPolicy.preloadPixels - renderPolicy.layoutMargin
     spacing: 5
     topMargin: 24
     bottomMargin: 15

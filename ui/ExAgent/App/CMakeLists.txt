@@ -26,7 +26,7 @@ qt_add_qml_module(ex_agent_workbench
         components/SelectionAutoScroll.qml
         components/WorkspaceTabs.qml components/WorkbenchTitleBar.qml components/FilePreview.qml
         components/ChatMenu.qml
-        components/BlockGeometry.js components/MarkdownText.qml components/TableRulesOverlay.qml
+        components/BlockGeometry.js components/ProsePreparation.qml components/MarkdownText.qml components/TableRulesOverlay.qml
         components/ToolActivityRow.qml components/MessageAttachments.qml
         components/ImagePreview.qml components/ChangesSummary.qml
         components/MessageContent.qml

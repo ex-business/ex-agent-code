@@ -39,7 +39,16 @@ Item {
                     Layout.fillWidth: true
                     sourceComponent: modelData.kind === 1 ? code : prose
                     Component { id: code; Design.CodeBlock { code: blockLoader.modelData.text; language: blockLoader.modelData.language; controller: root.controller; maximumCodeHeight: Math.max(160, root.height - 90); outerWheel: wheel } }
-                    Component { id: prose; Design.MarkdownText { block: blockLoader.modelData; selectionView: preview; onLinkActivated: (link) => { if (link.startsWith("file:")) root.workspace.open(link) } } }
+                    Component {
+                        id: prose
+                        Design.MarkdownText {
+                            id: previewProse
+                            block: blockLoader.modelData
+                            selectionView: preview
+                            preparation: Design.ProsePreparation { slot: previewProse; source: previewProse.block.text || "" }
+                            onLinkActivated: (link) => { if (link.startsWith("file:")) root.workspace.open(link) }
+                        }
+                    }
                 }
             }
         }
