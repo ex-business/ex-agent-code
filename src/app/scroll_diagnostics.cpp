@@ -43,6 +43,7 @@ ScrollDiagnostics::ScrollDiagnostics(QQuickWindow *window) : QObject(window)
     m_clock.start();
     m_disclosureMode = QCoreApplication::arguments().contains("--profile-disclosure");
     m_verboseTiming = m_disclosureMode && !QCoreApplication::arguments().contains("--light-frame-trace");
+    m_profileCoverage = QCoreApplication::arguments().contains("--profile-coverage");
     if (window->screen() && window->screen()->refreshRate() > 0) m_budget = 1000.0 / window->screen()->refreshRate();
     const auto directory = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation) + "/diagnostics";
     QDir().mkpath(directory);
@@ -61,7 +62,12 @@ ScrollDiagnostics::ScrollDiagnostics(QQuickWindow *window) : QObject(window)
     if (m_disclosureMode) startDrawableTiming();
 #endif
     connect(window, &QQuickWindow::afterAnimating, this, [this] {
+        // QML 只在 GUI 线程读取，渲染线程同步阶段复制本次快照。普通滚动诊断不承担遍历开销。
+        QVector4D coverage(-1, -1, -1, -1);
+        if (m_profileCoverage && m_view)
+            QMetaObject::invokeMethod(m_view, "viewportCoverage", Qt::DirectConnection, Q_RETURN_ARG(QVector4D, coverage));
         std::lock_guard guard(m_mutex);
+        m_guiCoverage = coverage;
         m_afterAnimating = timestamp();
     }, Qt::DirectConnection);
     connect(window, &QQuickWindow::frameSwapped, this, [this] { presented(); }, Qt::DirectConnection);
@@ -71,6 +77,7 @@ ScrollDiagnostics::ScrollDiagnostics(QQuickWindow *window) : QObject(window)
         ++m_syncSequence;
         m_syncStarted = m_clock.nsecsElapsed() / 1000000.0;
         m_frameAfterAnimating = m_afterAnimating;
+        m_frameCoverage = m_guiCoverage;
         // GUI在本帧同步阶段阻塞，仅将已进入同步的输入归属到该帧，不能借旧帧提前结算。
         m_syncedInputCount = m_inputCount;
         m_syncedDisclosureCount = m_disclosures.size();
@@ -101,6 +108,8 @@ ScrollDiagnostics::ScrollDiagnostics(QQuickWindow *window) : QObject(window)
             m_renderDurations.push_back(now - m_renderStarted);
     }, Qt::DirectConnection);
     connect(&m_saveTimer, &QTimer::timeout, this, [this] { save(); });
+    // 最后一次采样在窗口仍有效时落盘，避免退出时遗漏刚刚提交的帧。
+    connect(qApp, &QCoreApplication::aboutToQuit, this, [this] { save(true); });
     m_saveTimer.start(1000);
 }
 ScrollDiagnostics::~ScrollDiagnostics()
@@ -115,7 +124,6 @@ ScrollDiagnostics::~ScrollDiagnostics()
 #ifdef Q_OS_MACOS
     if (m_disclosureMode) stopDrawableTiming();
 #endif
-    save();
 }
 bool ScrollDiagnostics::eventFilter(QObject *, QEvent *event)
 {
@@ -277,19 +285,26 @@ void ScrollDiagnostics::presented()
 #endif
     // 每次提交均排空缓冲获取样本，不能把空闲时期的获取成本算到下一次点击。
     if (now - m_lastInput < 1200 && m_frames.size() < 10000) {
-        m_frames.append(QJsonObject{{"syncSequence", qint64(m_syncSequence)}, {"afterAnimatingMs", m_frameAfterAnimating}, {"syncBeginMs", m_syncStarted},
+        QJsonObject frame{{"syncSequence", qint64(m_syncSequence)}, {"afterAnimatingMs", m_frameAfterAnimating}, {"syncBeginMs", m_syncStarted},
             {"renderBeginMs", m_renderStarted}, {"drawableAcquireMs", drawableMs}, {"drawableCalls", drawableCalls}, {"ms", now}, {"syncedInputCount", m_syncedInputCount}, {"syncedDisclosureCount", m_syncedDisclosureCount},
             {"active", m_frameActive}, {"viewY", m_frameViewY}, {"originY", m_frameOriginY},
             {"kineticRunning", m_frameKinetic}, {"prefetchDirection", m_framePrefetchDirection},
-            {"syncMs", m_frameSyncDuration}, {"renderMs", m_frameRenderDuration}});
+            {"syncMs", m_frameSyncDuration}, {"renderMs", m_frameRenderDuration}};
+        if (m_profileCoverage) {
+            frame.insert("visibleRows", int(m_frameCoverage.x()));
+            frame.insert("visibleProseSlots", int(m_frameCoverage.y()));
+            frame.insert("boundProseRenderers", int(m_frameCoverage.z()));
+            frame.insert("settledProseLayouts", int(m_frameCoverage.w()));
+        }
+        m_frames.append(frame);
         m_dirty = true;
     }
     m_lastFrame = now;
 }
-void ScrollDiagnostics::save()
+void ScrollDiagnostics::save(bool finalSnapshot)
 {
     // 动画采样时不抓系统光标图片，且交互结束后才写盘，避免诊断自身制造主线程长任务。
-    if (m_disclosureMode) {
+    if (m_disclosureMode && !finalSnapshot) {
         std::lock_guard guard(m_mutex);
         if (m_clock.nsecsElapsed() / 1000000.0 - m_lastInput < 700) return;
     }
@@ -306,7 +321,7 @@ void ScrollDiagnostics::save()
     {
         std::lock_guard guard(m_mutex);
         // 停止输入后继续保留短暂读数，用于核对视口是否仍在漂移，不制造动画或新绘制。
-        if (!m_dirty && m_clock.nsecsElapsed() / 1000000.0 - m_lastInput > 2000) return;
+        if (!finalSnapshot && !m_dirty && m_clock.nsecsElapsed() / 1000000.0 - m_lastInput > 2000) return;
         m_dirty = false;
         textLayouts = m_textLayouts;
         dispatches = m_dispatches; contentPhases = m_contentPhases; qtTimings = m_qtTimings; layoutAnchors = m_layoutAnchors; wheelMotions = m_wheelMotions;
@@ -328,10 +343,11 @@ void ScrollDiagnostics::save()
     QSaveFile file(m_path);
     if (!file.open(QIODevice::WriteOnly)) return;
     file.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner);
-    const auto *view = m_view.data();
+    const auto *window = qobject_cast<QQuickWindow *>(parent());
+    const auto *view = window ? m_view.data() : nullptr;
     file.write(QJsonDocument(QJsonObject{{"schemaVersion", 6}, {"verboseTiming", m_verboseTiming}, {"pid", QCoreApplication::applicationPid()}, {"executable", QCoreApplication::applicationFilePath()}, {"renderLoop", qEnvironmentVariable("QSG_RENDER_LOOP", "default")}, {"updatedAt", QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs)},
         {"sampleMs", m_clock.nsecsElapsed() / 1000000.0},
-        {"active", qobject_cast<QQuickWindow *>(parent())->isActive()},
+        {"active", window && window->isActive()},
         {"viewFastScrolling", view ? view->property("fastScrolling").toBool() : false},
         {"cacheBufferPx", view ? view->property("cacheBuffer").toDouble() : 0},
         {"prefetchDirection", view ? view->property("prefetchDirection").toInt() : 0},
@@ -345,7 +361,7 @@ void ScrollDiagnostics::save()
         {"originY", view ? view->property("originY").toDouble() : 0},
         {"frameBudgetMs", m_budget}, {"inputCount", inputCount}, {"frameIntervals", statistics(intervals)},
         {"frameIntervalsIncludeIdle", true}, {"syncDuration", statistics(syncDurations)}, {"renderDuration", statistics(renderDurations)},
-        {"cursorShape", qobject_cast<QQuickWindow *>(parent()) ? int(qobject_cast<QQuickWindow *>(parent())->cursor().shape()) : int(Qt::ArrowCursor)},
+        {"cursorShape", window ? int(window->cursor().shape()) : int(Qt::ArrowCursor)},
         {"cursorShapes", cursorShapes},
         {"inactiveHoverCount", inactiveHoverCount},
 #ifdef Q_OS_MACOS

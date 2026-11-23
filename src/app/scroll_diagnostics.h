@@ -2,6 +2,7 @@
 #include <QObject>
 #include <QElapsedTimer>
 #include <QJsonArray>
+#include <QVector4D>
 #include <QHash>
 #include <QTimer>
 #include <QPointer>
@@ -28,7 +29,7 @@ protected:
     bool eventFilter(QObject *object, QEvent *event) override;
 private:
     void presented();
-    void save();
+    void save(bool finalSnapshot = false);
     QElapsedTimer m_clock;
     QTimer m_saveTimer;
     std::mutex m_mutex;
@@ -70,6 +71,8 @@ private:
     bool m_dirty = false;
     QString m_path;
     QPointer<QQuickItem> m_view;
+    bool m_profileCoverage = false;
+    QVector4D m_guiCoverage, m_frameCoverage;
     bool m_verboseTiming = false;
     bool m_disclosureMode = false;
 };

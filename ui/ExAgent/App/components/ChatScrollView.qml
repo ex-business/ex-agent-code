@@ -111,6 +111,20 @@ ListView {
             }
         } finally { renderPolicy.adjustingLayout = false }
     }
+    // GUI 动画阶段的快照与随后的提交帧关联；工具行计入可见行，不充当正文块。
+    function viewportCoverage(): vector4d {
+        let rows = 0, expected = 0, loaded = 0, ready = 0
+        for (const child of contentItem.children) {
+            const row = child as MessageRow
+            if (!row || row.pooled || !row.visible || row.height <= 0 || row.y >= contentY + height || row.y + row.height <= contentY) continue
+            ++rows
+            const content = row.messageBody()
+            if (!content) continue
+            const blocks = content.proseCoverage(transcript)
+            expected += blocks.x; loaded += blocks.y; ready += blocks.z
+        }
+        return Qt.vector4d(rows, expected, loaded, ready)
+    }
     objectName: "messageList"
     property bool pixelWheelEnabled: true
     property bool pixelWheelAnimated: Design.Theme.motionEnabled
@@ -143,7 +157,8 @@ ListView {
         view: transcript
         messages: transcript.controller.messages
         policy: renderPolicy
-        suspended: transcript.followingEnd || transcript.loadingOlder || transcript.jumpTarget >= 0
+        followingEnd: transcript.followingEnd
+        suspended: transcript.loadingOlder || transcript.jumpTarget >= 0
                    || transcriptScrollBar.pressed || Boolean(selectionLayer.origin)
     }
     Connections {
@@ -246,7 +261,8 @@ ListView {
         followingEnd = true
         Qt.callLater(() => transcript.positionViewAtEnd())
     }
-    onCountChanged: { if (followingEnd) Qt.callLater(() => transcript.positionViewAtEnd()) }
+    // 合并同一页的数量与高度变化，执行时复核贴底状态，避免新滚动被旧定位拉回。
+    onCountChanged: if (followingEnd) latestLayout.restart()
     onContentHeightChanged: {
         // 富文本完成布局后再贴齐底部，避免误显示“回到最新消息”。
         if (followingEnd) latestLayout.restart()
@@ -284,6 +300,7 @@ ListView {
         Component.onCompleted: Design.PerformanceTrace.contentPhase(messageRow, 5, 0)
         ListView.onPooled: { pooled = true; Design.PerformanceTrace.contentPhase(messageRow, 5, 1) }
         ListView.onReused: { pooled = false; Design.PerformanceTrace.contentPhase(messageRow, 5, 2) }
+        function messageBody(): Design.MessageContent { return messageView.messageContent() }
         function readingBlock(): Item { return messageView.readingBlock(transcript) }
         readonly property bool disclosureAnimating: messageView.disclosureAnimating
         Design.MessageDelegate {

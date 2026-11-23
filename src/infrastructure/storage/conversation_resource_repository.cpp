@@ -1,4 +1,5 @@
 #include "conversation_resource_repository.h"
+#include <QCoreApplication>
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
@@ -31,6 +32,11 @@ QJsonDocument readDocument(const QString &path, const QString &root, QString *er
 }
 QString ConversationResourceRepository::rootPath() const
 {
+#ifdef Q_OS_MACOS
+    // 随包会话是只读展示资源；新建聊天和草稿仍由 SessionRepository 写入用户目录。
+    const QDir resources(QCoreApplication::applicationDirPath() + "/../Resources/conversations");
+    if (resources.exists("navigation.json")) return resources.absolutePath();
+#endif
     return QStandardPaths::writableLocation(QStandardPaths::AppDataLocation) + "/conversations";
 }
 ConversationResource ConversationResourceRepository::manifest(const QString &id, QString *error) const

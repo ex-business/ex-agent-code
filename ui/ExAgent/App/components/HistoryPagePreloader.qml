@@ -10,10 +10,15 @@ Timer {
     required property MessageListModel messages
     required property Design.ScrollRenderPolicy policy
     required property bool suspended
-    readonly property bool towardHistory: !suspended && policy.scrolling && policy.direction < 0 && messages.hasOlder
+    required property bool followingEnd
+    readonly property bool towardHistory: !suspended && !followingEnd && policy.scrolling && policy.direction < 0 && messages.hasOlder
     readonly property real distanceToStart: view.contentY - view.originY
-    readonly property bool readAhead: towardHistory && distanceToStart <= policy.aheadPixels + (policy.fast ? view.height : 0)
-    readonly property bool insertAhead: towardHistory && distanceToStart <= policy.aheadPixels
+    // 短末页在贴底时补齐两屏缓冲。排版也会触发 contentYChanged，以真实贴底意图区分用户移动。
+    readonly property bool idleTail: !suspended && followingEnd && !view.moving
+                                     && messages.hasOlder && view.height > 0 && view.contentHeight > 0
+                                     && view.contentHeight <= view.height + policy.aheadPixels
+    readonly property bool readAhead: idleTail || (towardHistory && distanceToStart <= policy.aheadPixels + (policy.fast ? view.height : 0))
+    readonly property bool insertAhead: idleTail || (towardHistory && distanceToStart <= policy.aheadPixels)
     readonly property bool canPublish: insertAhead && messages.olderReady
     interval: 0
     repeat: false

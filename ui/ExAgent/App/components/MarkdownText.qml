@@ -80,16 +80,8 @@ Item {
         onImplicitHeightChanged: Qt.callLater(root.rememberLayout)
         onLinkActivated: (link) => root.linkActivated(link)
     }
-    Repeater {
-        model: preparation.state === RichTextPreparation.Ready ? preparation.value.tableRules || [] : []
-        Rectangle {
-            required property var modelData
-            readonly property rect endRect: prose.positionToRectangle(Math.min(prose.length, modelData.end))
-            readonly property rect nextRect: prose.positionToRectangle(Math.min(prose.length, modelData.next))
-            y: Math.max(endRect.y + endRect.height + 3, (endRect.y + endRect.height + nextRect.y) / 2)
-            width: root.width
-            height: 1
-            color: Design.Theme.border
-        }
+    Design.TableRulesOverlay {
+        surface: prose
+        rules: preparation.state === RichTextPreparation.Ready ? preparation.value.tableRules || [] : []
     }
 }

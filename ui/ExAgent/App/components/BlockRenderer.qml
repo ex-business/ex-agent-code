@@ -23,6 +23,12 @@ Item {
         return controller.blockViews.state(root.blockId)
     }
     readonly property bool layoutReady: !showContent || renderer.status === Loader.Ready && Boolean((renderer.item as Design.BlockRendererContent)?.layoutReady)
+    // 诊断分别观察槽位和已绑定到当前消息的渲染器；回收对象的旧内容不计入。
+    function hasCurrentRenderer(): bool {
+        const item = renderer.item as Design.BlockRendererContent
+        return renderer.status === Loader.Ready && item && item.messageId === messageId
+                && item.blockIndex === blockIndex && (item.block.blockId || "") === blockId
+    }
     readonly property bool mediaContent: rendererKind === 5 || rendererKind === 6
     // 独立窗口只是同一块的另一种视图，所有聊天预览均保留原位，不卸载正文。
     readonly property bool showContent: detached || (viewState.visibility === BlockViewRegistry.Visible && viewState.expansion === BlockViewRegistry.Expanded)
@@ -38,7 +44,11 @@ Item {
         disclosureActive = false
         disclosureReset.stop()
         // 列表复用时按消息身份重建缓存归属，不能把前一条消息的呈现当成新消息缓存。
-        Qt.callLater(() => { if (root.showContent && renderer.status === Loader.Ready) root.retainedCode = root.cacheableCode })
+        Qt.callLater(root.rememberCodeRenderer)
+    }
+    // 方法归属槽位；回收并销毁槽位时，延迟调用随对象失效。
+    function rememberCodeRenderer() {
+        if (showContent && renderer.status === Loader.Ready) retainedCode = cacheableCode
     }
     onShowContentChanged: { if (height > 0) { disclosureActive = true; disclosureReset.restart() } }
     Timer { id: disclosureReset; interval: 16; onTriggered: { if (blockDisclosure.running) restart(); else root.disclosureActive = false } }

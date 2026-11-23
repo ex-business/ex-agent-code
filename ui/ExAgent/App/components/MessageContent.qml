@@ -33,6 +33,20 @@ ColumnLayout {
         }
         return null
     }
+    // 只在显式覆盖率采样时遍历槽位，只统计与视口相交的展开正文。
+    function proseCoverage(view: Item): vector3d {
+        let expected = 0, loaded = 0, ready = 0
+        for (let i = 0; i < slots.count; ++i) {
+            const slot = slots.itemAt(i) as Design.BlockRenderer
+            if (!slot || !slot.visible || slot.pooled || !slot.showContent || slot.height <= 0
+                    || slot.rendererKind !== 1 || Number(slot.block.contentMode) === 2 || !slot.block.text) continue
+            const y = slot.mapToItem(view, 0, 0).y
+            if (y >= view.height || y + slot.height <= 0) continue
+            ++expected
+            if (slot.hasCurrentRenderer()) { ++loaded; if (slot.layoutReady) ++ready }
+        }
+        return Qt.vector3d(expected, loaded, ready)
+    }
     spacing: 14
     Repeater {
         id: slots

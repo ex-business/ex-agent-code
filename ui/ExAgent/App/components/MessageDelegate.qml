@@ -44,8 +44,11 @@ Item {
     // 每行只保留一层高度补间，防止父层不断追赶子层高度而残留空白。
     Design.DisclosureHeight on implicitHeight { id: rowDisclosure; allowed: root.groupTransition && !root.groupHead && root.groupCollapsed }
     readonly property var bodyContent: body.item
+    function messageContent(): Design.MessageContent {
+        return root.isNotice ? body.item as Design.MessageContent : (root.bodyContent?.blockLayout as Design.MessageContent)
+    }
     function readingBlock(view: Item): Item {
-        const content = root.isNotice ? body.item as Design.MessageContent : root.bodyContent?.blockLayout
+        const content = messageContent()
         return content ? content.readingBlock(view) : null
     }
     Design.MessageLayoutReservation {
