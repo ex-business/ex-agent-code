@@ -13,6 +13,7 @@ Item {
     property int blockIndex: 0
     property var outerWheel: null
     property bool detached: false
+    property bool pooled: false
     signal linkActivated(string link)
     readonly property int rendererKind: Number(block.rendererKind || (block.kind === 1 ? 2 : 1))
     readonly property string blockId: block.blockId || ""
@@ -20,16 +21,29 @@ Item {
         const version = controller.blockViews.revision
         return controller.blockViews.state(root.blockId)
     }
+    readonly property bool layoutReady: !showContent || renderer.status === Loader.Ready && Boolean((renderer.item as Design.BlockRendererContent)?.layoutReady)
     readonly property bool mediaContent: rendererKind === 5 || rendererKind === 6
     // 独立窗口只是同一块的另一种视图，所有聊天预览均保留原位，不卸载正文。
     readonly property bool showContent: detached || (viewState.visibility === BlockViewRegistry.Visible && viewState.expansion === BlockViewRegistry.Expanded)
     property bool disclosureActive: false
-    onBlockIdChanged: { disclosureActive = false; disclosureReset.stop() }
+    property bool retainedCode: false
+    readonly property int retainedCodeLimit: 64 * 1024
+    readonly property bool cacheableCode: rendererKind === 2 && Number(block.contentMode) !== 2 && (block.text || "").length <= retainedCodeLimit
+    onCacheableCodeChanged: if (!cacheableCode) retainedCode = false
+    Component.onCompleted: Design.PerformanceTrace.contentPhase(root, 3, 1)
+    onBlockIdChanged: {
+        Design.PerformanceTrace.contentPhase(root, 3, 5)
+        retainedCode = false
+        disclosureActive = false
+        disclosureReset.stop()
+        // 列表复用时按消息身份重建缓存归属，不能把前一条消息的呈现当成新消息缓存。
+        Qt.callLater(() => { if (root.showContent && renderer.status === Loader.Ready) root.retainedCode = root.cacheableCode })
+    }
     onShowContentChanged: { if (height > 0) { disclosureActive = true; disclosureReset.restart() } }
     Timer { id: disclosureReset; interval: 16; onTriggered: { if (blockDisclosure.running) restart(); else root.disclosureActive = false } }
     implicitHeight: contentLayout.implicitHeight
     clip: true
-    Design.DisclosureHeight on implicitHeight { id: blockDisclosure; allowed: root.disclosureActive && !(root.outerWheel && root.outerWheel.animating) }
+    Design.DisclosureHeight on implicitHeight { id: blockDisclosure; allowed: root.disclosureActive && !root.showContent && !(root.outerWheel && root.outerWheel.animating) }
     readonly property bool staticCode: rendererKind === 2 && Number(block.contentMode) !== 2 && showContent && !detached
     HoverHandler { id: blockHover }
     Design.BlockHeader {
@@ -66,10 +80,14 @@ Item {
             id: renderer
             width: parent.width
             height: (item as Item)?.implicitHeight ?? 24
-            active: root.showContent || root.disclosureActive
+            // 只保留当前delegate中的静态代码；关闭内容或回收delegate仍会释放，不预建历史消息。
+            active: root.showContent || root.disclosureActive || (root.retainedCode && root.viewState.visibility === BlockViewRegistry.Visible)
+            visible: root.showContent || root.disclosureActive
             asynchronous: true
+            onStatusChanged: Design.PerformanceTrace.contentPhase(renderer, 2, status)
             source: Design.BlockRendererRegistry.sourceFor(root.rendererKind)
             onLoaded: {
+                root.retainedCode = root.cacheableCode
                 const content = item as Design.BlockRendererContent
                 if (!content) return
                 content.block = Qt.binding(() => root.block)
@@ -78,9 +96,18 @@ Item {
                 content.blockIndex = Qt.binding(() => root.blockIndex)
                 content.outerWheel = Qt.binding(() => root.outerWheel)
                 content.detached = Qt.binding(() => root.detached)
+                content.pooled = Qt.binding(() => root.pooled)
+                Design.PerformanceTrace.contentPhase(renderer, 2, 4)
             }
         }
     }
+    }
+    Design.DisclosureEntrance {
+        surface: renderer
+        contentKey: root.blockId
+        expanded: root.showContent
+        contentReady: renderer.status === Loader.Ready
+        allowed: !(root.outerWheel && root.outerWheel.animating)
     }
     Connections {
         target: renderer.item

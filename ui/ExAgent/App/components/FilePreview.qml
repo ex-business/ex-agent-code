@@ -14,6 +14,9 @@ Item {
     Flickable {
         id: preview
         property bool pixelWheelEnabled: true
+        property bool pixelWheelAnimated: Design.Theme.motionEnabled
+        readonly property bool pixelWheelMoving: wheel.kineticRunning
+        function pixelScrollBy(x: real, y: real): point { return Qt.point(0, wheel.consumePixels(y)) }
         signal pixelScrollStarted()
         anchors.fill: parent
         clip: true

@@ -4,6 +4,8 @@ import ExAgent.App as Design
 
 Design.BlockRendererContent {
     id: root
+    layoutReady: Boolean(content.item) && (root.block.contentMode === 2 || markdownItem && markdownItem.layoutReady)
+    readonly property var markdownItem: content.item
     implicitHeight: (content.item as Item)?.implicitHeight ?? 24
     Loader {
         id: content
@@ -25,10 +27,12 @@ Design.BlockRendererContent {
     Component {
         id: markdown
         Design.MarkdownText {
+            pooled: root.pooled
             width: root.width
             block: root.block; messageId: root.messageId; blockIndex: root.blockIndex
             selectionManager: root.outerWheel ? root.outerWheel.selectionManager : null
             selectionView: root.outerWheel ? root.outerWheel.view : null
+            renderPolicy: root.outerWheel && root.outerWheel.view ? root.outerWheel.view.renderPolicy : null
             onLinkActivated: (link) => root.linkActivated(link)
         }
     }

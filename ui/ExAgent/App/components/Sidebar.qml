@@ -54,11 +54,14 @@ Rectangle {
         ListView {
             id: projects
             property bool pixelWheelEnabled: true
+            property bool pixelWheelAnimated: Design.Theme.motionEnabled
+            readonly property bool pixelWheelMoving: projectsWheel.kineticRunning
+            function pixelScrollBy(x: real, y: real): point { return Qt.point(0, projectsWheel.consumePixels(y)) }
             signal pixelScrollStarted()
             Layout.fillWidth: true; Layout.fillHeight: true
             clip: true; reuseItems: true; cacheBuffer: 100
             pixelAligned: true
-            Design.SmoothWheel { view: projects }
+            Design.SmoothWheel { id: projectsWheel; view: projects }
             model: root.controller.navigationEntries
             ScrollBar.vertical: ScrollBar { width: 4; policy: ScrollBar.AsNeeded }
             delegate: Item {

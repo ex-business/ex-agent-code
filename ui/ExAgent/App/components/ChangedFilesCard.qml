@@ -15,6 +15,7 @@ Rectangle {
     property bool disclosureActive: false
     function animateDisclosure() { if (outerWheel) outerWheel.view.beginContentDisclosure(); disclosureActive = true; disclosureReset.restart() }
     Timer { id: disclosureReset; interval: 16; onTriggered: { if (fileDisclosure.running) restart(); else root.disclosureActive = false } }
+    Design.DisclosureEntrance { id: entrance; surface: fileList; contentKey: root.messageId; expanded: root.expanded; allowed: !(root.outerWheel && root.outerWheel.animating) }
     // 虚拟列表复用卡片时清除上一条消息的展开与滚动状态。
     onFilesChanged: {
         disclosureActive = false; disclosureReset.stop()
@@ -35,7 +36,7 @@ Rectangle {
             id: fileList
             Layout.fillWidth: true
             Layout.preferredHeight: root.expanded ? Math.min(280, (root.showAll ? root.files.length : Math.min(3, root.files.length)) * 35) : 0
-            Design.DisclosureHeight on Layout.preferredHeight { id: fileDisclosure; allowed: root.disclosureActive }
+            Design.DisclosureHeight on Layout.preferredHeight { id: fileDisclosure; allowed: root.disclosureActive && !root.expanded }
             clip: true
             reuseItems: true
             acceptedButtons: Qt.NoButton
@@ -65,7 +66,7 @@ Rectangle {
             HoverHandler { cursorShape: Qt.PointingHandCursor }
             text: "再显示 " + (root.files.length - 3) + " 个文件"
             flat: true
-            onClicked: { root.animateDisclosure(); root.showAll = true }
+            onClicked: { root.animateDisclosure(); root.showAll = true; entrance.request() }
         }
         Button {
             id: toggle

@@ -1,11 +1,11 @@
-set_source_files_properties(Theme.qml BlockRendererRegistry.qml PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
+set_source_files_properties(Theme.qml InteractionMotion.qml PerformanceTrace.qml BlockRendererRegistry.qml PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
 qt_add_qml_module(ex_agent_workbench
     STATIC
     URI ExAgent.App
     VERSION 1.0
     QML_FILES
-        Main.qml Theme.qml BlockRendererRegistry.qml
-        components/PressFeedback.qml components/DisclosureHeight.qml
+        Main.qml Theme.qml InteractionMotion.qml PerformanceTrace.qml BlockRendererRegistry.qml
+        components/PressFeedback.qml components/DisclosureHeight.qml components/DisclosureEntrance.qml components/MotionRegistration.qml components/DisclosureRotation.qml
         components/WindowEntrance.qml components/BlockHeader.qml components/ActivityGroupHeader.qml
         components/BlockRenderer.qml components/BlockWindowManager.qml
         components/media/MediaSession.qml components/media/MediaButton.qml
@@ -22,7 +22,7 @@ qt_add_qml_module(ex_agent_workbench
         components/ComposerToolbar.qml components/MessageActions.qml
         components/UserMessageBubble.qml
         components/SelectionSurface.qml components/SelectableText.qml components/SendButton.qml
-        components/ChatScrollView.qml components/ChatSelectionLayer.qml components/ChatSelectionPart.qml
+        components/MessageLayoutReservation.qml components/ScrollRenderPolicy.qml components/ChatScrollView.qml components/ChatSelectionLayer.qml components/ChatSelectionPart.qml
         components/SelectionAutoScroll.qml
         components/WorkspaceTabs.qml components/WorkbenchTitleBar.qml components/FilePreview.qml
         components/ChatMenu.qml
@@ -34,7 +34,7 @@ qt_add_qml_module(ex_agent_workbench
         components/EmptyState.qml
         components/ChangedFilesCard.qml components/NavigationRail.qml
         components/FilePanel.qml
-        components/SmoothWheel.qml
+        components/SmoothWheel.qml components/WheelKinetics.qml
         components/ChatOverview.qml
 )
 target_link_libraries(ex_agent_workbench PUBLIC ex_agent_chat Qt6::Quick Qt6::QuickControls2)

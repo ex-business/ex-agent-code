@@ -1,6 +1,8 @@
 #include "application/chat/chat_controller.h"
 #include "scroll_diagnostics.h"
+#include "profiled_application.h"
 #include "pixel_scroll_filter.h"
+#include "disclosure_input_filter.h"
 #include "services/local/service_worker.h"
 
 #include <QGuiApplication>
@@ -22,7 +24,7 @@ int main(int argc, char *argv[])
     for (int index = 1; index < argc; ++index) {
         if (QByteArray(argv[index]) == "--render-loop-basic") qputenv("QSG_RENDER_LOOP", "basic");
     }
-    QGuiApplication app(argc, argv);
+    ProfiledApplication app(argc, argv);
     QCoreApplication::setOrganizationName("EX Business");
     QCoreApplication::setApplicationName("EX Agent Code");
     QCoreApplication::setApplicationVersion("0.1.0");
@@ -33,13 +35,21 @@ int main(int argc, char *argv[])
 
     exagent::ChatController controller;
     QQmlApplicationEngine engine;
-    engine.setInitialProperties({{"controller", QVariant::fromValue(&controller)}});
+    const bool profiling = app.arguments().contains("--profile-scroll") || app.arguments().contains("--profile-disclosure");
+    const QString diagnosticLabel = profiling ? QStringLiteral("滚动诊断 · PID %1").arg(app.applicationPid()) : QString();
+    engine.setInitialProperties({{"controller", QVariant::fromValue(&controller)}, {"diagnosticLabel", diagnosticLabel}});
     QObject::connect(&engine, &QQmlApplicationEngine::objectCreationFailed, &app, [] {
         qCritical("聊天界面加载失败，请检查 QML 诊断。");
         QCoreApplication::exit(1);
     }, Qt::QueuedConnection);
     QObject::connect(&app, &QCoreApplication::aboutToQuit, &controller, &exagent::ChatController::flush);
     engine.loadFromModule("ExAgent.App", "Main");
+if (!engine.rootObjects().isEmpty()) {
+        if (auto *window = qobject_cast<QQuickWindow *>(engine.rootObjects().first())) {
+            if (auto *motion = engine.singletonInstance<QObject *>("ExAgent.App", "InteractionMotion"))
+                new DisclosureInputFilter(window, motion);
+        }
+    }
 #ifdef Q_OS_MACOS
     if (!engine.rootObjects().isEmpty()) {
         if (auto *window = qobject_cast<QQuickWindow *>(engine.rootObjects().first())) {
@@ -49,8 +59,22 @@ int main(int argc, char *argv[])
         }
     }
 #endif
-    if (app.arguments().contains("--profile-scroll") && !engine.rootObjects().isEmpty()) {
-        if (auto *window = qobject_cast<QQuickWindow *>(engine.rootObjects().first())) new ScrollDiagnostics(window);
+    if (profiling && !engine.rootObjects().isEmpty()) {
+        if (auto *window = qobject_cast<QQuickWindow *>(engine.rootObjects().first())) {
+            auto *diagnostics = new ScrollDiagnostics(window);
+            if (app.arguments().contains("--profile-disclosure")) {
+                app.diagnostics = diagnostics;
+                if (auto *trace = engine.singletonInstance<QObject *>("ExAgent.App", "PerformanceTrace"))
+                    trace->setProperty("sink", QVariant::fromValue(static_cast<QObject *>(diagnostics)));
+            }
+            // 诊断订阅模型的真实展开变更，不在业务入口注入模拟点击。
+            QObject::connect(controller.messages(), &QAbstractItemModel::dataChanged, diagnostics,
+                [diagnostics, &controller](const QModelIndex &first, const QModelIndex &, const QList<int> &roles) {
+                    if (roles.contains(exagent::MessageListModel::ExpandedRole))
+                        diagnostics->recordDisclosure(controller.messages()->data(first, exagent::MessageListModel::ExpandedRole).toBool() ? 1 : 2);
+                    else if (roles.contains(exagent::MessageListModel::GroupRole)) diagnostics->recordDisclosure(0);
+                });
+        }
     }
     return app.exec();
 }

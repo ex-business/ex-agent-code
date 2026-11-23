@@ -15,8 +15,9 @@ ListView {
     function stop() { transcriptWheel.stop() }
     property var layoutAnchor: null
     function resetForSession() {
+        renderPolicy.reset()
         layoutAnchor = null; pinnedMessage = ""; pinLayout.stop(); groupDisclosure.stop(); disclosureGroupId = ""
-        waitingOlder = false; previousScrollTime = 0; upwardVelocity = 0
+        waitingOlder = false
         jumpPage.stop()
         jumpTarget = -1
         stop()
@@ -32,10 +33,14 @@ ListView {
         onLayoutChangeFinished: Qt.callLater(transcript.restoreLayoutAnchor)
     }
     function captureLayoutAnchor() {
-        if (followingEnd || layoutAnchor || loadingOlder || moving) return
-        const row = indexAt(width / 2, contentY + 2)
-        const item = row >= 0 ? itemAtIndex(row) : null
-        const message = item as MessageRow
+        if (followingEnd || layoutAnchor || loadingOlder || moving || renderPolicy.scrolling) return
+        // 顶部可能落在消息间距或折叠行上；按实际相交的可见消息找锚点，不能因此放弃位置保持。
+        let message = null
+        for (const child of contentItem.children) {
+            const row = child as MessageRow
+            if (!row || row.height <= 0 || row.y + row.height <= contentY || row.y >= contentY + height) continue
+            if (!message || row.y < message.y) message = row
+        }
         if (message) layoutAnchor = {id: message.messageId, offset: contentY - message.y}
     }
     property string disclosureGroupId: ""
@@ -81,22 +86,39 @@ ListView {
     }
     function restoreLayoutAnchor() {
         const anchor = layoutAnchor; layoutAnchor = null
-        if (!anchor || followingEnd || loadingOlder || moving) return
-        forceLayout()
-        const row = selectionDocument.orderOf(anchor.id)
-        if (row >= 0 && !itemAtIndex(row)) positionViewAtIndex(row, ListView.Beginning)
-        const item = row >= 0 ? itemAtIndex(row) : null
-        if (item) contentY = Math.max(originY - topMargin, Math.min(Math.max(originY - topMargin, originY + contentHeight - height + bottomMargin), item.y + anchor.offset))
+        if (!anchor || followingEnd || loadingOlder || moving || renderPolicy.scrolling) return
+        renderPolicy.adjustingLayout = true
+        try {
+            forceLayout()
+            const row = selectionDocument.orderOf(anchor.id)
+            if (row >= 0 && !itemAtIndex(row)) positionViewAtIndex(row, ListView.Beginning)
+            const item = row >= 0 ? itemAtIndex(row) : null
+            if (item) {
+                const before = contentY
+                contentY = Math.max(originY - topMargin, Math.min(Math.max(originY - topMargin, originY + contentHeight - height + bottomMargin), item.y + anchor.offset))
+                Design.PerformanceTrace.layoutAnchor(contentY - before, contentY - item.y - anchor.offset)
+            }
+        } finally { renderPolicy.adjustingLayout = false }
     }
     objectName: "messageList"
     property bool pixelWheelEnabled: true
+    property bool pixelWheelAnimated: Design.Theme.motionEnabled
+    readonly property bool pixelWheelMoving: transcriptWheel.kineticRunning
+    function pixelScrollBy(x: real, y: real): point { return Qt.point(0, transcriptWheel.consumePixels(y)) }
     signal pixelScrollStarted()
+    readonly property int prefetchDirection: renderPolicy.direction
+    readonly property real prefetchSpeed: renderPolicy.speed
+    readonly property int prefetchAhead: renderPolicy.aheadPixels
+    readonly property int prefetchBehind: renderPolicy.behindPixels
+    readonly property alias fastScrolling: renderPolicy.fast
+    readonly property alias renderPolicy: renderPolicy
+    Design.ScrollRenderPolicy { id: renderPolicy; view: transcript }
     anchors.fill: parent
     visible: transcript.controller.messages.count > 0
     clip: true
     pixelAligned: true
     reuseItems: true
-    cacheBuffer: Math.min(height * 1.5, 1600)
+    cacheBuffer: renderPolicy.preloadPixels
     spacing: 5
     topMargin: 24
     bottomMargin: 15
@@ -105,17 +127,17 @@ ListView {
     model: transcript.controller.messages
     property bool followingEnd: true
     property bool loadingOlder: false
-    property real previousScrollY: 0
-    property real previousScrollTime: 0
-    property real upwardVelocity: 0
     property bool waitingOlder: false
-    onContentYChanged: {
-        const now = Date.now()
-        const delta = previousScrollY - contentY
-        if (previousScrollTime > 0 && now > previousScrollTime) upwardVelocity = Math.max(0, delta * 1000 / (now - previousScrollTime))
-        previousScrollY = contentY; previousScrollTime = now
-        const runway = Math.min(height * 4, Math.max(height, upwardVelocity * 0.18))
-        if (delta > 0 && contentY - originY < runway && transcript.controller.messages.hasOlder) transcript.controller.messages.prefetchOlder()
+    function prefetchInTravelDirection() {
+        // 仅前往历史方向时读下一页，反向不追加预读；数据层仍保持单页缓存和代次取消。
+        if (renderPolicy.direction < 0 && contentY - originY < renderPolicy.aheadPixels && controller.messages.hasOlder)
+            controller.messages.prefetchOlder()
+    }
+    onContentYChanged: prefetchInTravelDirection()
+    Connections {
+        target: renderPolicy
+        function onDirectionChanged() { transcript.prefetchInTravelDirection() }
+        function onAheadPixelsChanged() { transcript.prefetchInTravelDirection() }
     }
     Connections {
         target: transcript.controller.messages
@@ -150,7 +172,7 @@ ListView {
         id: transcriptWheel
         view: transcript
         selectionManager: selectionLayer
-        onScrollingStarted: { transcript.layoutAnchor = null; transcript.pinnedMessage = ""; pinLayout.stop(); groupDisclosure.stop(); transcript.disclosureGroupId = ""; transcript.followingEnd = false }
+        onScrollingStarted: { renderPolicy.beginScroll(); transcript.layoutAnchor = null; transcript.pinnedMessage = ""; pinLayout.stop(); groupDisclosure.stop(); transcript.disclosureGroupId = ""; transcript.followingEnd = false }
         onScrollingSettled: {
             if (transcriptScrollBar.pressed || selectionLayer.origin) return
             if (transcript.atYEnd) transcript.followingEnd = true
@@ -242,9 +264,14 @@ ListView {
         required property var attachments
         width: ListView.view.width
         height: messageView.implicitHeight
+        property bool pooled: false
+        Component.onCompleted: Design.PerformanceTrace.contentPhase(messageRow, 5, 0)
+        ListView.onPooled: { pooled = true; Design.PerformanceTrace.contentPhase(messageRow, 5, 1) }
+        ListView.onReused: { pooled = false; Design.PerformanceTrace.contentPhase(messageRow, 5, 2) }
         readonly property bool disclosureAnimating: messageView.disclosureAnimating
         Design.MessageDelegate {
             id: messageView
+            pooled: messageRow.pooled
             width: Math.min(messageRow.width - 48, 760)
             anchors.horizontalCenter: parent.horizontalCenter
             controller: transcript.controller

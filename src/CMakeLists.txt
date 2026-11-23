@@ -51,13 +51,13 @@ target_compile_options(ex_agent_chat PRIVATE -Wall -Wextra -Wpedantic)
 target_include_directories(ex_agent_chat PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/presentation/text")
 target_include_directories(ex_agent_chat PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/presentation/workspace")
 
-qt_add_executable(ex-agent-code MACOSX_BUNDLE app/main.cpp app/scroll_diagnostics.h app/scroll_diagnostics.cpp app/pixel_scroll_filter.h app/pixel_scroll_filter.cpp)
+qt_add_executable(ex-agent-code MACOSX_BUNDLE app/main.cpp app/profiled_application.h app/disclosure_input_filter.h app/disclosure_input_filter.cpp app/scroll_diagnostics.h app/scroll_diagnostics.cpp app/pixel_scroll_filter.h app/pixel_scroll_filter.cpp)
 target_link_libraries(ex-agent-code PRIVATE ex_agent_chat ex_agent_chatplugin Qt6::Quick Qt6::QuickControls2)
 if(APPLE)
     target_sources(ex_agent_chat PRIVATE platform/macos/word_boundaries.cpp)
     target_link_libraries(ex_agent_chat PRIVATE "-framework CoreFoundation")
-    target_sources(ex-agent-code PRIVATE platform/macos/window_chrome.mm platform/macos/inactive_hover.mm)
-    target_link_libraries(ex-agent-code PRIVATE "-framework AppKit")
+    target_sources(ex-agent-code PRIVATE platform/macos/window_chrome.mm platform/macos/inactive_hover.mm platform/macos/drawable_timing.mm)
+    target_link_libraries(ex-agent-code PRIVATE "-framework AppKit" "-framework QuartzCore")
 endif()
 set_target_properties(ex-agent-code PROPERTIES
     MACOSX_BUNDLE_BUNDLE_NAME "EX Agent Code"

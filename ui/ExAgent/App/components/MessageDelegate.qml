@@ -26,6 +26,7 @@ Item {
         else if (link.startsWith("https://") || link.startsWith("http://")) Qt.openUrlExternally(link)
     }
     property var outerWheel: null
+    property bool pooled: false
     readonly property bool isUser: messageKind === MessageListModel.User
     readonly property bool isTool: messageKind === MessageListModel.Tool
     readonly property bool isNotice: messageKind === MessageListModel.Notice
@@ -41,8 +42,18 @@ Item {
     property bool headAnimating: false
     readonly property bool disclosureAnimating: rowDisclosure.running || headAnimating
     // 每行只保留一层高度补间，防止父层不断追赶子层高度而残留空白。
-    Design.DisclosureHeight on implicitHeight { id: rowDisclosure; allowed: root.groupTransition && !root.groupHead }
-    implicitHeight: auxiliaryMedia || groupHidden ? 0 : body.implicitHeight + (isTool ? (messageTitle === "文件修改" ? 40 : 8) : isUser ? 42 : isNotice ? 12 : 26)
+    Design.DisclosureHeight on implicitHeight { id: rowDisclosure; allowed: root.groupTransition && !root.groupHead && root.groupCollapsed }
+    readonly property var bodyContent: body.item
+    Design.MessageLayoutReservation {
+        id: rowReservation
+        policy: root.outerWheel && root.outerWheel.view ? root.outerWheel.view.renderPolicy : null
+        // 工具展开状态由自己的布局动画处理，不用正文缓存覆盖动态块高度。
+        key: root.isTool ? "" : "row:" + root.messageId + ":" + Design.Theme.font + ":" + Design.Theme.dark
+        contentWidth: root.width
+        naturalHeight: body.implicitHeight + (root.isTool ? (root.messageTitle === "文件修改" ? 40 : 8) : root.isUser ? 42 : root.isNotice ? 12 : 26)
+        ready: Boolean(root.bodyContent) && root.bodyContent.layoutReady !== false
+    }
+    implicitHeight: auxiliaryMedia || groupHidden ? 0 : rowReservation.height
 
     // 每条消息只实例化自己的类型，不能用 visible=false 留下其他类型的全文布局。
     Loader {
@@ -55,15 +66,16 @@ Item {
     Component {
         id: userBody
         ColumnLayout {
+            readonly property bool layoutReady: userBubble.layoutReady
             spacing: 8
-            Design.UserMessageBubble { Layout.fillWidth: true; text: root.content; messageId: root.messageId; selectionManager: root.outerWheel ? root.outerWheel.selectionManager : null; selectionView: root.outerWheel ? root.outerWheel.view : null; onLinkActivated: (link) => root.openLink(link) }
+            Design.UserMessageBubble { id: userBubble; pooled: root.pooled; renderPolicy: root.outerWheel && root.outerWheel.view ? root.outerWheel.view.renderPolicy : null; Layout.fillWidth: true; text: root.content; messageId: root.messageId; selectionManager: root.outerWheel ? root.outerWheel.selectionManager : null; selectionView: root.outerWheel ? root.outerWheel.view : null; onLinkActivated: (link) => root.openLink(link) }
             Design.MessageAttachments { visible: root.attachments.length > 0; Layout.fillWidth: true; attachments: root.attachments; onImageRequested: (image) => root.imageRequested(image) }
         }
     }
 
     Component {
         id: noticeBody
-        Design.MessageContent { blocks: root.contentBlocks; messageId: root.messageId; controller: root.controller; outerWheel: root.outerWheel; onLinkActivated: (link) => root.openLink(link) }
+        Design.MessageContent { pooled: root.pooled; blocks: root.contentBlocks; messageId: root.messageId; controller: root.controller; outerWheel: root.outerWheel; onLinkActivated: (link) => root.openLink(link) }
     }
 
     Component {
@@ -89,12 +101,19 @@ Item {
                 }
             }
             Item {
+                id: toolViewport
                 Layout.fillWidth: true
                 // 非组头保留正文自然高度，由整行唯一的动画视口裁切，避免先清空再收缩。
                 implicitHeight: root.groupCollapsed && root.groupHead ? 0 : toolRow.implicitHeight
                 clip: true
                 visible: !root.groupCollapsed || root.groupTransition
-                Design.DisclosureHeight on implicitHeight { allowed: root.groupTransition && root.groupHead; onRunningChanged: root.headAnimating = running }
+                Design.DisclosureHeight on implicitHeight { allowed: root.groupTransition && root.groupHead && root.groupCollapsed; onRunningChanged: root.headAnimating = running }
+                Design.DisclosureEntrance {
+                    surface: toolViewport
+                    contentKey: root.messageId
+                    expanded: !root.groupCollapsed
+                    allowed: !(root.outerWheel && root.outerWheel.animating)
+                }
                 Rectangle { visible: root.grouped; x: 6; width: 1; height: parent.height; color: Design.Theme.border }
                 Design.ToolActivityRow {
                     id: toolRow
@@ -114,8 +133,9 @@ Item {
     Component {
         id: assistantBody
         ColumnLayout {
+            readonly property bool layoutReady: assistantContent.layoutReady
             spacing: 14
-            Design.MessageContent { Layout.fillWidth: true; blocks: root.contentBlocks; messageId: root.messageId; controller: root.controller; outerWheel: root.outerWheel; onLinkActivated: (link) => root.openLink(link) }
+            Design.MessageContent { pooled: root.pooled; id: assistantContent; Layout.fillWidth: true; blocks: root.contentBlocks; messageId: root.messageId; controller: root.controller; outerWheel: root.outerWheel; onLinkActivated: (link) => root.openLink(link) }
             Design.MessageAttachments { visible: root.attachments.length > 0; Layout.fillWidth: true; attachments: root.attachments; onImageRequested: (image) => root.imageRequested(image) }
             Design.MessageActions {
                 text: root.content

@@ -23,11 +23,15 @@ ColumnLayout {
     readonly property int kind: Number(activity.kind || 0)
     readonly property bool hasDetails: details.length > 0 || attachments.length > 0
     readonly property string summary: activity.summary || (kind === 3 ? "已查看 " + attachments.length + " 张图像" : title.startsWith("运行命令") && status === 0 ? "已" + title : title)
+    // 只缓存当前消息的短详情；长输出仍按需释放，不预建历史记录。
+    property bool detailsRetained: false
+    readonly property bool cacheableDetails: details.length <= 64 * 1024
+    onCacheableDetailsChanged: if (!cacheableDetails) detailsRetained = false
     property bool disclosureReady: false
     property bool disclosureActive: false
     Component.onCompleted: disclosureReady = true
     onExpandedChanged: if (disclosureReady) { disclosureActive = true; disclosureReset.restart() }
-    onMessageIdChanged: { disclosureActive = false; disclosureReset.stop() }
+    onMessageIdChanged: { detailsRetained = false; disclosureActive = false; disclosureReset.stop() }
     Timer { id: disclosureReset; interval: 16; onTriggered: { if (toolDisclosure.running) restart(); else root.disclosureActive = false } }
     spacing: 6
     Button {
@@ -47,22 +51,34 @@ ColumnLayout {
             spacing: 7
             Design.Icon { name: root.kind === 3 ? "image" : root.kind === 4 ? "search" : root.kind === 2 ? "terminal" : "activity"; implicitWidth: 15; implicitHeight: 15; color: Design.Theme.muted }
             Design.SelectableText { id: label; text: root.summary; textFormat: TextEdit.PlainText; wrapMode: TextEdit.Wrap; messageId: root.messageId; blockIndex: root.blockOffset; selectionManager: root.outerWheel ? root.outerWheel.selectionManager : null; Layout.fillWidth: true; color: Design.Theme.muted; font.pixelSize: 13; onTapped: if (root.hasDetails) root.toggleRequested() }
-            Design.Icon { visible: root.hasDetails; name: "right"; rotation: root.expanded ? 90 : 0; Behavior on rotation { NumberAnimation { duration: Design.Theme.disclosureDuration } } implicitWidth: 12; implicitHeight: 12; color: Design.Theme.muted }
+            Design.Icon { visible: root.hasDetails; name: "right"; rotation: root.expanded ? 90 : 0; Design.DisclosureRotation on rotation {} implicitWidth: 12; implicitHeight: 12; color: Design.Theme.muted }
         }
     }
     Item {
+        id: detailsViewport
         Layout.fillWidth: true
         implicitHeight: root.expanded ? detailsLayout.implicitHeight : 0
         visible: implicitHeight > 0
         clip: true
-        Design.DisclosureHeight on implicitHeight { id: toolDisclosure; allowed: root.disclosureActive && !(root.outerWheel && root.outerWheel.animating) }
+        Design.DisclosureHeight on implicitHeight { id: toolDisclosure; allowed: root.disclosureActive && !root.expanded && !(root.outerWheel && root.outerWheel.animating) }
+        Design.DisclosureEntrance {
+            surface: detailsViewport
+            contentKey: root.messageId
+            expanded: root.expanded
+            contentReady: detailsLoader.status !== Loader.Loading
+            allowed: !(root.outerWheel && root.outerWheel.animating)
+        }
         ColumnLayout {
             id: detailsLayout
             width: parent.width
             spacing: 6
     Design.MessageAttachments { visible: (root.expanded || root.disclosureActive) && root.attachments.length > 0; Layout.fillWidth: true; attachments: root.attachments; onImageRequested: (image) => root.imageRequested(image) }
     Loader {
-        active: (root.expanded || root.disclosureActive) && root.details.length > 0
+        id: detailsLoader
+        asynchronous: true
+        active: (root.expanded || root.disclosureActive || root.detailsRetained) && root.details.length > 0
+        onStatusChanged: Design.PerformanceTrace.contentPhase(detailsLoader, 1, status)
+        onLoaded: { root.detailsRetained = root.cacheableDetails; Design.PerformanceTrace.contentPhase(detailsLoader, 1, 4) }
         Layout.fillWidth: true
         sourceComponent: Design.BlockRenderer {
             block: ({blockId: root.activity.blockId || "", rendererKind: Number(root.activity.blockKind || 2), contentMode: Number(root.activity.contentMode || 1), sourceKind: Number(root.activity.sourceKind || 1), title: root.title, text: root.details, language: "text", data: root.activity.data || ({})})

@@ -10,6 +10,8 @@ import QtQuick.Dialogs
 ApplicationWindow {
     id: window
     required property ChatController controller
+    readonly property bool disclosureMotionSuppressed: Design.InteractionMotion.suppressed
+    readonly property int activeDisclosureMotions: Design.InteractionMotion.activeCount
     width: 1600
     height: 960
     minimumWidth: 740
@@ -17,7 +19,8 @@ ApplicationWindow {
     visible: true
     flags: Qt.Window | (Qt.platform.os === "osx" ? Qt.ExpandedClientAreaHint | Qt.NoTitleBarBackgroundHint : 0)
     topPadding: 0
-    title: "EX Agent Code"
+    property string diagnosticLabel: ""
+    title: diagnosticLabel ? "EX Agent Code · " + diagnosticLabel : "EX Agent Code"
     color: Design.Theme.background
     font.family: Design.Theme.font
     property bool sidebarVisible: true
@@ -46,7 +49,7 @@ ApplicationWindow {
         id: titleBar
         windowHandle: window
         workspace: workspaceController
-        sessionTitle: window.controller.sessionTitle
+        sessionTitle: window.diagnosticLabel ? window.diagnosticLabel + " · " + window.controller.sessionTitle : window.controller.sessionTitle
         navigationWidth: 50 + (sidebar.visible ? sidebar.width + 8 : 0)
         filesWidth: filePanel.visible ? filePanel.width + 8 : 0
         onSidebarRequested: window.sidebarVisible = !window.sidebarVisible

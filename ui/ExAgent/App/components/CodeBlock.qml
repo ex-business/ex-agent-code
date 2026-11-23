@@ -140,6 +140,9 @@ Rectangle {
         id: codeView
         objectName: "virtualCodeLines"
         property bool pixelWheelEnabled: true
+        property bool pixelWheelAnimated: Design.Theme.motionEnabled
+        readonly property bool pixelWheelMoving: codeVerticalWheel.kineticRunning || codeHorizontalWheel.kineticRunning
+        function pixelScrollBy(x: real, y: real): point { return Qt.point(codeHorizontalWheel.consumePixels(x), codeVerticalWheel.consumePixels(y)) }
         signal pixelScrollStarted()
         anchors.top: codeHeader.bottom
         width: parent.width
@@ -157,8 +160,8 @@ Rectangle {
         contentWidth: Math.max(width, lines.maximumColumns * metrics.averageCharacterWidth + 34)
         ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded; width: 6; z: 3 }
         ScrollBar.horizontal: ScrollBar { policy: ScrollBar.AsNeeded; height: 6; z: 3 }
-        Design.SmoothWheel { view: codeView; stepSize: root.lineHeight * 3; outerWheel: root.outerWheel }
-        Design.SmoothWheel { view: codeView; orientation: Qt.Horizontal; stepSize: 66 }
+        Design.SmoothWheel { id: codeVerticalWheel; linkedWheel: codeHorizontalWheel; view: codeView; stepSize: root.lineHeight * 3; outerWheel: root.outerWheel }
+        Design.SmoothWheel { id: codeHorizontalWheel; view: codeView; orientation: Qt.Horizontal; stepSize: 66 }
         Design.SelectionSurface {
             id: selectionMouse
             parent: codeView

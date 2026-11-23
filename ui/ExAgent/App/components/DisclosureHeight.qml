@@ -6,8 +6,21 @@ import ExAgent.App as Design
 Behavior {
     property bool allowed: true
     property bool ready: false
-    enabled: ready && allowed && Design.Theme.motionEnabled
+    property double previousChangeMs: 0
+    property bool rapidChange: false
+    // 连续反向时立即采用最新高度，不能继续逐帧排版或排队播放上一段收起。
+    onTargetValueChanged: {
+        const now = Date.now()
+        rapidChange = previousChangeMs > 0 && now - previousChangeMs < Design.Theme.disclosureDuration + 40
+        previousChangeMs = now
+    }
+    enabled: ready && allowed && !rapidChange && Design.Theme.motionEnabled && Design.InteractionMotion.allowed
     Component.onCompleted: ready = true
     readonly property bool running: heightMotion.running
+    property Design.MotionRegistration registration: Design.MotionRegistration { running: heightMotion.running }
+    property Connections interruption: Connections {
+        target: Design.InteractionMotion
+        function onInterrupted() { if (heightMotion.running) heightMotion.complete() }
+    }
     NumberAnimation { id: heightMotion; duration: Design.Theme.disclosureDuration; easing.type: Easing.OutCubic }
 }

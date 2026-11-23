@@ -8,43 +8,36 @@ Item {
     property real stepSize: 72
     property int orientation: Qt.Vertical
     property var outerWheel: null
+    property var linkedWheel: null
     property var selectionManager: outerWheel ? outerWheel.selectionManager : null
+    readonly property bool kineticRunning: wheelMotion.running
     readonly property bool animating: view.moving || observer.active || wheelMotion.running
     signal scrollingStarted()
     signal scrollingSettled()
 
-    property real destination: 0
-    property real lastStep: 0
-    property double lastInput: 0
-    function stop() { wheelMotion.stop(); view.cancelFlick() }
-    function scrollBy(delta: real): bool {
-        const now = Date.now()
-        const current = root.orientation === Qt.Vertical ? view.contentY : view.contentX
-        const start = root.orientation === Qt.Vertical ? view.originY - view.topMargin : view.originX - view.leftMargin
-        const extent = root.orientation === Qt.Vertical ? view.contentHeight - view.height + view.topMargin + view.bottomMargin : view.contentWidth - view.width + view.leftMargin + view.rightMargin
-        // 反向输入立即丢弃旧目标；连续滚动合并到一个有界目标，避免补间排队追赶。
-        const continuing = wheelMotion.running && delta * lastStep > 0 && now - lastInput < 160
-        const runway = Math.min(480, (root.orientation === Qt.Vertical ? view.height : view.width) * 0.75)
-        destination = Math.max(start, Math.min(start + Math.max(0, extent), Math.max(current - runway, Math.min(current + runway, (continuing ? destination : current) + delta))))
-        wheelMotion.stop()
-        view.cancelFlick()
-        if (Math.abs(destination - current) < 0.01) return false
-        view.pixelAligned = false
-        wheelMotion.from = current
-        wheelMotion.to = destination
-        wheelMotion.duration = continuing ? 70 : 110
-        lastInput = now; lastStep = delta
-        wheelMotion.start()
-        return true
+    function stop() { wheelMotion.stop(); view.cancelFlick(); if (linkedWheel) linkedWheel.stop() }
+    function consumePixels(delta: real): real {
+        if (delta === 0) return 0
+        Design.InteractionMotion.interruptForInput()
+        root.scrollingStarted(); settleTimer.restart()
+        return -wheelMotion.enqueue(-delta)
     }
-    NumberAnimation {
+    function scrollBy(delta: real): bool { return wheelMotion.scrollBy(delta) }
+    Design.WheelKinetics {
         id: wheelMotion
-        target: root.view
-        property: root.orientation === Qt.Vertical ? "contentY" : "contentX"
-        easing.type: Easing.OutCubic
-        onFinished: settled.restart()
+        view: root.view
+        orientation: root.orientation
+        onSettled: settleTimer.restart()
     }
-    // 触控板像素事件及系统惯性原样交给Flickable；仅离散鼠标滚轮使用短补间。
+    // 按下即停止自定义惯性；被动观察不抢走正文拖选和按钮点击。
+    PointHandler {
+        parent: root.view
+        enabled: root.orientation === Qt.Vertical
+        target: null
+        acceptedButtons: Qt.LeftButton
+        onActiveChanged: if (active) { root.stop(); settleTimer.restart() }
+    }
+    // 触控板保留系统像素位移与惯性；仅离散鼠标滚轮进入连续速度模型。
     WheelHandler {
         id: observer
         parent: root.view
@@ -53,8 +46,9 @@ Item {
         acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
         blocking: false
         onWheel: (event) => {
+            Design.InteractionMotion.interruptForInput()
             root.scrollingStarted()
-            settled.restart()
+            settleTimer.restart()
             const angle = root.orientation === Qt.Vertical ? event.angleDelta.y : event.angleDelta.x
             if (Design.Theme.motionEnabled && event.phase === Qt.NoScrollPhase && event.pixelDelta.x === 0 && event.pixelDelta.y === 0 && angle !== 0) {
                 event.accepted = root.scrollBy(-angle / 120 * root.stepSize)
@@ -63,19 +57,20 @@ Item {
                 event.accepted = false
             }
         }
-        onActiveChanged: if (!active) settled.restart()
+        onActiveChanged: if (!active) settleTimer.restart()
     }
     Connections {
         target: root.view
         ignoreUnknownSignals: true
-        function onPixelScrollStarted() { wheelMotion.stop(); root.scrollingStarted(); settled.restart() }
+        function onPixelScrollStarted() { wheelMotion.stop(); Design.InteractionMotion.interruptForInput(); root.scrollingStarted(); settleTimer.restart() }
         function onMovingChanged() {
             root.view.pixelAligned = !root.view.moving
-            if (!root.view.moving) settled.restart()
+            if (root.view.moving) Design.InteractionMotion.interruptForInput()
+            if (!root.view.moving) settleTimer.restart()
         }
     }
     Timer {
-        id: settled
+        id: settleTimer
         interval: 140
         onTriggered: {
             if (root.animating) restart()
