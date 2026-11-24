@@ -184,16 +184,7 @@ void TerminalSurface::setTarget(const QString &id) {
   };
   vterm_state_set_selection_callbacks(vterm_obtain_state(c.vt), &selectionCallbacks, this,
                                     c.selectionBuffer.data(), c.selectionBuffer.size());
-  // 仅调整基础 ANSI 索引色，应用显式指定的真彩色仍按原值绘制。
-  const QColor palette[] = {"#232932","#dd8283","#8fbb9d","#d1b887",
-                            "#879ec4","#b49cc8","#85b5bc","#c8cfd8",
-                            "#75818e","#eea1a1","#aad6b6","#ead09c",
-                            "#a7bfe5","#ceb5e1","#a1d1d6","#f1f4f7"};
-  for (int i = 0; i < 16; ++i) {
-    VTermColor color;
-    vterm_color_rgb(&color, palette[i].red(), palette[i].green(), palette[i].blue());
-    vterm_state_set_palette_color(vterm_obtain_state(c.vt), i, &color);
-  }
+  applyPalette();
   c.writer =
       std::make_unique<QSocketNotifier>(c.master, QSocketNotifier::Write);
   c.writer->setEnabled(false);
@@ -271,8 +262,48 @@ void TerminalSurface::resizeGrid() {
   update();
 #endif
 }
+QColor TerminalSurface::themeColor(const QString &role, const QColor &fallback) const {
+  const QColor color(m_theme.value(role).toString());
+  return color.isValid() ? color : fallback;
+}
+void TerminalSurface::setTheme(const QVariantMap &theme) {
+  if (m_theme==theme) return;
+  m_theme=theme; applyPalette(); update(); emit themeChanged();
+}
+void TerminalSurface::applyPalette() {
+#ifdef Q_OS_MACOS
+  if (!m_client || !m_client->vt) return;
+  const QColor defaults[] = {"#232932","#dd8283","#8fbb9d","#d1b887","#879ec4","#b49cc8","#85b5bc","#c8cfd8", "#75818e","#eea1a1","#aad6b6","#ead09c","#a7bfe5","#ceb5e1","#a1d1d6","#f1f4f7"};
+  auto *state=vterm_obtain_state(m_client->vt);
+  // 重置整张索引色表后覆盖导入项，避免切换主题残留上一套颜色。
+  for (int i=0;i<256;++i) {
+    QColor fallback;
+    if (i<16) fallback=defaults[i];
+    else if (i<232) {
+      const auto component=[](int v){return v==0 ? 0 : 55+40*v;};
+      const int index=i-16;
+      fallback=QColor(component(index/36),component(index/6%6),component(index%6));
+    } else fallback=QColor(8+(i-232)*10,8+(i-232)*10,8+(i-232)*10);
+    const auto color=themeColor("ansi"+QString::number(i),fallback);
+    VTermColor terminalColor;
+    vterm_color_rgb(&terminalColor,color.red(),color.green(),color.blue());
+    vterm_state_set_palette_color(state,i,&terminalColor);
+  }
+#endif
+}
+void TerminalSurface::sendControl(int action) {
+#ifdef Q_OS_MACOS
+  if (!m_client || !m_error.isEmpty()) return;
+  static const char keys[]={'c','d','l','a','e'};
+  if (action<0 || action>=5) return;
+  vterm_keyboard_unichar(m_client->vt,keys[action],VTERM_MOD_CTRL);
+  m_client->flush();
+#else
+  Q_UNUSED(action)
+#endif
+}
 void TerminalSurface::paint(QPainter *p) {
-  p->fillRect(boundingRect(), QColor("#191d24"));
+  p->fillRect(boundingRect(), themeColor("background",QColor("#191d24")));
 #ifdef Q_OS_MACOS
   if (!m_client || !m_client->screen)
     return;
@@ -287,17 +318,17 @@ void TerminalSurface::paint(QPainter *p) {
         vterm_screen_convert_color_to_rgb(c.screen, &color);
         return QColor(color.rgb.red, color.rgb.green, color.rgb.blue);
       };
-      QColor fg = VTERM_COLOR_IS_DEFAULT_FG(&cell.fg) ? QColor("#edeef0")
+      QColor fg = VTERM_COLOR_IS_DEFAULT_FG(&cell.fg) ? themeColor("foreground",QColor("#edeef0"))
                                                       : rgb(cell.fg);
-      QColor bg = VTERM_COLOR_IS_DEFAULT_BG(&cell.bg) ? QColor("#191d24")
+      QColor bg = VTERM_COLOR_IS_DEFAULT_BG(&cell.bg) ? themeColor("background",QColor("#191d24"))
                                                       : rgb(cell.bg);
       if (cell.attrs.reverse)
         std::swap(fg, bg);
       const int start = m_selectionStart.y()*c.cols+m_selectionStart.x();
       const int end = m_selectionEnd.y()*c.cols+m_selectionEnd.x();
       const int index = y*c.cols+x;
-      if (m_selectionStart.x() >= 0 && index >= qMin(start,end) && index < qMax(start,end)) bg = QColor("#3b526e");
-      if (bg != QColor("#191d24"))
+      if (m_selectionStart.x() >= 0 && index >= qMin(start,end) && index < qMax(start,end)) bg = themeColor("selection-background",QColor("#3b526e"));
+      if (bg != themeColor("background",QColor("#191d24")))
         p->fillRect(x * m_cw, y * m_ch, m_cw * qMax(1, int(cell.width)), m_ch,
                     bg);
       if (!cell.chars[0])
@@ -319,12 +350,12 @@ void TerminalSurface::paint(QPainter *p) {
   VTermPos pos;
   vterm_state_get_cursorpos(vterm_obtain_state(c.vt), &pos);
   if (hasActiveFocus() && c.cursorVisible) {
-    p->setPen(Qt::white);
+    p->setPen(themeColor("cursor-color",QColor(Qt::white)));
     p->drawLine(pos.col * m_cw, pos.row * m_ch, pos.col * m_cw,
                 (pos.row + 1) * m_ch - 1);
   }
   if (!m_preedit.isEmpty()) {
-    p->setPen(Qt::white);
+    p->setPen(themeColor("cursor-color",QColor(Qt::white)));
     p->drawText(pos.col * m_cw, pos.row * m_ch + m_ascent, m_preedit);
   }
 #endif
@@ -462,6 +493,13 @@ void TerminalSurface::keyPressEvent(QKeyEvent *e) {
   auto &c = *m_client;
   if (e->matches(QKeySequence::Copy)) { copySelection(); e->accept(); return; }
   if (e->matches(QKeySequence::Paste)) { pasteClipboard(); e->accept(); return; }
+  // macOS 的 Command/Option 编辑键沿用原生终端习惯，普通 Control 仍传给 TUI。
+  if ((e->modifiers() & Qt::ControlModifier) && e->key()==Qt::Key_Left) { sendControl(3); e->accept(); return; }
+  if ((e->modifiers() & Qt::ControlModifier) && e->key()==Qt::Key_Right) { sendControl(4); e->accept(); return; }
+  if ((e->modifiers() & Qt::AltModifier) && (e->key()==Qt::Key_Left || e->key()==Qt::Key_Right)) {
+    vterm_keyboard_unichar(c.vt,e->key()==Qt::Key_Left ? 'b' : 'f',VTERM_MOD_ALT);
+    e->accept(); return;
+  }
   // Qt 在 macOS 默认将物理 Control 映射为 Meta，Command 映射为 Control。
   int mod = (e->modifiers() & Qt::MetaModifier ? VTERM_MOD_CTRL : 0) |
             (e->modifiers() & Qt::AltModifier ? VTERM_MOD_ALT : 0);

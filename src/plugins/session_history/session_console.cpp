@@ -1,5 +1,6 @@
 #include <QRegularExpression>
 #include "session_console.h"
+#include "plugins/terminal_settings/terminal_preferences.h"
 #include "plugins/agent_activity/activity_store.h"
 #include "history_provider.h"
 #include "terminal_backend.h"
@@ -189,7 +190,7 @@ void SessionConsole::continueCodex(const QVariantMap& binding)
         {QCoreApplication::applicationFilePath(), "--continue-codex-terminal",
          QString::fromLatin1(QJsonDocument::fromVariant(binding).toJson(QJsonDocument::Compact).toBase64())}, origin, {}, binding.value("conversationId").toString());
 }
-void SessionConsole::shell(const QString& cwd) { start("Shell", cwd.isEmpty() ? QDir::homePath() : cwd, {}, {}); }
+void SessionConsole::shell(const QString& cwd) { start("Shell", cwd.isEmpty() ? QDir::homePath() : cwd, TerminalPreferences::shellCommand(), {}); }
 void SessionConsole::resume(int index)
 {
     const auto row = m_history.value(index).toMap();

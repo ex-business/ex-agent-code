@@ -19,6 +19,11 @@ public:
   bool supported() const;
   void setTarget(const QString &id);
   void paint(QPainter *painter) override;
+  Q_PROPERTY(QVariantMap theme READ theme WRITE setTheme NOTIFY themeChanged)
+  QVariantMap theme() const { return m_theme; }
+  void setTheme(const QVariantMap &theme);
+  Q_INVOKABLE void insertCommand(const QString &command) { pasteText(command); }
+  Q_INVOKABLE void sendControl(int action);
   Q_INVOKABLE void copySelection();
   Q_INVOKABLE void pasteClipboard();
   Q_INVOKABLE void copyLink();
@@ -27,6 +32,7 @@ public:
   Q_PROPERTY(QString contextLink READ contextLink NOTIFY contextLinkChanged)
   QString contextLink() const { return m_contextLink; }
 signals:
+  void themeChanged();
   void contextLinkChanged();
   void contextMenuRequested(qreal x, qreal y);
   void targetChanged();
@@ -53,6 +59,9 @@ private:
   QPoint cellAt(const QPointF &position) const;
   QPoint m_selectionStart{-1,-1}, m_selectionEnd{-1,-1};
   QString m_contextLink;
+  void applyPalette();
+  QColor themeColor(const QString &role, const QColor &fallback) const;
+  QVariantMap m_theme;
   struct Client;
   void resizeGrid();
   void fail(const QString &error);
