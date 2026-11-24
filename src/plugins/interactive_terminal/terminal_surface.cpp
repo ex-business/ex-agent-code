@@ -2,6 +2,17 @@
 #include "plugins/session_history/history_provider.h"
 #include "plugins/session_history/terminal_backend.h"
 #include <QClipboard>
+#include <QCursor>
+#include <QUrl>
+#include <QImage>
+#include <QDesktopServices>
+#include <QMimeData>
+#include <QDir>
+#include <QSaveFile>
+#include <QStandardPaths>
+#include <QRegularExpression>
+#include <QHoverEvent>
+#include <QDragEnterEvent>
 #include <QFontDatabase>
 #include <QGuiApplication>
 #include <QInputMethodEvent>
@@ -29,6 +40,8 @@ struct TerminalSurface::Client {
   QByteArray pending;
   int rows = 1, cols = 1;
   bool cursorVisible = true;
+  QByteArray selection, selectionBuffer = QByteArray(65536, '\0');
+  bool selectionOverflow = false;
   ~Client() {
     reader.reset();
     writer.reset();
@@ -62,7 +75,9 @@ struct TerminalSurface::Client {
 TerminalSurface::TerminalSurface(QQuickItem *parent)
     : QQuickPaintedItem(parent) {
   setFlag(ItemAcceptsInputMethod, true);
-  setAcceptedMouseButtons(Qt::LeftButton);
+  setAcceptedMouseButtons(Qt::LeftButton | Qt::RightButton);
+  setAcceptHoverEvents(true);
+  setFlag(ItemAcceptsDrops, true);
   m_font = QFontDatabase::systemFont(QFontDatabase::FixedFont);
   // Powerline 提示符使用私有区字形，优先选择本机已安装的终端等宽字体。
   const auto families = QFontDatabase::families();
@@ -102,6 +117,8 @@ void TerminalSurface::setTarget(const QString &id) {
   m_client.reset();
   m_target = id;
   m_preedit.clear();
+  m_selectionStart = m_selectionEnd = QPoint(-1,-1);
+  m_contextLink.clear(); emit contextLinkChanged();
   fail({});
   emit targetChanged();
   update();
@@ -151,6 +168,22 @@ void TerminalSurface::setTarget(const QString &id) {
   vterm_screen_set_callbacks(c.screen, &callbacks, &c);
   vterm_screen_enable_altscreen(c.screen, 1);
   vterm_screen_reset(c.screen, 1);
+  static const VTermSelectionCallbacks selectionCallbacks = {
+      [](VTermSelectionMask, VTermStringFragment fragment, void *data) {
+        auto *surface = static_cast<TerminalSurface *>(data);
+        auto &client = *surface->m_client;
+        if (fragment.initial) { client.selection.clear(); client.selectionOverflow = false; }
+        if (client.selection.size() + fragment.len > 1024 * 1024) client.selectionOverflow = true;
+        if (!client.selectionOverflow) client.selection.append(fragment.str, fragment.len);
+        // OSC 52 仅接受远端写入，查询不回传本机剪贴板。
+        if (fragment.final && !client.selectionOverflow)
+          QGuiApplication::clipboard()->setText(QString::fromUtf8(client.selection));
+        return 1;
+      },
+      [](VTermSelectionMask, void *) { return 1; }
+  };
+  vterm_state_set_selection_callbacks(vterm_obtain_state(c.vt), &selectionCallbacks, this,
+                                    c.selectionBuffer.data(), c.selectionBuffer.size());
   // 仅调整基础 ANSI 索引色，应用显式指定的真彩色仍按原值绘制。
   const QColor palette[] = {"#232932","#dd8283","#8fbb9d","#d1b887",
                             "#879ec4","#b49cc8","#85b5bc","#c8cfd8",
@@ -209,6 +242,7 @@ void TerminalSurface::setTarget(const QString &id) {
           [this] { fail(QStringLiteral("交互连接已结束，可返回记录视图。")); });
   c.process.start(exe, {"-L", terminalSocket(), "-f", "/dev/null",
                         "set-option", "-t", "=" + id + ":0", "status", "off", ";",
+                        "set-option", "-t", "=" + id, "set-clipboard", "on", ";",
                         "attach-session", "-t", "=" + id});
   const bool started = c.process.waitForStarted(1500);
   close(slave);
@@ -259,6 +293,10 @@ void TerminalSurface::paint(QPainter *p) {
                                                       : rgb(cell.bg);
       if (cell.attrs.reverse)
         std::swap(fg, bg);
+      const int start = m_selectionStart.y()*c.cols+m_selectionStart.x();
+      const int end = m_selectionEnd.y()*c.cols+m_selectionEnd.x();
+      const int index = y*c.cols+x;
+      if (m_selectionStart.x() >= 0 && index >= qMin(start,end) && index < qMax(start,end)) bg = QColor("#3b526e");
       if (bg != QColor("#191d24"))
         p->fillRect(x * m_cw, y * m_ch, m_cw * qMax(1, int(cell.width)), m_ch,
                     bg);
@@ -291,39 +329,139 @@ void TerminalSurface::paint(QPainter *p) {
   }
 #endif
 }
+QPoint TerminalSurface::cellAt(const QPointF &position) const {
+  return {qBound(0,int(position.x()/m_cw),qMax(0,int(width()/m_cw))),
+          qBound(0,int(position.y()/m_ch),qMax(0,int(height()/m_ch)-1))};
+}
+QString TerminalSurface::lineText(int row, int start, int end) const {
+  QString result;
+#ifdef Q_OS_MACOS
+  if (!m_client || !m_client->screen) return result;
+  for (int col=start; col<(end<0 ? m_client->cols : qMin(end,m_client->cols)); ++col) {
+    VTermScreenCell cell{};
+    if (!vterm_screen_get_cell(m_client->screen,{row,col},&cell)) break;
+    if (cell.chars[0] == UINT32_MAX) continue;
+    if (!cell.chars[0]) result += ' ';
+    for (char32_t ch : cell.chars) { if (!ch) break; result += QString::fromUcs4(&ch,1); }
+  }
+#endif
+  return result;
+}
+QString TerminalSurface::linkAt(const QPointF &position) const {
+  const auto cell = cellAt(position);
+  const auto line = lineText(cell.y());
+  // 只识别可公开打开的网页链接，避免终端输出触发自定义协议执行。
+  static const QRegularExpression pattern(QStringLiteral(R"(https?://[^\s<>"']+)"));
+  auto matches = pattern.globalMatch(line);
+  while (matches.hasNext()) {
+    const auto match = matches.next();
+    const auto left = QFontMetrics(m_font).horizontalAdvance(line.left(match.capturedStart()));
+    const auto right = QFontMetrics(m_font).horizontalAdvance(line.left(match.capturedEnd()));
+    if (position.x() >= left && position.x() < right) return match.captured();
+  }
+  return {};
+}
+void TerminalSurface::hoverMoveEvent(QHoverEvent *event) {
+  setCursor(linkAt(event->position()).isEmpty() ? Qt::IBeamCursor : Qt::PointingHandCursor);
+}
 void TerminalSurface::mousePressEvent(QMouseEvent *event) {
   forceActiveFocus();
+  m_contextLink = linkAt(event->position()); emit contextLinkChanged();
+  if (event->button() == Qt::RightButton) emit contextMenuRequested(event->position().x(),event->position().y());
+  else if ((event->modifiers() & Qt::ControlModifier) && !m_contextLink.isEmpty()) openLink();
+  else m_selectionStart = m_selectionEnd = cellAt(event->position());
+  event->accept(); update();
+}
+void TerminalSurface::mouseMoveEvent(QMouseEvent *event) {
+  if (event->buttons() & Qt::LeftButton) { m_selectionEnd = cellAt(event->position()); update(); }
   event->accept();
-  update();
+}
+void TerminalSurface::mouseReleaseEvent(QMouseEvent *event) { event->accept(); }
+void TerminalSurface::copySelection() {
+  if (m_selectionStart.x()<0 || m_selectionStart==m_selectionEnd) return;
+  auto first=m_selectionStart, last=m_selectionEnd;
+  if (first.y()>last.y() || (first.y()==last.y() && first.x()>last.x())) std::swap(first,last);
+  QStringList lines;
+  for (int row=first.y(); row<=last.y(); ++row) {
+    // 选区按终端单元格截取，避免中文宽字符和 emoji 的 UTF-16 偏移混用。
+    lines.append(lineText(row,row==first.y() ? first.x() : 0,row==last.y() ? last.x() : -1));
+  }
+  QGuiApplication::clipboard()->setText(lines.join('\n'));
+}
+void TerminalSurface::copyLink() { if (!m_contextLink.isEmpty()) QGuiApplication::clipboard()->setText(m_contextLink); }
+void TerminalSurface::openLink() {
+  const QUrl url(m_contextLink);
+  if (url.isValid() && (url.scheme()=="http" || url.scheme()=="https")) QDesktopServices::openUrl(url);
+}
+void TerminalSurface::insertFiles(const QList<QUrl> &urls) {
+  QStringList paths;
+  for (const auto &url : urls) {
+    if (!url.isLocalFile()) { emit pasteRejected(QStringLiteral("仅支持拖入本机文件。")); return; }
+    QString path=url.toLocalFile();
+    path.replace("'", "'\"'\"'"); paths.append("'"+path+"'");
+  }
+  pasteText(paths.join(' '));
+}
+void TerminalSurface::pasteClipboard() {
+  insertMimeData(QGuiApplication::clipboard()->mimeData());
+}
+void TerminalSurface::insertMimeData(const QMimeData *mime) {
+  if (!mime || m_target.isEmpty() || !m_error.isEmpty()) return;
+  if (mime->hasUrls()) { insertFiles(mime->urls()); return; }
+  if (mime->hasImage()) {
+    const auto directory=QStandardPaths::writableLocation(QStandardPaths::AppDataLocation)+"/terminal-assets/"+m_target;
+    const auto path=directory+"/"+QUuid::createUuid().toString(QUuid::WithoutBraces)+".png";
+    QSaveFile file(path);
+    if (!QDir().mkpath(directory) || !file.open(QIODevice::WriteOnly) ||
+        !qvariant_cast<QImage>(mime->imageData()).save(&file,"PNG") || !file.commit()) {
+      emit pasteRejected(QStringLiteral("无法保存终端图片。")); return;
+    }
+    insertFiles({QUrl::fromLocalFile(path)}); return;
+  }
+  pasteText(mime->text());
+}
+void TerminalSurface::dragEnterEvent(QDragEnterEvent *event) {
+  if (!(event->possibleActions() & Qt::CopyAction)) return;
+  if (event->mimeData()->hasUrls() || event->mimeData()->hasImage()) {
+    event->setDropAction(Qt::CopyAction);
+    event->accept();
+  }
+}
+void TerminalSurface::dropEvent(QDropEvent *event) {
+  if (!(event->possibleActions() & Qt::CopyAction)) return;
+  if (event->mimeData()->hasUrls() || event->mimeData()->hasImage()) {
+    // 这里只接收路径或图片副本，不能向拖放来源报告移动成功。
+    insertMimeData(event->mimeData());
+    event->setDropAction(Qt::CopyAction);
+    event->accept();
+  }
+}
+void TerminalSurface::pasteText(QString text) {
+#ifdef Q_OS_MACOS
+  if (!m_client || !m_client->vt || !m_error.isEmpty()) return;
+  auto &c=*m_client;
+  text.replace(QStringLiteral("\r\n"),QStringLiteral("\n"));
+  for (const auto ch:text) {
+    if (ch.category()==QChar::Other_Control && ch!='\t' && ch!='\n') {
+      emit pasteRejected(QStringLiteral("剪贴板包含终端控制字符，已取消粘贴。")); return;
+    }
+  }
+  const auto bytes=text.toUtf8();
+  if (c.pending.size()+bytes.size()+12>1024*1024) {
+    emit pasteRejected(QStringLiteral("待输入内容超过 1 MiB，请分段粘贴。")); return;
+  }
+  vterm_keyboard_start_paste(c.vt); c.pending+=bytes; vterm_keyboard_end_paste(c.vt); c.flush();
+#else
+  Q_UNUSED(text)
+#endif
 }
 void TerminalSurface::keyPressEvent(QKeyEvent *e) {
 #ifdef Q_OS_MACOS
   if (!m_client || !m_client->vt || !m_error.isEmpty())
     return;
   auto &c = *m_client;
-  if (e->matches(QKeySequence::Paste)) {
-    e->accept();
-    auto text = QGuiApplication::clipboard()->text();
-    text.replace(QStringLiteral("\r\n"), QStringLiteral("\n"));
-    // 终端控制序列只能由模拟器生成。整次拒绝异常粘贴，避免部分写入。
-    for (const auto ch : text) {
-      if (ch.category() == QChar::Other_Control && ch != '\t' && ch != '\n') {
-        emit pasteRejected(QStringLiteral("剪贴板包含终端控制字符，已取消粘贴。"));
-        return;
-      }
-    }
-    const auto bytes = text.toUtf8();
-    if (c.pending.size() + bytes.size() + 12 > 1024 * 1024) {
-      emit pasteRejected(QStringLiteral("待输入内容超过 1 MiB，请分段粘贴。"));
-      return;
-    }
-    vterm_keyboard_start_paste(c.vt);
-    c.pending += bytes;
-    vterm_keyboard_end_paste(c.vt);
-    c.flush();
-    e->accept();
-    return;
-  }
+  if (e->matches(QKeySequence::Copy)) { copySelection(); e->accept(); return; }
+  if (e->matches(QKeySequence::Paste)) { pasteClipboard(); e->accept(); return; }
   // Qt 在 macOS 默认将物理 Control 映射为 Meta，Command 映射为 Control。
   int mod = (e->modifiers() & Qt::MetaModifier ? VTERM_MOD_CTRL : 0) |
             (e->modifiers() & Qt::AltModifier ? VTERM_MOD_ALT : 0);

@@ -28,6 +28,14 @@ Rectangle {
             Layout.fillWidth: true; Layout.fillHeight: true; Layout.margins: 8
             target: root.visible ? root.terminalId : ""
             ToolTip { id: pasteNotice; timeout: 3000 }
+            onContextMenuRequested: (x,y) => { actions.x=x; actions.y=y; actions.open() }
+            Design.ContextMenu {
+                id: actions
+                Design.ContextMenuItem { text: "复制选中内容"; onTriggered: surface.copySelection() }
+                Design.ContextMenuItem { text: "粘贴"; onTriggered: surface.pasteClipboard() }
+                Design.ContextMenuItem { text: "打开链接"; visible: !!surface.contextLink; onTriggered: surface.openLink() }
+                Design.ContextMenuItem { text: "复制链接"; visible: !!surface.contextLink; onTriggered: surface.copyLink() }
+            }
             onPasteRejected: reason => pasteNotice.show(reason)
         }
         Label { visible: !!surface.error; text: surface.error; color: "#efaa92"; Layout.leftMargin: 8 }
