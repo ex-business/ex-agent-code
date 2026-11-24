@@ -6,6 +6,7 @@ public:
     using TaskWorkspaceProvider::TaskWorkspaceProvider;
     QString id() const override { return QStringLiteral("git.worktree"); }
     QString actionTitle() const override { return QStringLiteral("新建任务工作树"); }
-    void create(const QString &source, const QString &name, Completion done) override;
+    void loadFields(const QString &source, FieldsReady ready) override;
+    void create(const QString &source, const QString &name, const QVariantMap &options, Completion done) override;
 };
 }

@@ -51,24 +51,79 @@ Rectangle {
     }
     Dialog {
         id: taskDialog
+        property int request: 0
+        property var fields: []
+        property bool ready: false
         property string provider
         property string project
         property string workspace
         anchors.centerIn: Overlay.overlay
         modal: true
         standardButtons: Dialog.Ok | Dialog.Cancel
+        width: 390
+        Connections {
+            target: root.controller.projects
+            function onTaskFieldsReady(request: int, fields: var) {
+                if (request !== taskDialog.request) return
+                taskDialog.fields = fields
+                taskDialog.ready = true
+            }
+        }
         onOpened: {
+            fields = []
+            ready = false
+            request++
+            root.controller.projects.loadTaskFields(provider, project, workspace, request)
             taskName.clear()
-            standardButton(Dialog.Ok).enabled = false
             taskName.forceActiveFocus()
         }
-        onAccepted: root.controller.projects.createTask(provider, project, workspace, taskName.text)
-        contentItem: TextField {
-            id: taskName
-            placeholderText: "任务名称"
-            maximumLength: 80
-            onTextChanged: if (taskDialog.visible) taskDialog.standardButton(Dialog.Ok).enabled = text.trim().length > 0
-            onAccepted: if (text.trim()) taskDialog.accept()
+        onAccepted: {
+            const options = {}
+            for (let i = 0; i < editors.count; ++i) {
+                const editor = editors.itemAt(i) as TaskOptionField
+                options[editor.modelData.key] = editor.value
+            }
+            root.controller.projects.createTask(provider, project, workspace, taskName.text, options)
+        }
+        component TaskOptionField: ColumnLayout {
+            id: field
+            required property var modelData
+            readonly property string value: modelData.choices ? choice.editText : input.text
+            Layout.fillWidth: true
+            Label { text: field.modelData.label }
+            ComboBox {
+                id: choice
+                visible: !!field.modelData.choices
+                Layout.fillWidth: true
+                editable: true
+                model: field.modelData.choices || []
+                Accessible.name: field.modelData.label
+            }
+            TextField {
+                id: input
+                visible: !field.modelData.choices
+                Layout.fillWidth: true
+                Accessible.name: field.modelData.label
+            }
+        }
+        contentItem: ColumnLayout {
+            TextField {
+                id: taskName
+                Layout.fillWidth: true
+                placeholderText: "任务名称"
+                maximumLength: 80
+                onAccepted: if (taskDialog.ready && text.trim()) taskDialog.accept()
+            }
+            Binding {
+                target: taskDialog.standardButton(Dialog.Ok)
+                property: "enabled"
+                value: taskDialog.ready && taskName.text.trim().length > 0
+            }
+            Repeater {
+                id: editors
+                model: taskDialog.fields
+                delegate: TaskOptionField {}
+            }
         }
     }
     Dialog {

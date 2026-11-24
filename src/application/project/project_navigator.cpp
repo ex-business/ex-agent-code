@@ -30,8 +30,19 @@ QVariantList ProjectNavigator::taskProviders() const
     return actions;
 }
 
+void ProjectNavigator::loadTaskFields(const QString &providerId, const QString &projectId, const QString &workspaceId, int request)
+{
+    const auto *workspace = catalog.workspace(projectId, workspaceId);
+    if (workspace) for (auto *provider : m_providers) {
+        if (provider->id() != providerId) continue;
+        provider->loadFields(workspace->path, [this, request](QVariantList fields) { emit taskFieldsReady(request, fields); });
+        return;
+    }
+    emit taskFieldsReady(request, {});
+}
+
 void ProjectNavigator::createTask(const QString &providerId, const QString &projectId,
-                                  const QString &workspaceId, const QString &name)
+                                  const QString &workspaceId, const QString &name, const QVariantMap &options)
 {
     const auto *workspace = catalog.workspace(projectId, workspaceId);
     if (!writable() || !workspace || name.trimmed().isEmpty() || name.size() > 80) {
@@ -40,7 +51,7 @@ void ProjectNavigator::createTask(const QString &providerId, const QString &proj
     }
     for (auto *provider : m_providers) {
         if (provider->id() != providerId) continue;
-        provider->create(workspace->path, name.trimmed(), [this, projectId](QString path, QString error) {
+        provider->create(workspace->path, name.trimmed(), options, [this, projectId](QString path, QString error) {
             // 异步完成后仍绑定发起任务的项目，避免用户切换会话时串到其他项目。
             if (!error.isEmpty()) emit failure(error);
             else bindWorkspace(projectId, QUrl::fromLocalFile(path));
