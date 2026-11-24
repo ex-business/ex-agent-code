@@ -18,12 +18,12 @@ Rectangle {
                 Layout.alignment: Qt.AlignHCenter
                 implicitWidth: 36; implicitHeight: 34
                 iconName: modelData
-                tooltip: modelData === "home" ? "显示或收起导航" : "导航展示 · " + modelData
+                tooltip: modelData === "home" ? Design.UiText.get("显示或收起导航") : "导航展示 · " + modelData
                 onClicked: if (modelData === "home") root.sidebarRequested()
             }
         }
         Item { Layout.fillHeight: true }
-        Design.IconButton { Layout.alignment: Qt.AlignHCenter; iconName: "sun"; tooltip: "切换主题"; onClicked: Design.Theme.dark = !Design.Theme.dark }
+        Design.IconButton { Layout.alignment: Qt.AlignHCenter; iconName: "sun"; tooltip: Design.UiText.get("切换主题"); onClicked: Design.Theme.toggle() }
         Rectangle {
             Layout.alignment: Qt.AlignHCenter
             implicitWidth: 25; implicitHeight: 25; radius: 13; color: "#2785b5"

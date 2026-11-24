@@ -1,9 +1,11 @@
 pragma ComponentBehavior: Bound
 import QtQuick
+import ExAgent.App as Design
 import QtQuick.Controls
 import QtQuick.Layouts
 
-Dialog {
+WorkbenchDialog {
+    darkSurface: true
     id: root
     required property var backend
     required property string workspace
@@ -51,19 +53,19 @@ Dialog {
                 }
                 Label { visible: root.rows.length === 0; text: "此工作区尚无 Agent 上报" }
             }
-            Button { text: "刷新"; onClicked: root.refresh() }
+            DialogAction { text: Design.UiText.get("刷新"); onClicked: root.refresh() }
         }
         ColumnLayout {
             visible: tabs.currentIndex === 1
             RowLayout {
-                TextField {
+                DialogInput {
                     id: path
                     Layout.fillWidth: true; text: "AGENTS.md"
                     placeholderText: "相对路径，如 src/CLAUDE.md"
                     onTextChanged: root.document = ({})
                     onAccepted: root.document = root.backend.readMemory(root.workspace,text)
                 }
-                Button { text: "读取"; onClicked: root.document = root.backend.readMemory(root.workspace,path.text) }
+                DialogAction { text: "读取"; onClicked: root.document = root.backend.readMemory(root.workspace,path.text) }
             }
             ScrollView {
                 Layout.fillWidth: true; Layout.preferredHeight: 240

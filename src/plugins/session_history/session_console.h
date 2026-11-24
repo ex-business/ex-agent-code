@@ -11,6 +11,7 @@ class SessionConsole : public QObject {
     QML_ELEMENT
     Q_PROPERTY(QVariantList history MEMBER m_history NOTIFY changed)
     Q_PROPERTY(QVariantList tabs READ tabs NOTIFY changed)
+    Q_PROPERTY(QVariantList tabHeaders READ tabHeaders NOTIFY tabsChanged)
     Q_PROPERTY(bool ownsInput READ ownsInput CONSTANT)
     Q_PROPERTY(int selected READ selected NOTIFY changed)
     Q_PROPERTY(QVariantMap current READ current NOTIFY changed)
@@ -21,6 +22,7 @@ class SessionConsole : public QObject {
 public:
     explicit SessionConsole(QObject* parent = nullptr);
     ~SessionConsole() override;
+    QVariantList tabHeaders() const;
     QVariantList tabs() const { return m_tabs; }
     bool ownsInput() const { return m_writer->isLocked(); }
     int selected() const { return m_selected; }
@@ -34,6 +36,7 @@ public:
     Q_INVOKABLE void setDraft(const QString& id, const QString& text);
     Q_INVOKABLE QString draft(const QString& id) const { return m_drafts.value(id); }
     Q_INVOKABLE void setConsoleVisible(bool visible);
+    Q_INVOKABLE int requestScrollback(const QString& id);
     Q_INVOKABLE void refreshActivity(const QString& cwd);
     Q_INVOKABLE QVariantMap readMemory(const QString& cwd, const QString& path) const;
     Q_INVOKABLE void scan(const QString& workspace);
@@ -48,6 +51,8 @@ public:
     Q_INVOKABLE void send(const QString& text);
 signals:
     void changed();
+    void tabsChanged();
+    void scrollbackReady(int serial, QString text);
     void activityReady(QString workspace, QVariantList rows);
 
 private:
@@ -66,6 +71,7 @@ private:
     int m_selected = -1;
     int m_generation = 0;
     bool m_polling = false;
+    int m_scrollbackSerial = 0;
     int m_activityGeneration = 0;
 };
 }

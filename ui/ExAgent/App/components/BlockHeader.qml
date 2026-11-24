@@ -25,7 +25,7 @@ Item {
     RowLayout {
         anchors.left: header.compact ? undefined : parent.left
         anchors.right: parent.right
-        anchors.rightMargin: header.compact ? 78 : 0
+        anchors.rightMargin: header.compact ? 110 : 0
         y: header.compact ? 3 : 0
         height: 30
         spacing: 8

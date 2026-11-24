@@ -4,13 +4,24 @@
 #include <QJsonDocument>
 
 namespace exagent {
+namespace {
+// 内容和任务状态跟随后台快照；命令、语言和当前标签属于打开窗口时的展示上下文。
+QVariantMap windowSnapshot(const QVariantMap &stored, const QVariantMap &display)
+{
+    if (stored.isEmpty()) return display;
+    QVariantMap result = stored;
+    for (const auto key : {"shell", "command", "language", "initialPage", "messageStatus"})
+        if (!stored.contains(key) && display.contains(key)) result.insert(key, display.value(key));
+    return result;
+}
+}
 BlockViewRegistry::BlockViewRegistry(ContentBlockStore &store, QObject *parent) : QObject(parent), m_store(store), m_windows(this)
 {
     connect(&store, &ContentBlockStore::blockChanged, this, [this](const QString &id) {
         auto it = m_views.find(id);
         if (it == m_views.end() || it->placement != 2) return;
         const auto next = m_store.snapshot(id);
-        if (!next.isEmpty()) { it->block = next; touch(); }
+        if (!next.isEmpty()) { it->block = windowSnapshot(next, it->block); touch(); }
     });
 }
 void BlockViewRegistry::touch() { ++m_revision; emit changed(); }
@@ -36,8 +47,7 @@ QVariantMap BlockViewRegistry::snapshot(const QString &id) const { return m_view
 void BlockViewRegistry::detach(const QVariantMap &fallback)
 {
     const auto id = fallback.value("blockId").toString();
-    auto block = m_store.snapshot(id);
-    if (block.isEmpty()) block = fallback; // 历史快照不启动原任务，只重建显示。
+    auto block = windowSnapshot(m_store.snapshot(id), fallback);
     if (!content::identifier(id) || !content::integer(QJsonValue::fromVariant(block.value("rendererKind")), 1, 7)) return;
     if (QJsonDocument::fromVariant(block).toJson(QJsonDocument::Compact).size() > 2 * 1024 * 1024) {
         emit failure(QStringLiteral("独立视图快照过大，请先导出内容")); return;

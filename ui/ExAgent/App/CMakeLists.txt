@@ -1,10 +1,10 @@
-set_source_files_properties(Theme.qml InteractionMotion.qml PerformanceTrace.qml BlockRendererRegistry.qml PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
+set_source_files_properties(Theme.qml UiText.qml InteractionMotion.qml PerformanceTrace.qml BlockRendererRegistry.qml PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
 qt_add_qml_module(ex_agent_workbench
     STATIC
     URI ExAgent.App
     VERSION 1.0
     QML_FILES
-        Main.qml Theme.qml InteractionMotion.qml PerformanceTrace.qml BlockRendererRegistry.qml
+        Main.qml Theme.qml UiText.qml InteractionMotion.qml PerformanceTrace.qml BlockRendererRegistry.qml
         components/PressFeedback.qml components/DisclosureHeight.qml components/DisclosureEntrance.qml components/MotionRegistration.qml components/DisclosureRotation.qml
         components/WindowEntrance.qml components/BlockHeader.qml components/ActivityGroupHeader.qml
         components/BlockRenderer.qml components/BlockWindowManager.qml
@@ -25,9 +25,9 @@ qt_add_qml_module(ex_agent_workbench
         components/MessageLayoutReservation.qml components/ScrollRenderPolicy.qml components/HistoryPagePreloader.qml components/ChatScrollView.qml components/ChatSelectionLayer.qml components/ChatSelectionPart.qml
         components/SelectionAutoScroll.qml
         components/WorkspaceTabs.qml components/WorkbenchTitleBar.qml components/FilePreview.qml
-        components/ChatMenu.qml components/SessionConsoleWindow.qml components/AgentLauncher.qml components/AgentProfiles.js
+        components/ChatMenu.qml components/SessionConsoleWindow.qml components/WorkbenchDialog.qml components/DialogAction.qml components/DialogInput.qml components/DialogSelect.qml components/TerminalPane.qml components/TerminalAction.qml components/TerminalHistoryDialog.qml components/AgentLauncher.qml components/AgentProfiles.js
         components/AgentActivityDialog.qml
-        components/BlockGeometry.js components/ProsePreparation.qml components/MarkdownText.qml components/TableRulesOverlay.qml
+        components/ShellPresentation.js components/BlockGeometry.js components/ProsePreparation.qml components/MarkdownText.qml components/TableRulesOverlay.qml
         components/ToolActivityRow.qml components/MessageAttachments.qml
         components/ImagePreview.qml components/ChangesSummary.qml
         components/MessageContent.qml

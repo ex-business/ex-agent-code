@@ -4,7 +4,8 @@ import QtQuick.Controls
 import QtQuick.Layouts
 import QtCore as Core
 
-Dialog {
+WorkbenchDialog {
+    darkSurface: true
     id: root
     required property var backend
     required property string workspace
@@ -36,13 +37,13 @@ Dialog {
     onOpened: loadProfile()
     onClosed: environment.clear()
     contentItem: ColumnLayout {
-        ComboBox {
+        DialogSelect {
             id: picker
             Layout.fillWidth: true
             model: root.profiles.map(p => p[0])
             onActivated: root.loadProfile()
         }
-        TextField {
+        DialogInput {
             id: executable
             Layout.fillWidth: true
             placeholderText: "可执行文件名或绝对路径"
@@ -57,8 +58,8 @@ Dialog {
         TextArea { id: environment; Layout.fillWidth: true; placeholderText: "本次启动的环境变量，每行 NAME=value" }
         Label { visible: !!root.feedback; text: root.feedback; Layout.fillWidth: true; wrapMode: Text.Wrap }
         RowLayout {
-            Button { text: "重新探测"; onClicked: root.probe() }
-            Button {
+            DialogAction { text: "重新探测"; onClicked: root.probe() }
+            DialogAction {
                 text: "启动"; enabled: !!root.resolved
                 onClicked: {
                     const label = picker.currentText

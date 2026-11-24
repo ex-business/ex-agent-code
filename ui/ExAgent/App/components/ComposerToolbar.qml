@@ -27,7 +27,7 @@ RowLayout {
         Design.ContextMenu {
             id: moreMenu
             Design.ContextMenuItem { text: "粘贴"; iconName: "copy"; shortcutLabel: Qt.platform.os === "osx" ? "⌘V" : ""; enabled: root.canPaste; onTriggered: root.pasteRequested() }
-            Design.ContextMenuItem { text: "新聊天"; iconName: "new"; shortcutLabel: Qt.platform.os === "osx" ? "⌘N" : ""; onTriggered: root.newChatRequested() }
+            Design.ContextMenuItem { text: Design.UiText.get("新聊天"); iconName: "new"; shortcutLabel: Qt.platform.os === "osx" ? "⌘N" : ""; onTriggered: root.newChatRequested() }
         }
     }
     RowLayout {

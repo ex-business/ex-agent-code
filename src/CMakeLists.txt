@@ -26,10 +26,13 @@ target_link_libraries(ex_agent_worker PUBLIC ex_agent_ipc ex_agent_codex)
 qt_add_library(ex_agent_chat STATIC)
 qt_add_resources(ex_agent_chat "terminal_hibernation" PREFIX "/terminal-hibernation"
     BASE "plugins/session_history" FILES plugins/session_history/pi_activity.mjs plugins/session_history/pi_hibernation.mjs)
+qt_add_resources(ex_agent_chat "appearance_packs" PREFIX "/appearance" BASE plugins/appearance/packs
+    FILES plugins/appearance/packs/dark.json plugins/appearance/packs/en.json plugins/appearance/packs/light.json plugins/appearance/packs/zh-CN.json)
 qt_add_qml_module(ex_agent_chat
     URI ExAgent.Chat
     VERSION 1.0
     SOURCES
+        plugins/appearance/appearance_registry.h
         plugins/interactive_terminal/terminal_surface.h plugins/interactive_terminal/terminal_surface.cpp
         plugins/session_history/session_console.h plugins/session_history/session_console.cpp
         plugins/session_history/terminal_hibernation.cpp plugins/session_history/history_provider.cpp plugins/session_history/terminal_backend.cpp
@@ -54,6 +57,7 @@ qt_add_qml_module(ex_agent_chat
         presentation/chat/message_list_model.h presentation/chat/message_list_model.cpp
         presentation/chat/session_list_model.h presentation/chat/session_list_model.cpp
         presentation/code/code_line_model.h presentation/code/code_line_model.cpp
+        presentation/code/script_preview.h presentation/code/script_preview.cpp
         presentation/code/syntax_highlighter.h presentation/code/syntax_highlighter.cpp
         presentation/text/text_selection_rules.h presentation/text/text_selection_rules.cpp
         presentation/text/rich_text_preparation.h presentation/text/rich_text_preparation.cpp
@@ -64,9 +68,35 @@ qt_add_qml_module(ex_agent_chat
         presentation/text/selection_coordinator.h presentation/text/selection_coordinator.cpp
         presentation/workspace/workspace_controller.h presentation/workspace/workspace_controller.cpp
 )
+target_sources(ex_agent_chat PRIVATE presentation/code/code_color_span.cpp)
+option(EX_AGENT_GO_AST "使用 Go 语法树和 VS Code 主题渲染代码" OFF)
+if(EX_AGENT_GO_AST)
+    enable_language(C)
+    find_package(PkgConfig REQUIRED)
+    pkg_check_modules(TreeSitter REQUIRED IMPORTED_TARGET tree-sitter>=0.22)
+    include(FetchContent)
+    FetchContent_Declare(ex_go_grammar
+        URL https://codeload.github.com/tree-sitter/tree-sitter-go/tar.gz/refs/tags/v0.23.4
+        URL_HASH SHA256=967870d7d120e9b760e538aeb8331a72f70ffcca4f1eaf1e1dea5375886d25d2
+        SOURCE_SUBDIR unused)
+    FetchContent_MakeAvailable(ex_go_grammar)
+    add_library(ex_go_parser STATIC "${ex_go_grammar_SOURCE_DIR}/src/parser.c")
+    target_sources(ex_agent_chat PRIVATE presentation/code/go_ast_highlighter.cpp presentation/code/vscode_token_theme.cpp)
+    target_link_libraries(ex_agent_chat PRIVATE PkgConfig::TreeSitter ex_go_parser)
+    target_compile_definitions(ex_agent_chat PRIVATE EX_AGENT_GO_AST)
+    qt_add_resources(ex_agent_chat code_themes PREFIX "/code-themes" BASE presentation/code/themes
+        FILES presentation/code/themes/light.json presentation/code/themes/dark.json)
+endif()
+option(EX_AGENT_KDE_HIGHLIGHTING "使用 KDE 语法高亮渲染 Go、C 和 Bash 代码块" OFF)
+if(EX_AGENT_KDE_HIGHLIGHTING)
+    find_package(KF6SyntaxHighlighting CONFIG REQUIRED)
+    target_sources(ex_agent_chat PRIVATE presentation/code/kde_code_highlighter.cpp)
+    target_link_libraries(ex_agent_chat PUBLIC KF6::SyntaxHighlighting)
+    target_compile_definitions(ex_agent_chat PUBLIC EX_AGENT_KDE_HIGHLIGHTING)
+endif()
 target_link_libraries(ex_agent_chat PUBLIC ex_agent_domain ex_agent_ipc ex_agent_codex Qt6::Gui Qt6::Qml Qt6::Quick Qt6::Concurrent)
 target_include_directories(ex_agent_chat PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}"
-    PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/plugins/interactive_terminal" "${CMAKE_CURRENT_SOURCE_DIR}/plugins/session_history" "${CMAKE_CURRENT_SOURCE_DIR}/application/agent" "${CMAKE_CURRENT_SOURCE_DIR}/application/chat" "${CMAKE_CURRENT_SOURCE_DIR}/presentation/chat" "${CMAKE_CURRENT_SOURCE_DIR}/presentation/code")
+    PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/plugins/appearance" "${CMAKE_CURRENT_SOURCE_DIR}/plugins/interactive_terminal" "${CMAKE_CURRENT_SOURCE_DIR}/plugins/session_history" "${CMAKE_CURRENT_SOURCE_DIR}/application/agent" "${CMAKE_CURRENT_SOURCE_DIR}/application/chat" "${CMAKE_CURRENT_SOURCE_DIR}/presentation/chat" "${CMAKE_CURRENT_SOURCE_DIR}/presentation/code")
 if(APPLE)
     find_path(VTERM_INCLUDE_DIR vterm.h REQUIRED)
     find_file(VTERM_ARCHIVE libvterm.a PATH_SUFFIXES lib REQUIRED)

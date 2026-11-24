@@ -57,7 +57,8 @@ Item {
         // 工具展开状态由自己的布局动画处理，不用正文缓存覆盖动态块高度。
         key: root.isTool ? "" : "row:" + root.messageId + ":" + Design.Theme.font + ":" + Design.Theme.dark
         contentWidth: root.width
-        naturalHeight: body.implicitHeight + (root.isTool ? (root.messageTitle === "文件修改" ? 40 : 8) : root.isUser ? 42 : root.isNotice ? 12 : 26)
+        // 连续命令共享分组标题，行间只保留少量留白。
+        naturalHeight: body.implicitHeight + (root.isTool ? (root.messageTitle === "文件修改" ? 40 : root.grouped && !root.expanded && Number(root.activity.kind) === 2 ? 2 : 8) : root.isUser ? 42 : root.isNotice ? 12 : 26)
         ready: Boolean(root.bodyContent) && root.bodyContent.layoutReady !== false
     }
     implicitHeight: auxiliaryMedia || groupHidden ? 0 : rowReservation.height

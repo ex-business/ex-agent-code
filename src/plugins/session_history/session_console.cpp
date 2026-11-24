@@ -80,6 +80,40 @@ void SessionConsole::save()
     settings.setValue("terminal/tabs", metadata);
     settings.setValue("terminal/selected", m_selected);
 }
+QVariantList SessionConsole::tabHeaders() const
+{
+    // 滚动内容变化无需重新创建页签，也无需将长回滚文本交给页签视图。
+    QVariantList headers;
+    for (const auto& tab : m_tabs) {
+        const auto row = tab.toMap();
+        headers.append(QVariantMap{{"id",row["id"]},{"title",row["title"]}});
+    }
+    return headers;
+}
+int SessionConsole::requestScrollback(const QString& id)
+{
+    const int serial = ++m_scrollbackSerial;
+    QString fallback;
+    bool known = false;
+    for (const auto& tab : m_tabs) {
+        const auto row = tab.toMap();
+        if (row["id"] == id) {
+            known = true;
+            fallback = row["text"].toString();
+            break;
+        }
+    }
+    // 查找只读取指定页签的快照；保持运行程序的输入模式和屏幕位置。
+    auto* watcher = new QFutureWatcher<QString>(this);
+    connect(watcher,&QFutureWatcher<QString>::finished,this,[this,watcher,serial] {
+        emit scrollbackReady(serial,watcher->result());
+        watcher->deleteLater();
+    });
+    watcher->setFuture(QtConcurrent::run([known,id,fallback] {
+        return known ? terminalSnapshot(id).value("text",fallback).toString() : QString();
+    }));
+    return serial;
+}
 void SessionConsole::refreshActivity(const QString& cwd)
 {
     const auto generation = ++m_activityGeneration;
@@ -211,6 +245,7 @@ void SessionConsole::start(const QString& title, const QString& cwd, const QStri
     m_error.clear();
     m_tabs.append(QVariantMap { { "id", id }, { "title", title }, { "cwd", cwd }, { "origin", origin },
         { "conversationId", conversation }, { "hibernatable", supported }, { "state", -1 } });
+    emit tabsChanged();
     select(m_tabs.size() - 1);
 }
 void SessionConsole::poll(bool withText)

@@ -64,6 +64,11 @@ TerminalSurface::TerminalSurface(QQuickItem *parent)
   setFlag(ItemAcceptsInputMethod, true);
   setAcceptedMouseButtons(Qt::LeftButton);
   m_font = QFontDatabase::systemFont(QFontDatabase::FixedFont);
+  // Powerline 提示符使用私有区字形，优先选择本机已安装的终端等宽字体。
+  const auto families = QFontDatabase::families();
+  for (const auto& family : {QStringLiteral("MesloLGS NF"), QStringLiteral("FiraCode Nerd Font Mono")}) {
+    if (families.contains(family)) { m_font.setFamily(family); break; }
+  }
   m_font.setPixelSize(14);
   const QFontMetrics fm(m_font);
   m_cw = qMax(1, fm.horizontalAdvance('M'));
@@ -146,6 +151,16 @@ void TerminalSurface::setTarget(const QString &id) {
   vterm_screen_set_callbacks(c.screen, &callbacks, &c);
   vterm_screen_enable_altscreen(c.screen, 1);
   vterm_screen_reset(c.screen, 1);
+  // 仅调整基础 ANSI 索引色，应用显式指定的真彩色仍按原值绘制。
+  const QColor palette[] = {"#232932","#dd8283","#8fbb9d","#d1b887",
+                            "#879ec4","#b49cc8","#85b5bc","#c8cfd8",
+                            "#75818e","#eea1a1","#aad6b6","#ead09c",
+                            "#a7bfe5","#ceb5e1","#a1d1d6","#f1f4f7"};
+  for (int i = 0; i < 16; ++i) {
+    VTermColor color;
+    vterm_color_rgb(&color, palette[i].red(), palette[i].green(), palette[i].blue());
+    vterm_state_set_palette_color(vterm_obtain_state(c.vt), i, &color);
+  }
   c.writer =
       std::make_unique<QSocketNotifier>(c.master, QSocketNotifier::Write);
   c.writer->setEnabled(false);
@@ -193,6 +208,7 @@ void TerminalSurface::setTarget(const QString &id) {
   connect(&c.process, &QProcess::finished, this,
           [this] { fail(QStringLiteral("交互连接已结束，可返回记录视图。")); });
   c.process.start(exe, {"-L", terminalSocket(), "-f", "/dev/null",
+                        "set-option", "-t", "=" + id + ":0", "status", "off", ";",
                         "attach-session", "-t", "=" + id});
   const bool started = c.process.waitForStarted(1500);
   close(slave);
@@ -222,7 +238,7 @@ void TerminalSurface::resizeGrid() {
 #endif
 }
 void TerminalSurface::paint(QPainter *p) {
-  p->fillRect(boundingRect(), QColor("#17191c"));
+  p->fillRect(boundingRect(), QColor("#191d24"));
 #ifdef Q_OS_MACOS
   if (!m_client || !m_client->screen)
     return;
@@ -239,11 +255,11 @@ void TerminalSurface::paint(QPainter *p) {
       };
       QColor fg = VTERM_COLOR_IS_DEFAULT_FG(&cell.fg) ? QColor("#edeef0")
                                                       : rgb(cell.fg);
-      QColor bg = VTERM_COLOR_IS_DEFAULT_BG(&cell.bg) ? QColor("#17191c")
+      QColor bg = VTERM_COLOR_IS_DEFAULT_BG(&cell.bg) ? QColor("#191d24")
                                                       : rgb(cell.bg);
       if (cell.attrs.reverse)
         std::swap(fg, bg);
-      if (bg != QColor("#17191c"))
+      if (bg != QColor("#191d24"))
         p->fillRect(x * m_cw, y * m_ch, m_cw * qMax(1, int(cell.width)), m_ch,
                     bg);
       if (!cell.chars[0])

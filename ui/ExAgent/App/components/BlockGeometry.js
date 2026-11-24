@@ -2,7 +2,6 @@
 
 var codeLineHeight = 22
 var codeHeaderHeight = 38
-var codeFooterHeight = 27
 var inlineCodeLimit = 330
 
 function codeViewport(lines, limit) {
@@ -10,7 +9,7 @@ function codeViewport(lines, limit) {
 }
 
 function codeHeight(lines, limit) {
-    return codeHeaderHeight + codeViewport(lines, limit) + (lines > 15 ? codeFooterHeight : 0)
+    return codeHeaderHeight + codeViewport(lines, limit)
 }
 
 // 同一正文在加载器创建前后沿用同一估算；限制换行扫描量，避免占用滚动帧。

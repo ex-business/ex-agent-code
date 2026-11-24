@@ -1,25 +1,28 @@
 pragma Singleton
 import QtQuick
+import ExAgent.Chat
 
 QtObject {
-    property bool dark: false
+    readonly property bool dark: AppearanceRegistry.dark
+    readonly property var tokens: AppearanceRegistry.colors
+    function toggle() { AppearanceRegistry.theme = dark ? "light" : "dark" }
     property bool motionEnabled: true
     readonly property int pressDuration: motionEnabled ? 90 : 0
     readonly property int disclosureDuration: motionEnabled ? 160 : 0
-    property color background: dark ? "#191919" : "#ffffff"
-    property color sidebar: dark ? "#222222" : "#fafafa"
-    property color surface: dark ? "#2f2f2f" : "#f1f1f1"
-    property color hover: dark ? "#343434" : "#e9e9e9"
-    property color border: dark ? "#383838" : "#eeeeef"
-    property color text: dark ? "#ececec" : "#202020"
-    property color secondary: dark ? "#a0a0a0" : "#696969"
-    property color muted: dark ? "#777777" : "#8b8b8b"
-    property color code: dark ? "#141414" : "#f6f6f6"
-    property color selected: dark ? "#3a3a3a" : "#e5e5e5"
-    property color accent: dark ? "#ececec" : "#242424"
-    property color onAccent: dark ? "#202020" : "#ffffff"
-    property color danger: dark ? "#ff9292" : "#c83d3d"
-    property color warning: dark ? "#e5b07a" : "#986020"
+    readonly property color background: tokens.background
+    readonly property color sidebar: tokens.sidebar
+    readonly property color surface: tokens.surface
+    readonly property color hover: tokens.hover
+    readonly property color border: tokens.border
+    readonly property color text: tokens.text
+    readonly property color secondary: tokens.secondary
+    readonly property color muted: tokens.muted
+    readonly property color code: tokens.code
+    readonly property color selected: tokens.selected
+    readonly property color accent: tokens.accent
+    readonly property color onAccent: tokens.onAccent
+    readonly property color danger: tokens.danger
+    readonly property color warning: tokens.warning
     readonly property string font: Qt.platform.os === "osx" ? ".AppleSystemUIFont" : "Sans Serif"
     readonly property string monoFont: Qt.platform.os === "osx" ? "Menlo" : "monospace"
 }

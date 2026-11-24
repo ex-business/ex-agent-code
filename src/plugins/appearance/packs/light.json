@@ -1,0 +1,33 @@
+{
+  "version": 1,
+  "type": "theme",
+  "id": "light",
+  "name": "Light",
+  "dark": false,
+  "colors": {
+    "background": "#ffffff",
+    "sidebar": "#fafafa",
+    "surface": "#f1f1f1",
+    "hover": "#e9e9e9",
+    "border": "#eeeeef",
+    "text": "#202020",
+    "secondary": "#696969",
+    "muted": "#8b8b8b",
+    "code": "#f6f6f6",
+    "selected": "#e5e5e5",
+    "accent": "#242424",
+    "onAccent": "#ffffff",
+    "danger": "#c83d3d",
+    "warning": "#986020",
+    "panelWindow": "#ffffff",
+    "panelWindowText": "#24272c",
+    "panelText": "#24272c",
+    "panelButtonText": "#24272c",
+    "panelBase": "#fafafb",
+    "panelButton": "#f1f2f4",
+    "panelMid": "#d9dce1",
+    "panelPlaceholderText": "#737a84",
+    "panelHighlight": "#526d89",
+    "panelHighlightedText": "#ffffff"
+  }
+}

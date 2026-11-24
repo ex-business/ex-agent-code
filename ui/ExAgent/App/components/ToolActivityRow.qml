@@ -1,5 +1,6 @@
 pragma ComponentBehavior: Bound
 import QtQuick
+import "ShellPresentation.js" as Shell
 import QtQuick.Controls
 import QtQuick.Layouts
 import ExAgent.App as Design
@@ -23,11 +24,15 @@ ColumnLayout {
     readonly property int kind: Number(activity.kind || 0)
     // 命令使用整行排版，长参数自然换行，展开箭头在不同长度的命令间对齐。
     readonly property bool commandRow: kind === 2 && Number(activity.blockKind || 3) === 3
-    // 摘要保留原始命令用于选择复制，只裁切折叠态的可见行。
-    FontMetrics { id: commandMetrics; font: commandLabel.font }
-    readonly property real previewLimit: Math.ceil(commandMetrics.lineSpacing * 3)
-    readonly property bool longCommand: commandRow && commandLabel.implicitHeight > previewLimit + 1
-    readonly property bool canExpand: hasDetails || longCommand
+    readonly property bool showingScript: commandRow && details.length > 0 && !!MarkdownFormatter.pythonPreview(title)
+    // 展开与收起共用整行命令摘要，完整命令只在详情页展示。
+    readonly property bool shellSummary: commandRow && !activity.readPath && !showingScript
+    function firstCommandLine(raw: string): string {
+        const value = Shell.body(raw)
+        const end = value.search(/[\r\n]/)
+        return end < 0 ? value : value.slice(0, end) + " …"
+    }
+    readonly property bool canExpand: hasDetails || (commandRow && !activity.readPath)
     readonly property bool hasDetails: details.length > 0 || attachments.length > 0
     readonly property string summary: activity.summary || (kind === 3 ? "已查看 " + attachments.length + " 张图像" : title.startsWith("运行命令") && status === 0 ? "已" + title : title)
     // 只缓存当前消息的短详情；长输出仍按需释放，不预建历史记录。
@@ -44,16 +49,17 @@ ColumnLayout {
     Button {
         id: toggle
         Layout.maximumWidth: root.width
-        Layout.fillWidth: root.commandRow
+        Layout.fillWidth: root.commandRow && !root.showingScript
         Layout.alignment: Qt.AlignLeft
-        implicitWidth: root.commandRow ? root.width : Math.min(root.width, commandLabel.implicitWidth + (root.hasDetails ? 46 : 26))
+        // 脚本摘要按文字自然宽度排列，箭头紧随标题。
+        implicitWidth: root.showingScript ? headingLabel.implicitWidth + leftPadding + rightPadding + 42 : root.commandRow ? root.width : Math.min(root.width, commandLabel.implicitWidth + (root.hasDetails ? 46 : 26))
         implicitHeight: Math.max(30, preview.implicitHeight + 10)
         leftPadding: 5
         rightPadding: 7
         topPadding: 5
         bottomPadding: 5
         hoverEnabled: true
-        Accessible.name: root.summary + (root.canExpand ? root.expanded ? "，收起" : "，展开" : "")
+        Accessible.name: (root.shellSummary && root.status === 2 ? "命令失败，" : "") + (root.showingScript ? headingLabel.text : root.shellSummary ? shellLabel.text : root.summary) + (root.canExpand ? root.expanded ? "，收起" : "，展开" : "")
         onClicked: if (root.canExpand) root.toggleRequested()
         background: Rectangle {
             radius: 6
@@ -63,23 +69,48 @@ ColumnLayout {
         contentItem: RowLayout {
             spacing: 8
             Design.Icon {
-                name: root.activity.readPath ? "book" : root.kind === 3 ? "image" : root.kind === 4 ? "search" : root.kind === 2 ? "terminal" : "activity"
+                name: root.shellSummary && root.status === 2 ? "close" : root.activity.readPath ? "book" : root.kind === 3 ? "image" : root.kind === 4 ? "search" : root.kind === 2 ? "terminal" : "activity"
                 implicitWidth: 14; implicitHeight: 14
-                Layout.alignment: Qt.AlignTop
-                Layout.topMargin: 1
-                color: Design.Theme.muted
+                Layout.alignment: root.showingScript ? Qt.AlignVCenter : Qt.AlignTop
+                Layout.topMargin: root.showingScript ? 0 : 1
+                color: root.shellSummary && root.status === 2 ? Design.Theme.danger : Design.Theme.muted
             }
             Item {
                 id: preview
                 Layout.fillWidth: true
                 implicitWidth: commandLabel.implicitWidth
-                implicitHeight: root.longCommand && !root.expanded ? root.previewLimit : commandLabel.implicitHeight
+                implicitHeight: root.showingScript ? headingLabel.implicitHeight : root.shellSummary ? shellLabel.implicitHeight : commandLabel.implicitHeight
                 clip: true
+                Text {
+                    id: headingLabel
+                    visible: root.showingScript
+                    width: parent.width
+                    elide: Text.ElideRight
+                    text: ["已运行 Python 脚本", "正在运行 Python 脚本", "Python 脚本执行失败", "已取消 Python 脚本"][root.status] || "运行 Python 脚本"
+                    color: root.status === 2 ? Design.Theme.danger : toggle.hovered ? Design.Theme.text : Design.Theme.secondary
+                    font.family: Design.Theme.font; font.pixelSize: 13
+                }
+                Text {
+                    id: shellLabel
+                    visible: root.shellSummary
+                    width: parent.width
+                    text: visible ? root.firstCommandLine(root.summary) : ""
+                    textFormat: Text.PlainText
+                    elide: Text.ElideRight
+                    color: toggle.hovered ? Design.Theme.text : Design.Theme.secondary
+                    font.family: Design.Theme.monoFont
+                    font.pixelSize: 12
+                }
                 Design.SelectableText {
                     id: commandLabel
+                    visible: !root.showingScript && !root.shellSummary
                     width: parent.width
-                    text: root.summary
-                    textFormat: TextEdit.PlainText
+                    // 超长或含制表符的原始命令保留纯文本路径，避免预览排版阻塞和复制偏移。
+                    readonly property bool styledCommand: root.commandRow && !root.activity.readPath &&
+                            root.summary.length <= 16384 && !root.summary.includes("\t")
+                    // 可展开的脚本直接显示摘要，避免折叠时仍排版整条命令。
+                    text: !visible ? "" : styledCommand ? MarkdownFormatter.shellPreview(root.summary, Design.Theme.dark) : root.summary
+                    textFormat: styledCommand ? TextEdit.RichText : TextEdit.PlainText
                     wrapMode: TextEdit.Wrap
                     messageId: root.messageId; blockIndex: root.blockOffset
                     selectionManager: root.outerWheel ? root.outerWheel.selectionManager : null
@@ -131,7 +162,7 @@ ColumnLayout {
     Loader {
         id: detailsLoader
         asynchronous: true
-        active: (root.expanded || root.disclosureActive || root.detailsRetained) && root.details.length > 0
+        active: (root.expanded || root.disclosureActive || root.detailsRetained) && (root.details.length > 0 || root.commandRow && !root.activity.readPath)
         onStatusChanged: Design.PerformanceTrace.contentPhase(detailsLoader, 1, status)
         onLoaded: { root.detailsRetained = root.cacheableDetails; Design.PerformanceTrace.contentPhase(detailsLoader, 1, 4) }
         Layout.fillWidth: true

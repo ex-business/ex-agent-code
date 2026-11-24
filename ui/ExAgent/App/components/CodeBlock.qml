@@ -8,25 +8,62 @@ import ExAgent.Chat
 
 Rectangle {
     id: root
+    HoverHandler { id: codeHover; blocking: false }
     required property string code
+    readonly property Item windowAction: windowButton.visible ? windowButton : null
+    property Component headerContent: null
+    property var sourceBlock: null
+    property bool detached: false
+    property string filePath: ""
+    property int initialPage: 0
+    function openInWindow() {
+        // 历史消息和文件预览可能没有块 ID；按会话、消息或文件位置生成稳定标识，重复打开唤回原窗口。
+        const identity = JSON.stringify([controller.currentWorkspaceId, filePath ? "" : controller.currentSessionId,
+                                         filePath || messageId, blockIndex])
+        const block = Object.assign({ rendererKind: 2, text: code, language: language, shell: shell, command: command }, sourceBlock || {})
+        block.blockId = block.blockId || ("code-" + Qt.md5(identity))
+        block.title = block.shell ? "Shell" : filePath ? filePath.split("/").pop() : (block.title || languageTitle)
+        block.initialPage = initialPage
+        controller.blockViews.detach(block)
+    }
+    property bool shellOutput: shell
     property bool shell: false
     property string command: ""
     property int commandStatus: 0
     property string language: ""
+    readonly property string languageTitle: {
+        switch (language.toLowerCase()) {
+        case "bash": return "Bash"
+        case "shell": case "sh": return "Shell"
+        case "zsh": return "Zsh"
+        case "ps1": case "pwsh": case "powershell": return "PowerShell"
+        case "py": case "python": return "Python"
+        case "js": case "javascript": return "JavaScript"
+        case "ts": case "typescript": return "TypeScript"
+        case "golang": case "go": return "Go"
+        case "c": return "C"
+        case "cpp": case "c++": case "cxx": return "C++"
+        case "": case "text": return "纯文本"
+        default: return language
+        }
+    }
     required property ChatController controller
     property var outerWheel: null
     property string messageId: ""
     property int blockIndex: 0
     readonly property var selectionManager: outerWheel ? outerWheel.selectionManager : null
-    property int maximumCodeHeight: Geometry.inlineCodeLimit
+    // 独立窗口扣除外边距、块菜单、代码头尾，剩余高度供虚拟行列表滚动。
+    property int maximumCodeHeight: detached && Window.window
+        ? Math.max(lineHeight, Window.window.height - 32 - 35 - codeHeader.height)
+        : Geometry.inlineCodeLimit
     property int knownLineCount: -1
     readonly property int layoutLineCount: knownLineCount >= 0 ? knownLineCount : lines.lineCount
     readonly property int lineHeight: Geometry.codeLineHeight
     readonly property int viewportHeight: Geometry.codeViewport(layoutLineCount, maximumCodeHeight)
     readonly property int firstVisibleLine: Math.max(1, Math.floor(codeView.contentY / lineHeight) + 1)
-    readonly property int lastVisibleLine: Math.min(lines.lineCount, firstVisibleLine + Math.ceil(codeView.height / lineHeight) - 1)
-    implicitHeight: shell ? codeHeader.height + viewportHeight + Geometry.codeFooterHeight : Geometry.codeHeight(layoutLineCount, maximumCodeHeight)
-    radius: shell ? 9 : 18
+    readonly property int lastVisibleLine: Math.min(lines.lineCount, Math.ceil((codeView.contentY + codeView.height) / lineHeight))
+    implicitHeight: shell ? codeHeader.height + viewportHeight : Geometry.codeHeight(layoutLineCount, maximumCodeHeight)
+    radius: shell || headerContent ? 10 : 18
     color: shell && Design.Theme.dark ? "#2d2d2d" : Design.Theme.code
     border.color: shell && Design.Theme.dark ? "#505050" : Design.Theme.border
     clip: true
@@ -81,7 +118,8 @@ Rectangle {
 
     CodeLineModel {
         id: lines
-        language: root.language
+        language: root.shellOutput ? (/\b(?:rg|sed|nl|cat|head|tail)\b/.test(root.command) && /\.go\b/.test(root.command)
+                                ? "go-read-output" : "terminal-output") : root.language
         code: root.code
         dark: Design.Theme.dark
         onPreparingChanged: {
@@ -115,25 +153,43 @@ Rectangle {
         id: codeHeader
         width: parent.width
         height: root.shell ? shellHeading.implicitHeight + 14 : Geometry.codeHeaderHeight
+        Loader { anchors.fill: parent; anchors.rightMargin: windowButton.visible ? 32 : 0; sourceComponent: root.headerContent }
         Column {
             id: shellHeading
             visible: root.shell
-            x: 10; y: 6; width: parent.width - 20; spacing: 8
-            Text { text: "Shell"; color: Design.Theme.secondary; font.pixelSize: 12 }
+            x: 10; y: 6; width: parent.width - 20 - (windowButton.visible ? 28 : 0); spacing: 8
+            Text { text: root.command ? "Shell" : "输出"; color: Design.Theme.secondary; font.pixelSize: 12 }
             Text {
-                width: parent.width; text: "$ " + root.command; textFormat: Text.PlainText
+                width: parent.width
+                visible: root.command.length > 0
+                // 长命令按需展开原文，常规浏览只占两行。
+                property bool fullCommand: false
+                Connections {
+                    target: root
+                    function onCommandChanged() { shellCommandText.fullCommand = false }
+                }
+                id: shellCommandText
+                text: root.shell ? "$ " + MarkdownFormatter.shellPreview(fullCommand ? root.command : root.command.slice(0, 1024), Design.Theme.dark) : ""
+                textFormat: Text.StyledText
                 font.family: Design.Theme.monoFont; font.pixelSize: 12; color: Design.Theme.secondary
-                maximumLineCount: 2; wrapMode: Text.Wrap; elide: Text.ElideRight
+                maximumLineCount: fullCommand ? 2147483647 : 2
+                wrapMode: Text.Wrap
+                elide: fullCommand ? Text.ElideNone : Text.ElideRight
+                TapHandler {
+                    enabled: shellCommandText.fullCommand || shellCommandText.truncated || root.command.length > 1024
+                    cursorShape: Qt.PointingHandCursor
+                    onTapped: shellCommandText.fullCommand = !shellCommandText.fullCommand
+                }
             }
         }
         RowLayout {
-            visible: !root.shell
+            visible: !root.shell && !root.headerContent
             anchors.fill: parent
             anchors.leftMargin: 15
-            anchors.rightMargin: 8
+            anchors.rightMargin: windowButton.visible ? 40 : 8
             spacing: 6
             Design.Icon { name: "code"; implicitWidth: 15; implicitHeight: 15 }
-            Text { text: root.language === "text" || root.language === "" ? "纯文本" : root.language; color: Design.Theme.secondary; font.pixelSize: 12 }
+            Text { text: root.languageTitle; color: Design.Theme.secondary; font.pixelSize: 12 }
             Item { Layout.fillWidth: true }
             Text { visible: lines.selectionLength > 0 || copyTimer.running; text: lines.selectionLength > 0 ? "已选 " + lines.selectionLength + " 字符" : "已复制"; color: Design.Theme.secondary; font.pixelSize: 11 }
             Design.IconButton {
@@ -148,10 +204,24 @@ Rectangle {
                 onClicked: root.copySelection()
             }
             Design.IconButton {
+                focusPolicy: Qt.StrongFocus
+                readonly property bool revealed: codeHover.hovered || activeFocus || copyTimer.running
+                Layout.preferredWidth: root.width < 352 && !revealed ? 0 : implicitWidth
+                opacity: revealed ? 1 : 0
                 iconName: copyTimer.running ? "check" : "copy"
                 tooltip: "复制完整代码"
                 onClicked: { root.controller.copyText(root.code); copyTimer.restart() }
             }
+        }
+        Design.IconButton {
+            id: windowButton
+            anchors.top: parent.top; anchors.right: parent.right
+            anchors.topMargin: 2; anchors.rightMargin: 6
+            focusPolicy: Qt.StrongFocus
+            visible: !root.detached
+            implicitWidth: 28; implicitHeight: 28
+            iconName: "expand"; tooltip: "在独立窗口打开"
+            onClicked: root.openInWindow()
         }
     }
     ListView {
@@ -162,6 +232,7 @@ Rectangle {
         readonly property bool pixelWheelMoving: codeVerticalWheel.kineticRunning || codeHorizontalWheel.kineticRunning
         function pixelScrollBy(x: real, y: real): point { return Qt.point(codeHorizontalWheel.consumePixels(x), codeVerticalWheel.consumePixels(y)) }
         signal pixelScrollStarted()
+        onContentYChanged: if (movingVertically || codeVerticalWheel.animating || verticalBar.pressed) rangeIdle.restart()
         anchors.top: codeHeader.bottom
         width: parent.width
         height: root.viewportHeight
@@ -176,7 +247,7 @@ Rectangle {
         acceptedButtons: Qt.NoButton
         flickableDirection: Flickable.AutoFlickIfNeeded
         contentWidth: Math.max(width, lines.maximumColumns * metrics.averageCharacterWidth + 34)
-        ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded; width: 6; z: 3 }
+        ScrollBar.vertical: ScrollBar { id: verticalBar; policy: ScrollBar.AsNeeded; width: 6; z: 3 }
         ScrollBar.horizontal: ScrollBar { policy: ScrollBar.AsNeeded; height: 6; z: 3 }
         Design.SmoothWheel { id: codeVerticalWheel; linkedWheel: codeHorizontalWheel; view: codeView; stepSize: root.lineHeight * 3; outerWheel: root.outerWheel }
         Design.SmoothWheel { id: codeHorizontalWheel; view: codeView; orientation: Qt.Horizontal; stepSize: 66 }
@@ -249,18 +320,27 @@ Rectangle {
         }
         delegate: CodeRow {}
     }
-    RowLayout {
-        visible: root.shell || lines.lineCount > 15
-        anchors.top: codeView.bottom
-        anchors.left: parent.left
-        anchors.right: parent.right
-        anchors.leftMargin: 15
-        anchors.rightMargin: 15
-        height: Geometry.codeFooterHeight
-        Text { visible: !root.shell; text: root.firstVisibleLine + "–" + root.lastVisibleLine + " / " + lines.lineCount + " 行"; color: Design.Theme.muted; font.pixelSize: 10 }
-        Item { Layout.fillWidth: true }
-        Text { text: root.shell ? ["✓ 成功", "执行中", "执行失败", "已取消"][root.commandStatus] || "" : "在代码区域内滚动"; color: Design.Theme.muted; font.pixelSize: 10 }
+    // 行号提示浮在视口上，出现和消失不会改变块高度或聊天的阅读位置。
+    Rectangle {
+        objectName: "visibleLineRange"
+        visible: rangeIdle.running && lines.lineCount * root.lineHeight > codeView.height
+        anchors.right: codeView.right
+        anchors.bottom: codeView.bottom
+        anchors.margins: 8
+        width: rangeLabel.implicitWidth + 12
+        height: rangeLabel.implicitHeight + 6
+        radius: 5
+        color: Design.Theme.surface
+        border.color: Design.Theme.border
+        Text {
+            id: rangeLabel
+            anchors.centerIn: parent
+            text: parent.visible ? root.firstVisibleLine + "–" + root.lastVisibleLine + " / " + lines.lineCount + " 行" : ""
+            color: Design.Theme.secondary
+            font.pixelSize: 11
+        }
     }
+    Timer { id: rangeIdle; interval: 160 }
     Timer { id: copyTimer; interval: 1800 }
     Design.ContextMenu {
         id: codeMenu

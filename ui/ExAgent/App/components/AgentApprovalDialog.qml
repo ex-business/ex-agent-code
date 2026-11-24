@@ -3,7 +3,7 @@ import QtQuick
 import QtQuick.Controls
 import ExAgent.Chat
 
-Dialog {
+WorkbenchDialog {
     parent: Overlay.overlay
     id: root
     required property ChatController controller

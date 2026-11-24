@@ -1,0 +1,33 @@
+{
+  "version": 1,
+  "type": "theme",
+  "id": "dark",
+  "name": "Dark",
+  "dark": true,
+  "colors": {
+    "background": "#191919",
+    "sidebar": "#222222",
+    "surface": "#2f2f2f",
+    "hover": "#343434",
+    "border": "#383838",
+    "text": "#ececec",
+    "secondary": "#a0a0a0",
+    "muted": "#777777",
+    "code": "#141414",
+    "selected": "#3a3a3a",
+    "accent": "#ececec",
+    "onAccent": "#202020",
+    "danger": "#ff9292",
+    "warning": "#e5b07a",
+    "panelWindow": "#20262e",
+    "panelWindowText": "#e3e8ef",
+    "panelText": "#e3e8ef",
+    "panelButtonText": "#e3e8ef",
+    "panelBase": "#171c23",
+    "panelButton": "#303843",
+    "panelMid": "#424c59",
+    "panelPlaceholderText": "#a2abb8",
+    "panelHighlight": "#88a9ca",
+    "panelHighlightedText": "#14202d"
+  }
+}

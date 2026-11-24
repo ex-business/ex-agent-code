@@ -1,5 +1,11 @@
 #include "code_line_model.h"
 #include "syntax_highlighter.h"
+#ifdef EX_AGENT_GO_AST
+#include "go_ast_highlighter.h"
+#endif
+#ifdef EX_AGENT_KDE_HIGHLIGHTING
+#include "kde_code_highlighter.h"
+#endif
 
 #include <QTimer>
 #include <QFutureWatcher>
@@ -49,7 +55,10 @@ QVariant CodeLineModel::data(const QModelIndex &index, int role) const
     if (const auto *cached = m_highlightCache.object(index.row())) return *cached;
     // 高亮仅在可见 delegate 请求此行时生成，不构造整段代码的富文本。
     const auto visible = view.left(MaxRenderedLineCharacters);
-    auto html = SyntaxHighlighter::scan(visible, m_language, line.state, m_dark, true).html;
+    QString html;
+    if (line.spanCount >= 0) html = renderColorSpans(visible, line.spanCount ? m_spans.constData() + line.firstSpan : nullptr, line.spanCount, m_dark);
+    else
+        html = SyntaxHighlighter::scan(visible, m_language, line.state, m_dark, true).html;
     if (view.size() > visible.size()) html += "&nbsp;…&nbsp;[超长单行，复制可获取完整内容]";
     const int cacheCost = qMax(1, static_cast<int>((html.size() * 2 + 1023) / 1024));
     m_highlightCache.insert(index.row(), new QString(html), cacheCost);
@@ -69,6 +78,7 @@ void CodeLineModel::setCode(const QString &code)
     if (code == m_code) return;
     beginResetModel();
     m_code = code;
+    if (code.isEmpty()) m_goSession.reset();
     rebuildIndex();
     endResetModel();
     emit codeChanged();
@@ -82,6 +92,7 @@ void CodeLineModel::setLanguage(const QString &language)
     if (normalized == m_language) return;
     beginResetModel();
     m_language = normalized;
+    m_goSession.reset();
     rebuildIndex();
     endResetModel();
     emit languageChanged();
@@ -107,6 +118,7 @@ void CodeLineModel::rebuildIndex()
     m_layoutRow = -1;
     m_hitLayout.reset();
     m_lines.clear();
+    m_spans.clear();
     m_highlightCache.clear();
     m_formattedLineCount = 0;
     m_maximumColumns = 0;
@@ -134,6 +146,7 @@ void CodeLineModel::startIndex()
             PreparedIndex result;
             try { result = watcher->result(); } catch (...) { qWarning("代码索引准备失败，原始代码仍可复制"); }
             beginResetModel();
+            m_spans = std::move(result.spans);
             m_lines = std::move(result.lines);
             m_maximumColumns = result.maximumColumns;
             endResetModel();
@@ -142,8 +155,26 @@ void CodeLineModel::startIndex()
         } else startIndex();
         watcher->deleteLater();
     });
-    watcher->setFuture(QtConcurrent::run(&pool, [code = m_code, language = m_language, dark = m_dark, cancel] {
+#ifdef EX_AGENT_GO_AST
+    if (m_language == "go" && !m_goSession) m_goSession = std::make_shared<GoParseSession>();
+#endif
+    watcher->setFuture(QtConcurrent::run(&pool, [code = m_code, language = m_language, dark = m_dark, cancel, goSession = m_goSession] {
         PreparedIndex result;
+        [[maybe_unused]] bool useAst = false;
+#ifdef EX_AGENT_GO_AST
+        QVector<CodeColorSpan> documentSpans;
+        if (goSession) useAst = highlightGoDocument(*goSession, code, documentSpans, *cancel);
+        else if (language == "terminal-output" || language == "go-read-output") {
+            GoParseSession output;
+            useAst = language == "go-read-output" && highlightGoReadOutput(code, documentSpans, *cancel);
+            if (!useAst) useAst = highlightGoDocument(output, code, documentSpans, *cancel, true);
+        }
+        qsizetype nextSpan = 0;
+#endif
+#ifdef EX_AGENT_KDE_HIGHLIGHTING
+        std::unique_ptr<KdeCodeHighlighter> highlighter;
+        if (!useAst && KdeCodeHighlighter::supports(language)) highlighter = std::make_unique<KdeCodeHighlighter>(language);
+#endif
         qsizetype offset = 0;
         int state = 0;
         while (offset < code.size()) {
@@ -155,6 +186,32 @@ void CodeLineModel::startIndex()
             const auto line = QStringView(code).mid(offset, length);
             result.lines.append({offset, length, state});
             // 跨行词法状态也在后台建立；可见行仍按需着色并使用原有有界缓存。
+#ifdef EX_AGENT_GO_AST
+            if (useAst) {
+                auto &entry = result.lines.last();
+                entry.firstSpan = result.spans.size();
+                // 语法树按全文 UTF-16 偏移返回；多行字符串按行裁切，复制仍用原文。
+                while (nextSpan < documentSpans.size()) {
+                    const auto &span = documentSpans[nextSpan];
+                    if (span.offset >= end) break;
+                    const auto from = qMax(offset, qsizetype(span.offset));
+                    const auto to = qMin(offset + qMin(length, qsizetype(MaxRenderedLineCharacters)), qsizetype(span.offset) + span.length);
+                    if (to > from) result.spans.append({int(from-offset), int(to-from), span.light, span.dark});
+                    if (qsizetype(span.offset) + span.length > end) break;
+                    ++nextSpan;
+                }
+                entry.spanCount = int(result.spans.size() - entry.firstSpan);
+                if ((language == "terminal-output" || language == "go-read-output") && entry.spanCount == 0) entry.spanCount = -1;
+            } else
+#endif
+#ifdef EX_AGENT_KDE_HIGHLIGHTING
+            if (highlighter) {
+                auto &entry = result.lines.last();
+                entry.firstSpan = result.spans.size();
+                highlighter->scan(line, MaxRenderedLineCharacters, result.spans);
+                entry.spanCount = int(result.spans.size() - entry.firstSpan);
+            } else
+#endif
             state = SyntaxHighlighter::scan(line, language, state, dark, false).endState;
             int columns = 0;
             for (const auto c : line.left(MaxRenderedLineCharacters)) columns += c == '\t' ? 4 : 1;

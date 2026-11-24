@@ -109,8 +109,8 @@ ColumnLayout {
                     maximumLineCount: 5; elide: Text.ElideRight
                 }
                 RowLayout {
-                    Button { text: "查看审批详情"; onClicked: root.approvalRequested() }
-                    Button { text: "拒绝"; onClicked: root.controller.agent.decide(root.controller.agent.approval.token, false) }
+                    DialogAction { text: "查看审批详情"; onClicked: root.approvalRequested() }
+                    DialogAction { text: "拒绝"; onClicked: root.controller.agent.decide(root.controller.agent.approval.token, false) }
                 }
             }
             Design.ComposerToolbar {

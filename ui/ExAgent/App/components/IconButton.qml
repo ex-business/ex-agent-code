@@ -20,6 +20,7 @@ AbstractButton {
     ToolTip.delay: 500
     background: Rectangle {
         radius: 7
+        border.color: root.visualFocus ? Design.Theme.secondary : "transparent"
         color: root.down ? Design.Theme.selected : root.hovered ? Design.Theme.hover : "transparent"
     }
     contentItem: Item {

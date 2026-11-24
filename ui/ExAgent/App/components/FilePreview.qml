@@ -36,9 +36,10 @@ Item {
                 delegate: Loader {
                     id: blockLoader
                     required property var modelData
+                    required property int index
                     Layout.fillWidth: true
                     sourceComponent: modelData.kind === 1 ? code : prose
-                    Component { id: code; Design.CodeBlock { code: blockLoader.modelData.text; language: blockLoader.modelData.language; controller: root.controller; maximumCodeHeight: Math.max(160, root.height - 90); outerWheel: wheel } }
+                    Component { id: code; Design.CodeBlock { filePath: root.workspace.activePath; blockIndex: blockLoader.index; code: blockLoader.modelData.text; language: blockLoader.modelData.language; controller: root.controller; maximumCodeHeight: Math.max(160, root.height - 90); outerWheel: wheel } }
                     Component {
                         id: prose
                         Design.MarkdownText {

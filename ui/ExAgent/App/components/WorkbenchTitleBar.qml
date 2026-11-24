@@ -34,7 +34,7 @@ Rectangle {
             Item { Layout.preferredWidth: Qt.platform.os === "osx" ? 82 : 8 }
             Design.IconButton { iconName: "back"; tooltip: "返回，暂无上一项"; enabled: false; opacity: 0.4; implicitWidth: 26 }
             Design.IconButton { iconName: "right"; tooltip: "前进，暂无下一项"; enabled: false; opacity: 0.4; implicitWidth: 26 }
-            Design.IconButton { iconName: "sidebar"; tooltip: "显示或收起导航"; onClicked: root.sidebarRequested(); implicitWidth: 26 }
+            Design.IconButton { iconName: "sidebar"; tooltip: Design.UiText.get("显示或收起导航"); onClicked: root.sidebarRequested(); implicitWidth: 26 }
             Item { Layout.fillWidth: true }
         }
         RowLayout {

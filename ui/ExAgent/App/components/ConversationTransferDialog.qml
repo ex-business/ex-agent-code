@@ -1,10 +1,11 @@
 pragma ComponentBehavior: Bound
 import QtQuick
+import ExAgent.App as Design
 import QtQuick.Controls
 import QtQuick.Layouts
 import ExAgent.Chat
 
-Dialog {
+WorkbenchDialog {
     id: root
     required property ChatController controller
     title: "整理会话"
@@ -36,27 +37,27 @@ Dialog {
     }
     contentItem: ColumnLayout {
         spacing: 10
-        ComboBox {
+        DialogSelect {
             id: action; Layout.fillWidth: true
             Accessible.name: "操作"; textRole: "name"; valueRole: "mode"
             model: [{name: "从此处分支", mode: ConversationTransfer.Fork}, {name: "拆出所选回合", mode: ConversationTransfer.Extract},
                 {name: "发送到会话", mode: ConversationTransfer.Send}, {name: "合并到会话", mode: ConversationTransfer.Merge}]
             onCurrentIndexChanged: root.prepared = false
         }
-        ComboBox {
+        DialogSelect {
             id: target; visible: !root.creates; Layout.fillWidth: true
             Accessible.name: "目标会话"; model: root.destinations; textRole: "title"; valueRole: "session"
             displayText: currentIndex < 0 ? "同项目下尚无其他会话" : currentText
             onCurrentIndexChanged: root.prepared = false
         }
         Label { visible: root.mode !== ConversationTransfer.Fork; text: "起始回合" }
-        ComboBox {
+        DialogSelect {
             id: first; visible: root.mode !== ConversationTransfer.Fork; Layout.fillWidth: true
             Accessible.name: "起始回合"; model: root.turns
             onCurrentIndexChanged: root.prepared = false
         }
         Label { text: "截至回合" }
-        ComboBox {
+        DialogSelect {
             id: last; Layout.fillWidth: true
             Accessible.name: "截至回合"; model: root.turns
             onCurrentIndexChanged: root.prepared = false
@@ -68,8 +69,8 @@ Dialog {
         }
         RowLayout {
             Layout.alignment: Qt.AlignRight
-            Button { text: "取消"; onClicked: root.close() }
-            Button {
+            DialogAction { text: Design.UiText.get("取消"); onClicked: root.close() }
+            DialogAction {
                 text: root.prepared && root.summary.ready ? "确认" : "预览"
                 enabled: root.turns.length > 0 && (root.creates || target.currentIndex >= 0)
                 onClicked: {

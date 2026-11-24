@@ -1,5 +1,6 @@
 #pragma once
 
+#include "code_color_span.h"
 #include <QAbstractListModel>
 #include <QCache>
 #include <QVector>
@@ -11,6 +12,8 @@
 #include <QtQml/qqmlregistration.h>
 
 namespace exagent {
+
+struct GoParseSession;
 
 class CodeLineModel : public QAbstractListModel {
     Q_OBJECT
@@ -66,10 +69,13 @@ signals:
     void metricsChanged();
     void selectionChanged();
 private:
-    struct Line { qsizetype offset; qsizetype length; int state; };
+    struct Line { qsizetype offset; qsizetype length; int state; qsizetype firstSpan = 0; int spanCount = -1; };
     void rebuildIndex();
     void startIndex();
-    struct PreparedIndex { QVector<Line> lines; int maximumColumns = 0; };
+    struct PreparedIndex { QVector<Line> lines; int maximumColumns = 0;
+        QVector<CodeColorSpan> spans;
+    };
+    std::shared_ptr<GoParseSession> m_goSession;
     QTimer m_indexSchedule;
     quint64 m_indexGeneration = 0;
     bool m_preparing = false, m_indexRunning = false;
@@ -81,6 +87,7 @@ private:
     QString m_language;
     bool m_dark = true;
     QVector<Line> m_lines;
+    QVector<CodeColorSpan> m_spans;
     int m_maximumColumns = 0;
     int m_anchor = 0;
     int m_cursor = 0;

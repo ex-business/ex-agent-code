@@ -52,7 +52,7 @@ Rectangle {
         title: "添加本地工作区"
         onAccepted: root.controller.projects.bindWorkspace(project, selectedFolder)
     }
-    Dialog {
+    WorkbenchDialog {
         id: taskDialog
         property int request: 0
         property var fields: []
@@ -94,7 +94,7 @@ Rectangle {
             readonly property string value: modelData.choices ? choice.editText : input.text
             Layout.fillWidth: true
             Label { text: field.modelData.label }
-            ComboBox {
+            DialogSelect {
                 id: choice
                 visible: !!field.modelData.choices
                 Layout.fillWidth: true
@@ -102,7 +102,7 @@ Rectangle {
                 model: field.modelData.choices || []
                 Accessible.name: field.modelData.label
             }
-            TextField {
+            DialogInput {
                 id: input
                 visible: !field.modelData.choices
                 Layout.fillWidth: true
@@ -110,7 +110,7 @@ Rectangle {
             }
         }
         contentItem: ColumnLayout {
-            TextField {
+            DialogInput {
                 id: taskName
                 Layout.fillWidth: true
                 placeholderText: "任务名称"
@@ -129,11 +129,11 @@ Rectangle {
             }
         }
     }
-    Dialog {
+    WorkbenchDialog {
         id: createDialog
-        title: "新建项目"
+        title: Design.UiText.get("新建项目")
         anchors.centerIn: Overlay.overlay
-        modal: true; width: 310
+        modal: true; width: 360
         standardButtons: Dialog.Ok | Dialog.Cancel
         onOpened: {
             standardButton(Dialog.Ok).text = "创建"
@@ -143,9 +143,9 @@ Rectangle {
             projectName.forceActiveFocus()
         }
         onAccepted: root.controller.projects.createProject(projectName.text)
-        contentItem: TextField {
+        contentItem: DialogInput {
             id: projectName
-            Accessible.name: "项目名称"; placeholderText: "项目名称"; maximumLength: 120
+            Accessible.name: "项目名称"; placeholderText: Design.UiText.get("项目名称"); maximumLength: 120
             onTextChanged: if (createDialog.visible) createDialog.standardButton(Dialog.Ok).enabled = text.trim().length > 0
             onAccepted: if (text.trim()) createDialog.accept()
         }
@@ -155,9 +155,9 @@ Rectangle {
         anchors.margins: 10; spacing: 5
         RowLayout {
             Layout.fillWidth: true
-            Text { text: "项目"; font.pixelSize: 17; font.weight: Font.DemiBold; color: Design.Theme.text; Layout.fillWidth: true }
-            Design.IconButton { iconName: "plus"; tooltip: "新建项目"; enabled: root.controller.projects.writable; onClicked: createDialog.open() }
-            Design.IconButton { iconName: "new"; tooltip: "新聊天"; enabled: root.controller.projects.writable; onClicked: root.controller.newSession() }
+            Text { text: Design.UiText.get("项目"); font.pixelSize: 17; font.weight: Font.DemiBold; color: Design.Theme.text; Layout.fillWidth: true }
+            Design.IconButton { iconName: "plus"; tooltip: Design.UiText.get("新建项目"); enabled: root.controller.projects.writable; onClicked: createDialog.open() }
+            Design.IconButton { iconName: "new"; tooltip: Design.UiText.get("新聊天"); enabled: root.controller.projects.writable; onClicked: root.controller.newSession() }
             Design.IconButton { iconName: "search"; tooltip: "搜索项目与聊天"; onClicked: root.showSearch() }
         }
         TextField {

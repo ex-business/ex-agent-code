@@ -1,4 +1,6 @@
 #include "markdown_formatter.h"
+#include "presentation/code/script_preview.h"
+#include "presentation/code/syntax_highlighter.h"
 #include <QTextDocument>
 #include <QTextBlock>
 #include <QTextCursor>
@@ -6,6 +8,24 @@
 #include <QRegularExpression>
 
 namespace exagent {
+QString MarkdownFormatter::pythonPreview(const QString &command) const { return pythonCommandPreview(command); }
+
+QString MarkdownFormatter::shellPreview(const QString &command, bool dark) const
+{
+    // 输入仅展示。编码由词法渲染器处理，命令里的 HTML 字符不能成为富文本标签。
+    QString html;
+    int state = 0;
+    bool first = true;
+    for (const auto line : QStringView(command).split(u'\n')) {
+        if (!first) html += QStringLiteral("<br>");
+        first = false;
+        const auto result = SyntaxHighlighter::scan(line, QStringLiteral("shell"), state, dark, true);
+        html += result.html;
+        state = result.endState;
+    }
+    return html;
+}
+
 QVariantMap MarkdownFormatter::userPresentation(const QString &content, const QFont &font) const
 {
     QTextDocument document;

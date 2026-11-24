@@ -21,9 +21,9 @@ Design.BlockRendererContent {
             width: root.width
             code: root.block.text || ""
             language: "text"
+            sourceBlock: root.block; detached: root.detached
             controller: root.controller
             messageId: root.messageId; blockIndex: root.blockIndex; outerWheel: root.outerWheel
-            maximumCodeHeight: root.detached ? 640 : 330
         }
     }
     Component {

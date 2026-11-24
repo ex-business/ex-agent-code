@@ -5,7 +5,9 @@ import ExAgent.App as Design
 Item {
     id: root
     required property Design.SelectableText label
-    property color sweepColor: Design.Theme.dark ? "#eeeeee" : "#adadad"
+    // 浅色背景用较亮的波峰和短暂停留，让短状态词也能看清扫过方向。
+    readonly property color lightCrest: "#d5d5d5"
+    property color sweepColor: Design.Theme.dark ? "#eeeeee" : lightCrest
     required property bool running
     readonly property string glyphs: running ? label.selectionText : ""
     // 叠加字形沿用原文实际排版位置；开始选词或退出运行态就释放动画。
@@ -26,8 +28,9 @@ Item {
                 PropertyAction { value: 0 }
                 PauseAnimation { duration: glyph.delay }
                 NumberAnimation { from: 0; to: 1; duration: 220 }
+                PauseAnimation { duration: Design.Theme.dark ? 0 : 110 }
                 NumberAnimation { from: 1; to: 0; duration: 360 }
-                PauseAnimation { duration: 970 - glyph.delay }
+                PauseAnimation { duration: (Design.Theme.dark ? 970 : 860) - glyph.delay }
             }
         }
     }
