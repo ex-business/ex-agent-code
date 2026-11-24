@@ -3,6 +3,8 @@ target_include_directories(ex_agent_domain INTERFACE "${CMAKE_CURRENT_SOURCE_DIR
 target_link_libraries(ex_agent_domain INTERFACE Qt6::Core)
 
 add_subdirectory(agent)
+add_library(ex_git_worktree STATIC plugins/git_worktree/git_worktree_provider.cpp)
+target_link_libraries(ex_git_worktree PUBLIC ex_agent_domain)
 
 # 通信底座只依赖Core/Network，后台模式不创建GUI或加载QML。
 qt_add_library(ex_agent_ipc STATIC
@@ -65,7 +67,7 @@ target_include_directories(ex_agent_chat PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/pr
 target_include_directories(ex_agent_chat PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/presentation/workspace")
 
 qt_add_executable(ex-agent-code MACOSX_BUNDLE app/main.cpp app/profiled_application.h app/disclosure_input_filter.h app/disclosure_input_filter.cpp app/scroll_diagnostics.h app/scroll_diagnostics.cpp app/pixel_scroll_filter.h app/pixel_scroll_filter.cpp)
-target_link_libraries(ex-agent-code PRIVATE ex_agent_worker ex_agent_chat ex_agent_chatplugin Qt6::Quick Qt6::QuickControls2)
+target_link_libraries(ex-agent-code PRIVATE ex_git_worktree ex_agent_worker ex_agent_chat ex_agent_chatplugin Qt6::Quick Qt6::QuickControls2)
 if(APPLE)
     target_sources(ex_agent_chat PRIVATE platform/macos/word_boundaries.cpp)
     target_link_libraries(ex_agent_chat PRIVATE "-framework CoreFoundation")

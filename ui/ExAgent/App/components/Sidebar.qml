@@ -50,6 +50,28 @@ Rectangle {
         onAccepted: root.controller.projects.bindWorkspace(project, selectedFolder)
     }
     Dialog {
+        id: taskDialog
+        property string provider
+        property string project
+        property string workspace
+        anchors.centerIn: Overlay.overlay
+        modal: true
+        standardButtons: Dialog.Ok | Dialog.Cancel
+        onOpened: {
+            taskName.clear()
+            standardButton(Dialog.Ok).enabled = false
+            taskName.forceActiveFocus()
+        }
+        onAccepted: root.controller.projects.createTask(provider, project, workspace, taskName.text)
+        contentItem: TextField {
+            id: taskName
+            placeholderText: "任务名称"
+            maximumLength: 80
+            onTextChanged: if (taskDialog.visible) taskDialog.standardButton(Dialog.Ok).enabled = text.trim().length > 0
+            onAccepted: if (text.trim()) taskDialog.accept()
+        }
+    }
+    Dialog {
         id: createDialog
         title: "新建项目"
         anchors.centerIn: Overlay.overlay
@@ -119,6 +141,14 @@ Rectangle {
                     }
                 }
                 onNewChat: { if (collapsed) root.toggle(key); root.controller.newGroupSession(entry.project, entry.workspace) }
+                providers: root.controller.projects.taskProviders
+                onTaskRequested: (provider, title) => {
+                    taskDialog.provider = provider
+                    taskDialog.title = title
+                    taskDialog.project = entry.project
+                    taskDialog.workspace = entry.workspace
+                    taskDialog.open()
+                }
                 onBindFolder: { if (collapsed) root.toggle(key); folder.project = entry.project; folder.open() }
                 onMoveHere: { if (collapsed) root.toggle(key); root.controller.moveToGroup(entry.project, entry.workspace) }
             }

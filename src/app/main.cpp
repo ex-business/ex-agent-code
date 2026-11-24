@@ -1,6 +1,7 @@
 #include "application/chat/chat_controller.h"
 #include "infrastructure/storage/history_migration.h"
 #include <QStandardPaths>
+#include "plugins/git_worktree/git_worktree_provider.h"
 #include "scroll_diagnostics.h"
 #include "profiled_application.h"
 #include "pixel_scroll_filter.h"
@@ -42,6 +43,7 @@ int main(int argc, char *argv[])
     QGuiApplication::styleHints()->setColorScheme(Qt::ColorScheme::Light);
 
     exagent::ChatController controller;
+    controller.projects()->registerTaskProvider(new exagent::GitWorktreeProvider);
     QQmlApplicationEngine engine;
     const bool profiling = app.arguments().contains("--profile-scroll") || app.arguments().contains("--profile-disclosure");
     const QString diagnosticLabel = profiling ? QStringLiteral("滚动诊断 · PID %1").arg(app.applicationPid()) : QString();

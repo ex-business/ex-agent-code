@@ -13,6 +13,43 @@ QVariantMap row(ProjectNavigator::RowKind kind, const QString &title, const QStr
 }
 }
 
+void ProjectNavigator::registerTaskProvider(TaskWorkspaceProvider *provider)
+{
+    if (!provider) return;
+    for (const auto *existing : m_providers)
+        if (existing->id() == provider->id()) return;
+    provider->setParent(this);
+    m_providers.append(provider);
+}
+
+QVariantList ProjectNavigator::taskProviders() const
+{
+    QVariantList actions;
+    for (const auto *provider : m_providers)
+        actions.append(QVariantMap{{"id", provider->id()}, {"title", provider->actionTitle()}});
+    return actions;
+}
+
+void ProjectNavigator::createTask(const QString &providerId, const QString &projectId,
+                                  const QString &workspaceId, const QString &name)
+{
+    const auto *workspace = catalog.workspace(projectId, workspaceId);
+    if (!writable() || !workspace || name.trimmed().isEmpty() || name.size() > 80) {
+        emit failure(QStringLiteral("请检查工作区、写入权限及任务名称。"));
+        return;
+    }
+    for (auto *provider : m_providers) {
+        if (provider->id() != providerId) continue;
+        provider->create(workspace->path, name.trimmed(), [this, projectId](QString path, QString error) {
+            // 异步完成后仍绑定发起任务的项目，避免用户切换会话时串到其他项目。
+            if (!error.isEmpty()) emit failure(error);
+            else bindWorkspace(projectId, QUrl::fromLocalFile(path));
+        });
+        return;
+    }
+    emit failure(QStringLiteral("任务工作区插件未注册。"));
+}
+
 void ProjectNavigator::createProject(const QString &name)
 {
     const auto title = name.trimmed();

@@ -15,6 +15,8 @@ Rectangle {
     signal toggled()
     signal newChat()
     signal bindFolder()
+    required property var providers
+    signal taskRequested(string provider, string title)
     signal moveHere()
     property bool canMove
     readonly property bool group: entry.kind === ProjectNavigator.ProjectRow || entry.kind === ProjectNavigator.WorkspaceRow
@@ -64,6 +66,16 @@ Rectangle {
                 id: menu
                 Design.ContextMenuItem { text: "在此新建聊天"; iconName: "new"; onTriggered: root.newChat() }
                 Design.ContextMenuItem { visible: root.project; height: visible ? implicitHeight : 0; text: "添加工作区…"; iconName: "folder"; onTriggered: root.bindFolder() }
+                Instantiator {
+                    model: root.entry.kind === ProjectNavigator.WorkspaceRow ? root.providers : []
+                    delegate: Design.ContextMenuItem {
+                        required property var modelData
+                        text: modelData.title + "…"
+                        onTriggered: root.taskRequested(modelData.id, modelData.title)
+                    }
+                    onObjectAdded: (index, object) => menu.insertItem(index + 1, object)
+                    onObjectRemoved: (index, object) => menu.removeItem(object)
+                }
                 Design.ContextMenuItem { enabled: root.canMove; text: "将当前聊天移到这里"; onTriggered: root.moveHere() }
             }
         }
