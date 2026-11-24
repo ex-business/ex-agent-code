@@ -1,7 +1,5 @@
 pragma ComponentBehavior: Bound
 import QtQuick
-import QtQuick.Controls
-import QtQuick.Layouts
 import ExAgent.Chat
 import ExAgent.App as Design
 
@@ -10,9 +8,8 @@ Item {
     required property WorkspaceController workspace
     required property ChatController controller
     property bool renderedMarkdown: true
-    readonly property bool markdown: ["md","markdown","mdown"].includes(workspace.language) && renderedMarkdown
-    property bool editing: true
-    function togglePreview() { if (markdown && viewLoader.item) viewLoader.item.viewMode=viewLoader.item.viewMode===2 ? 1 : 2; else editing=!editing }
+    property var currentPlugin: viewLoader.item
+    function togglePreview() { if (currentPlugin && currentPlugin.togglePreview) currentPlugin.togglePreview() }
     property int closeIndex: -1
     property string closeRoot: ""
     property EditorDocument closeDocument
@@ -22,45 +19,45 @@ Item {
         root.workspace.closeTab(closeIndex,true)
         if (root.workspace.documentAt(closeIndex)!==closeDocument) closeDialog.close()
     }
-    ColumnLayout {
-        anchors.fill: parent; spacing: 0
-        RowLayout {
-            visible: !root.markdown && !!root.workspace.document && (root.workspace.document.editable ? !root.editing : root.workspace.document.state===EditorDocument.Conflict)
-            Layout.fillWidth: true; Layout.margins: 8
-            Item { Layout.fillWidth: true }
-            DialogAction { text: "重新载入"; visible: !!root.workspace.document && !root.workspace.document.editable && root.workspace.document.state===EditorDocument.Conflict; onClicked: root.workspace.document.reload() }
-            DialogAction { text: "编辑"; visible: !!root.workspace.document && root.workspace.document.editable; enabled: !!root.workspace.document && root.workspace.document.editable; onClicked: root.editing=!root.editing }
+    Loader {
+        id: viewLoader
+        anchors.fill: parent
+        active: root.visible && !!root.workspace.viewer.component
+        property string entry: !root.renderedMarkdown && root.workspace.viewer.storage===0 ? "WorkspaceSourcePlugin.qml" : root.workspace.viewer.component || ""
+        function loadPlugin() {
+            if (!entry) { source=""; return }
+            setSource(Qt.resolvedUrl(entry), {workspace:root.workspace, controller:root.controller})
         }
-        Label { visible: !!root.workspace.document && !root.workspace.document.editable; text: root.workspace.document ? root.workspace.document.reason : ""; wrapMode: Text.Wrap; color: Design.Theme.secondary; Layout.fillWidth: true; Layout.margins: 12 }
-        Loader {
-            id: viewLoader
-            Layout.fillWidth: true; Layout.fillHeight: true
-            active: root.visible && (!!root.workspace.document || !!root.workspace.imageInfo.url)
-            sourceComponent: root.workspace.imageInfo.url ? imageViewer : root.markdown ? markdownEditor : root.editing && root.workspace.document && root.workspace.document.editable ? editable : readOnlyPreview
+        onEntryChanged: loadPlugin()
+        Component.onCompleted: loadPlugin()
+    }
+    Connections {
+        target: viewLoader.item; ignoreUnknownSignals: true
+        function onOpenWindow(component: string, properties: var, resource: url, title: string) {
+            detached.resource=resource
+            detached.title=title || Design.UiText.get("独立查看器")
+            properties.controller=root.controller
+            detachedLoader.setSource(Qt.resolvedUrl(component),properties)
+            detached.show(); detached.raise(); detached.requestActivate()
         }
     }
-    Component {
-        id: editable
-        Design.WorkspaceEditor { document: root.workspace.document; onPreviewRequested: root.editing=false }
-    }
-    Component { id: readOnlyPreview; Design.WorkspaceTextPreview { workspace: root.workspace; controller: root.controller; markdown: root.markdown } }
-    Component { id: markdownEditor; Design.WorkspaceMarkdownView { workspace: root.workspace; controller: root.controller } }
-    Component { id: imageViewer; Design.WorkspaceImageViewer { imageInfo: root.workspace.imageInfo; controller: root.controller; onDetachRequested: { imageWindow.info=root.workspace.imageInfo; imageWindow.show(); imageWindow.raise(); imageWindow.requestActivate() } } }
     Design.WorkbenchWindow {
-        id: imageWindow
+        id: detached
+        property url resource
         transientParent: root.Window.window
-        Shortcut { sequence: "Escape"; enabled: imageWindow.visible && imageWindow.active; onActivated: imageWindow.close() }
-        property var info: ({})
         width: 960; height: 680; minimumWidth: 320; minimumHeight: 280
-        title: info.name || Design.UiText.get("图片")
-        color: Design.Theme.background
-        Loader { anchors.fill: parent; active: imageWindow.visible; sourceComponent: Design.WindowEntrance { ready: true; Design.WorkspaceImageViewer { anchors.fill: parent; imageInfo: imageWindow.info; controller: root.controller; allowDetach: false } } }
+        title: Design.UiText.get("独立查看器")
+        Shortcut { sequence: "Escape"; enabled: detached.visible && detached.active; onActivated: detached.close() }
+        onVisibleChanged: { if(!visible) entrance.entered=false }
+        Design.WindowEntrance {
+            id: entrance; anchors.fill: parent; ready: detached.visible
+            Loader { id: detachedLoader; anchors.fill: parent; active: detached.visible }
+        }
     }
-    // 宿主确认关闭后收回附属查看窗口，取消退出时不影响查看器。
-    Connections { target: root.Window.window; function onVisibleChanged() { if (root.Window.window && !root.Window.window.visible) imageWindow.close() } }
+    Connections { target: root.Window.window; function onVisibleChanged() { if(root.Window.window && !root.Window.window.visible) detached.close() } }
     Connections {
         target: root.workspace
-        function onPreviewChanged() { if (imageWindow.visible && !root.workspace.imageAvailable(imageWindow.info.url)) imageWindow.close() }
+        function onPreviewChanged() { if(detached.visible && !root.workspace.viewerResourceAvailable(detached.resource)) detached.close() }
         function onCloseRequested(index: int) {
             root.closeIndex=index; root.closeRoot=root.workspace.rootPath; root.closeDocument=root.workspace.documentAt(index)
             closeDialog.open()

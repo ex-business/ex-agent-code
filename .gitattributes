@@ -1,0 +1,4 @@
+# 第三方产物及许可证保留原始空白，避免改写字符串或版权文本。
+src/plugins/workspace_viewers/mermaid/assets/mermaid.js -whitespace linguist-generated=true
+src/plugins/workspace_viewers/mermaid/assets/mermaid.js.LEGAL.txt -whitespace
+src/plugins/workspace_viewers/mermaid/assets/THIRD_PARTY_NOTICES.txt -whitespace

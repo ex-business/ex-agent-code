@@ -25,6 +25,7 @@ qt_add_qml_module(ex_agent_workbench
         components/MessageLayoutReservation.qml components/ScrollRenderPolicy.qml components/HistoryPagePreloader.qml components/ChatScrollView.qml components/ChatSelectionLayer.qml components/ChatSelectionPart.qml
         components/SelectionAutoScroll.qml
         components/WorkspaceTabs.qml components/WorkbenchTitleBar.qml components/WorkspaceEditor.qml components/WorkspaceTextPreview.qml components/WorkspaceMarkdownView.qml components/WorkspaceImageViewer.qml components/WorkbenchWindow.qml components/FilePreview.qml
+        components/WorkspaceSourcePlugin.qml components/WorkspaceImagePlugin.qml components/WorkspaceViewerStatus.qml components/WorkspaceWebPlugin.qml components/WorkspaceTablePlugin.qml components/WorkspacePdfPlugin.qml components/WorkspaceNotebookPlugin.qml
         components/ChatMenu.qml components/SessionConsoleWindow.qml components/WorkbenchDialogActions.qml components/WorkbenchConfirmDialog.qml components/WorkbenchDialog.qml components/DialogAction.qml components/DialogInput.qml components/DialogSelect.qml components/TerminalSettings.qml components/TerminalPane.qml components/TerminalAction.qml components/TerminalHistoryDialog.qml components/AgentLauncher.qml components/AgentProfiles.js
         components/AgentActivityDialog.qml
         components/ShellPresentation.js components/BlockGeometry.js components/ProsePreparation.qml components/MarkdownText.qml components/TableRulesOverlay.qml

@@ -1,4 +1,5 @@
 #include "workspace_preview.h"
+#include "viewer_data.h"
 #include "presentation/text/markdown_formatter.h"
 #include <QDir>
 #include <QFile>
@@ -117,6 +118,7 @@ QImage WorkspaceImageProvider::requestImage(const QString &id, QSize *size, cons
 void installWorkspaceViewers(QQmlEngine &engine) {
     Q_ASSERT(engine.thread() == QThread::currentThread());
     engine.addImageProvider("workspace-images", new WorkspaceImageProvider);
+    engine.addImageProvider("workspace-pdf", new WorkspacePdfProvider);
     // 富文本首次取图可能发生在场景同步阶段，先在 GUI 线程建立 Qt 异步图片读取器。
     // 只加载内置透明像素，不读取用户目录，也不触发网络请求。
     QQmlComponent component(&engine);

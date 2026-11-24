@@ -1,0 +1,88 @@
+{
+  "packages": {
+    "node_modules/esbuild": {
+      "version": "0.28.2",
+      "resolved": "https://registry.npmjs.org/esbuild/-/esbuild-0.28.2.tgz",
+      "integrity": "sha512-HKVLS8dvII+xoKW9kmqxbRKrnWEXfJJr/FZhhJmiqIB0e053QNYFqOBouTMO/k5sID4MvCiUCvv8b9M4h32wIA==",
+      "hasInstallScript": true,
+      "license": "MIT",
+      "bin": {
+        "esbuild": "bin/esbuild"
+      },
+      "engines": {
+        "node": ">=18"
+      },
+      "optionalDependencies": {
+        "@esbuild/aix-ppc64": "0.28.2",
+        "@esbuild/android-arm": "0.28.2",
+        "@esbuild/android-arm64": "0.28.2",
+        "@esbuild/android-x64": "0.28.2",
+        "@esbuild/darwin-arm64": "0.28.2",
+        "@esbuild/darwin-x64": "0.28.2",
+        "@esbuild/freebsd-arm64": "0.28.2",
+        "@esbuild/freebsd-x64": "0.28.2",
+        "@esbuild/linux-arm": "0.28.2",
+        "@esbuild/linux-arm64": "0.28.2",
+        "@esbuild/linux-ia32": "0.28.2",
+        "@esbuild/linux-loong64": "0.28.2",
+        "@esbuild/linux-mips64el": "0.28.2",
+        "@esbuild/linux-ppc64": "0.28.2",
+        "@esbuild/linux-riscv64": "0.28.2",
+        "@esbuild/linux-s390x": "0.28.2",
+        "@esbuild/linux-x64": "0.28.2",
+        "@esbuild/netbsd-arm64": "0.28.2",
+        "@esbuild/netbsd-x64": "0.28.2",
+        "@esbuild/openbsd-arm64": "0.28.2",
+        "@esbuild/openbsd-x64": "0.28.2",
+        "@esbuild/openharmony-arm64": "0.28.2",
+        "@esbuild/sunos-x64": "0.28.2",
+        "@esbuild/win32-arm64": "0.28.2",
+        "@esbuild/win32-ia32": "0.28.2",
+        "@esbuild/win32-x64": "0.28.2"
+      }
+    },
+    "node_modules/mermaid": {
+      "version": "12.3.0",
+      "resolved": "https://registry.npmjs.org/mermaid/-/mermaid-12.3.0.tgz",
+      "integrity": "sha512-4113TdXeLAsMruJ79OpFL5O8+LTFXhQqZ260rF3tgUmiNAtRm4Uume04I+65PRN6yZ69J4f8rVYWW8zRk65UYw==",
+      "license": "MIT",
+      "dependencies": {
+        "@braintree/sanitize-url": "^7.1.2",
+        "@iconify/utils": "^3.0.2",
+        "@mermaid-js/parser": "^2.0.1",
+        "@types/d3": "^7.4.3",
+        "@upsetjs/venn.js": "^2.0.0",
+        "chevrotain": "~13.2.0",
+        "cytoscape": "^3.34.0",
+        "cytoscape-cose-bilkent": "^4.1.0",
+        "cytoscape-fcose": "^2.2.0",
+        "d3": "^7.9.0",
+        "d3-sankey": "^0.12.3",
+        "dagre-d3-es": "7.0.14",
+        "dayjs": "^1.11.21",
+        "dompurify": "^3.4.17",
+        "elkjs": "^0.12.0",
+        "es-toolkit": "^1.45.1",
+        "katex": "^0.18.0",
+        "khroma": "^2.1.0",
+        "marked": "^16.3.0",
+        "roughjs": "^4.6.6",
+        "stylis": "^4.3.6",
+        "ts-dedent": "^2.2.0"
+      },
+      "engines": {
+        "node": ">=22.12.0"
+      }
+    }
+  },
+  "bundleSha256": "8b95635150269efb2e4855844caef6011e8750b1211fa7a7410cdb0f12805e60",
+  "build": "esbuild mermaid/dist/mermaid.esm.min.mjs --bundle --format=iife --global-name=ExMermaid --minify --legal-comments=linked",
+  "runtime": "Offline resource; no CDN",
+  "bundledPackages": [
+    {
+      "name": "mermaid",
+      "version": "12.3.0",
+      "license": "MIT"
+    }
+  ]
+}

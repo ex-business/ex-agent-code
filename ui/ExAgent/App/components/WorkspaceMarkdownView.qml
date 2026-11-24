@@ -10,6 +10,7 @@ ColumnLayout {
     id: root
     required property WorkspaceController workspace
     required property ChatController controller
+    function togglePreview() { viewMode=viewMode===2 ? 1 : 2 }
     property int viewMode: 3 // 1 源码、2 预览、3 联动。
     spacing: 0
     RowLayout {

@@ -20,12 +20,15 @@ class WorkspaceController : public QObject {
     Q_PROPERTY(bool hasUnsaved READ hasUnsaved NOTIFY previewChanged)
     Q_PROPERTY(QString language READ language NOTIFY previewChanged)
     Q_PROPERTY(QString error READ error NOTIFY errorChanged)
+    Q_PROPERTY(QVariantMap viewer READ viewer NOTIFY previewChanged)
     Q_PROPERTY(QVariantMap imageInfo READ imageInfo NOTIFY previewChanged)
 public:
+    QVariantMap viewer() const { return m_active>=0 ? m_files[m_active].viewer : QVariantMap{}; }
     explicit WorkspaceController(QObject *parent = nullptr);
     ~WorkspaceController() override;
     QVariantMap imageInfo() const { return m_active>=0 ? m_files[m_active].image : QVariantMap{}; }
     Q_INVOKABLE bool imageAvailable(const QUrl &url) const;
+    Q_INVOKABLE bool viewerResourceAvailable(const QUrl &url) const { return url.host()=="workspace-images" && imageAvailable(url); }
     Q_INVOKABLE void openLink(const QString &link, const QString &baseFile);
     QString rootPath() const { return m_root; }
     QVariantList entries() const { return m_entries; }
@@ -58,7 +61,7 @@ protected:
     bool eventFilter(QObject *watched, QEvent *event) override;
 private:
     bool m_exitApproved=false;
-    struct File { QString path; QString language; EditorDocument *document=nullptr; QVariantMap image; };
+    struct File { QString path; QString language; EditorDocument *document=nullptr; QVariantMap image; QVariantMap viewer; };
     struct ViewState { QList<File> files; int active=-1; };
     QHash<QString,ViewState> m_cache;
     QSet<EditorDocument*> m_documents;

@@ -2,6 +2,8 @@
 #include "infrastructure/storage/history_migration.h"
 #include <QStandardPaths>
 #include "plugins/workspace_viewers/workspace_preview.h"
+#include "plugins/workspace_viewers/html/safe_web_profile.h"
+#include <QtWebEngineQuick>
 #include "plugins/git_worktree/git_worktree_provider.h"
 #include "scroll_diagnostics.h"
 #include "profiled_application.h"
@@ -35,6 +37,8 @@ int main(int argc, char *argv[])
     for (int index = 1; index < argc; ++index) {
         if (QByteArray(argv[index]) == "--render-loop-basic") qputenv("QSG_RENDER_LOOP", "basic");
     }
+    exagent::registerWorkspaceWebScheme();
+    QtWebEngineQuick::initialize();
     ProfiledApplication app(argc, argv);
     QCoreApplication::setOrganizationName("EX Business");
     QCoreApplication::setApplicationName("EX Agent Code");

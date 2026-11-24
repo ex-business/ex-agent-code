@@ -31,8 +31,14 @@ qt_add_resources(ex_agent_chat "appearance_packs" PREFIX "/appearance" BASE plug
 qt_add_qml_module(ex_agent_chat
     URI ExAgent.Chat
     VERSION 1.0
+    DEPENDENCIES QtWebEngine
     SOURCES
         plugins/workspace_viewers/workspace_preview.h plugins/workspace_viewers/workspace_preview.cpp
+        plugins/workspace_viewers/viewer_registry.h plugins/workspace_viewers/viewer_registry.cpp
+        plugins/workspace_viewers/viewer_data.h plugins/workspace_viewers/viewer_data.cpp
+        plugins/workspace_viewers/html/plugin.cpp plugins/workspace_viewers/html/safe_web_profile.h plugins/workspace_viewers/html/safe_web_profile.cpp
+        plugins/workspace_viewers/mermaid/plugin.cpp plugins/workspace_viewers/pdf/plugin.cpp
+        plugins/workspace_viewers/table/plugin.cpp plugins/workspace_viewers/notebook/plugin.cpp
         plugins/workspace_editor/editor_document.h plugins/workspace_editor/editor_document.cpp
         plugins/terminal_settings/terminal_preferences.h plugins/terminal_settings/terminal_preferences.cpp
         plugins/appearance/appearance_registry.h
@@ -99,7 +105,7 @@ if(EX_AGENT_KDE_HIGHLIGHTING)
 endif()
 find_package(yaml-cpp CONFIG REQUIRED)
 target_link_libraries(ex_agent_chat PRIVATE yaml-cpp::yaml-cpp)
-target_link_libraries(ex_agent_chat PUBLIC ex_agent_domain ex_agent_ipc ex_agent_codex Qt6::Gui Qt6::Qml Qt6::Quick Qt6::Concurrent)
+target_link_libraries(ex_agent_chat PUBLIC ex_agent_domain ex_agent_ipc ex_agent_codex Qt6::Gui Qt6::Qml Qt6::Quick Qt6::Concurrent Qt6::WebEngineQuick Qt6::Pdf)
 target_include_directories(ex_agent_chat PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}"
     PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/plugins/workspace_viewers" "${CMAKE_CURRENT_SOURCE_DIR}/plugins/workspace_editor" "${CMAKE_CURRENT_SOURCE_DIR}/plugins/terminal_settings" "${CMAKE_CURRENT_SOURCE_DIR}/plugins/appearance" "${CMAKE_CURRENT_SOURCE_DIR}/plugins/interactive_terminal" "${CMAKE_CURRENT_SOURCE_DIR}/plugins/session_history" "${CMAKE_CURRENT_SOURCE_DIR}/application/agent" "${CMAKE_CURRENT_SOURCE_DIR}/application/chat" "${CMAKE_CURRENT_SOURCE_DIR}/presentation/chat" "${CMAKE_CURRENT_SOURCE_DIR}/presentation/code")
 if(APPLE)
@@ -127,3 +133,7 @@ set_target_properties(ex-agent-code PROPERTIES
     MACOSX_BUNDLE_SHORT_VERSION_STRING "${PROJECT_VERSION}"
 )
 install(TARGETS ex-agent-code BUNDLE DESTINATION . RUNTIME DESTINATION bin)
+
+qt_add_resources(ex_agent_chat viewer_assets PREFIX "/workspace-viewers" BASE plugins/workspace_viewers/mermaid/assets FILES plugins/workspace_viewers/mermaid/assets/mermaid.js plugins/workspace_viewers/mermaid/assets/mermaid.js.LEGAL.txt plugins/workspace_viewers/mermaid/assets/LICENSE.txt plugins/workspace_viewers/mermaid/assets/THIRD_PARTY_NOTICES.txt plugins/workspace_viewers/mermaid/assets/provenance.json)
+
+target_include_directories(ex_agent_chat PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/plugins/workspace_viewers/html)
