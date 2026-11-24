@@ -28,7 +28,8 @@ ApplicationWindow {
     WorkspaceController { id: workspaceController }
     Design.AgentApprovalDialog { id: agentApproval; controller: window.controller }
     Design.ConversationTransferDialog { id: transferDialog; controller: window.controller }
-    Design.ChatMenu { id: chatMenu; onOrganizeRequested: transferDialog.begin(); onAttachRequested: imageAttachment.open(); controller: window.controller; onImageSequenceRequested: imageFolder.open() }
+    Design.SessionConsoleWindow { id: consoleWindow; workspace: window.controller.workspacePath }
+    Design.ChatMenu { id: chatMenu; onConsoleRequested: consoleWindow.showConsole(); onOrganizeRequested: transferDialog.begin(); onAttachRequested: imageAttachment.open(); controller: window.controller; onImageSequenceRequested: imageFolder.open() }
     Design.BlockWindowManager { controller: window.controller; hostWindow: window }
     FileDialog {
         id: imageAttachment; title: "将图片加入会话"
@@ -63,10 +64,31 @@ ApplicationWindow {
         onFilesRequested: window.filesVisible = !window.filesVisible
         onMenuRequested: chatMenu.popup(titleBar, Math.max(0, titleBar.width - filesWidth - 220), titleBar.height)
     }
-    Core.Settings { id: layoutSettings; property var splitState }
-    onClosing: layoutSettings.splitState = workspaceSplit.saveState()
+    Core.Settings { id: layoutSettings; property var splitState; property bool sidebarShown: true; property bool filesShown: true; property real navWidth: 0; property real previewWidth: 0 }
+    function saveWindowLayout() {
+        if (sidebar.visible) layoutSettings.navWidth = sidebar.width
+        if (filePanel.visible) layoutSettings.previewWidth = filePanel.width
+        layoutSettings.splitState = workspaceSplit.saveState()
+        layoutSettings.sidebarShown = sidebarVisible
+        layoutSettings.filesShown = filesVisible
+        layoutSettings.sync()
+        consoleWindow.saveLayout()
+    }
+    Connections {
+        target: Qt.application
+        function onAboutToQuit() { if (window.visible) window.saveWindowLayout() }
+    }
+    onClosing: {
+        saveWindowLayout()
+        consoleWindow.hide()
+    }
     Component.onCompleted: {
+        sidebarVisible = layoutSettings.sidebarShown
+        filesVisible = layoutSettings.filesShown
+        Qt.callLater(() => consoleWindow.restoreWindow())
         if (layoutSettings.splitState) workspaceSplit.restoreState(layoutSettings.splitState)
+        if (layoutSettings.navWidth > 0) sidebar.SplitView.preferredWidth = layoutSettings.navWidth
+        if (layoutSettings.previewWidth > 0) filePanel.SplitView.preferredWidth = layoutSettings.previewWidth
         controller.setDarkTheme(Design.Theme.dark)
         workspaceController.bindFolder(controller.workspacePath, controller.previewMode)
     }
@@ -102,6 +124,7 @@ ApplicationWindow {
             }
         Design.Sidebar {
             id: sidebar
+            sleepingWorkspaces: consoleWindow.sleepingWorkspaces
             visible: window.sidebarVisible
             SplitView.preferredWidth: 325
             SplitView.minimumWidth: 200

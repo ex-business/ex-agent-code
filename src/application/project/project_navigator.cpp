@@ -108,7 +108,9 @@ void ProjectNavigator::refresh(const QList<ChatSession> &sessions)
         next.append(groups.value("p/" + project.id));
         for (const auto &workspace : project.workspaces) {
             auto title = QFileInfo(workspace.path).fileName();
-            next.append(row(WorkspaceRow, title.isEmpty() ? workspace.path : title, project.id, workspace.id));
+            auto item = row(WorkspaceRow, title.isEmpty() ? workspace.path : title, project.id, workspace.id);
+            item.insert("path", workspace.path);
+            next.append(item);
             next.append(groups.value("w/" + workspace.id));
         }
     }

@@ -11,10 +11,13 @@ Rectangle {
     required property ChatController controller
     signal collapseRequested()
     property alias searchField: searchInput
+    property var sleepingWorkspaces: []
     property var folded: ({})
     readonly property var resources: controller.resourceConversations
     readonly property var rows: {
-        const all = controller.projects.rows.slice()
+        const sleeping = new Set(sleepingWorkspaces)
+        const all = controller.projects.rows.map(row => sleeping.has(row.path)
+            ? Object.assign({},row,{title: row.title + " · 有休眠终端"}) : row)
         if (resources.length) {
             all.push({kind: ProjectNavigator.ProjectRow, project: "@resources", workspace: "", title: "历史资源"})
             for (const item of resources)

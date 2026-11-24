@@ -5,10 +5,24 @@
 #include <QFileInfo>
 #include <QStandardPaths>
 #include <QUrl>
+#include <QSettings>
+#include <QCryptographicHash>
 
 namespace exagent {
+namespace {
+QString tabKey(const QString &path)
+{
+    return "workspace-tabs/" + QCryptographicHash::hash(path.toUtf8(), QCryptographicHash::Sha256).toHex();
+}
+}
 WorkspaceController::WorkspaceController(QObject *parent) : QObject(parent)
 {
+    connect(this, &WorkspaceController::previewChanged, this, [this] {
+        if (m_root.isEmpty() || m_restoring) return;
+        QStringList paths;
+        for (const auto &file : m_files) paths.append(file.path);
+        QSettings().setValue(tabKey(m_root), QVariantMap{{"paths",paths},{"active",activePath()}});
+    });
 }
 
 void WorkspaceController::bindFolder(const QString &path, bool preview)
@@ -34,6 +48,15 @@ void WorkspaceController::bindFolder(const QString &path, bool preview)
         m_expanded.clear();
         m_active = -1;
         refresh();
+        // 只恢复当前根目录内仍存在的文件；恢复过程不会覆盖尚未加载的页签列表。
+        m_restoring = true;
+        const auto saved = QSettings().value(tabKey(m_root)).toMap();
+        if (!m_root.isEmpty()) for (const auto &relative : saved.value("paths").toStringList().mid(0,8)) {
+            if (QFileInfo(resolve(relative)).isFile()) open(relative);
+        }
+        for (int i = 0; i < m_files.size(); ++i)
+            if (m_files[i].path == saved.value("active").toString()) m_active = i;
+        m_restoring = false;
         emit previewChanged();
     }
     fail(!folder.isEmpty() && root.isEmpty() ? QStringLiteral("工作区目录已移动或不可用。") : QString{});

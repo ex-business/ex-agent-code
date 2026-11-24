@@ -24,10 +24,14 @@ qt_add_library(ex_agent_worker STATIC services/local/service_worker.h services/l
 target_link_libraries(ex_agent_worker PUBLIC ex_agent_ipc ex_agent_codex)
 
 qt_add_library(ex_agent_chat STATIC)
+qt_add_resources(ex_agent_chat "terminal_hibernation" PREFIX "/terminal-hibernation"
+    BASE "plugins/session_history" FILES plugins/session_history/pi_hibernation.mjs)
 qt_add_qml_module(ex_agent_chat
     URI ExAgent.Chat
     VERSION 1.0
     SOURCES
+        plugins/session_history/session_console.h plugins/session_history/session_console.cpp
+        plugins/session_history/terminal_hibernation.cpp plugins/session_history/history_provider.cpp plugins/session_history/terminal_backend.cpp
         domain/project/project_catalog.h domain/project/project_catalog.cpp
         application/project/project_navigator.h application/project/project_navigator.cpp
         infrastructure/storage/conversation_image.h infrastructure/storage/conversation_image.cpp
@@ -61,7 +65,7 @@ qt_add_qml_module(ex_agent_chat
 )
 target_link_libraries(ex_agent_chat PUBLIC ex_agent_domain ex_agent_ipc ex_agent_codex Qt6::Gui Qt6::Qml Qt6::Quick Qt6::Concurrent)
 target_include_directories(ex_agent_chat PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}"
-    PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/application/agent" "${CMAKE_CURRENT_SOURCE_DIR}/application/chat" "${CMAKE_CURRENT_SOURCE_DIR}/presentation/chat" "${CMAKE_CURRENT_SOURCE_DIR}/presentation/code")
+    PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/plugins/session_history" "${CMAKE_CURRENT_SOURCE_DIR}/application/agent" "${CMAKE_CURRENT_SOURCE_DIR}/application/chat" "${CMAKE_CURRENT_SOURCE_DIR}/presentation/chat" "${CMAKE_CURRENT_SOURCE_DIR}/presentation/code")
 target_compile_options(ex_agent_chat PRIVATE -Wall -Wextra -Wpedantic)
 target_include_directories(ex_agent_chat PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/presentation/text")
 target_include_directories(ex_agent_chat PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/presentation/workspace")

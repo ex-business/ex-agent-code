@@ -47,5 +47,6 @@ private:
     QList<File> m_files;
     QSet<QString> m_expanded;
     int m_active = -1;
+    bool m_restoring = false;
 };
 }

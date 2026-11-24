@@ -8,6 +8,8 @@ Design.ContextMenu {
     id: root
     required property ChatController controller
     signal imageSequenceRequested()
+    signal consoleRequested()
+    Design.ContextMenuItem { text: "Agent 历史与终端…"; iconName: "terminal"; onTriggered: root.consoleRequested() }
     signal organizeRequested()
     signal attachRequested()
     Design.ContextMenuItem { text: "添加图片…"; iconName: "image"; enabled: root.controller.projects.writable; onTriggered: root.attachRequested() }

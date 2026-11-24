@@ -25,7 +25,7 @@ qt_add_qml_module(ex_agent_workbench
         components/MessageLayoutReservation.qml components/ScrollRenderPolicy.qml components/HistoryPagePreloader.qml components/ChatScrollView.qml components/ChatSelectionLayer.qml components/ChatSelectionPart.qml
         components/SelectionAutoScroll.qml
         components/WorkspaceTabs.qml components/WorkbenchTitleBar.qml components/FilePreview.qml
-        components/ChatMenu.qml
+        components/ChatMenu.qml components/SessionConsoleWindow.qml
         components/BlockGeometry.js components/ProsePreparation.qml components/MarkdownText.qml components/TableRulesOverlay.qml
         components/ToolActivityRow.qml components/MessageAttachments.qml
         components/ImagePreview.qml components/ChangesSummary.qml
