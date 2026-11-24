@@ -50,7 +50,7 @@ Window {
         })
     }
     onWorkspaceChanged: if (visible && !scope.checked) consoleModel.scan(workspace)
-    Timer { interval: 700; running: root.visible; repeat: true; onTriggered: consoleModel.poll() }
+    Timer { interval: 700; running: root.visible; repeat: true; onTriggered: consoleModel.poll(!surface.visible) }
     SplitView {
         id: split
         anchors.fill: parent
@@ -129,7 +129,26 @@ Window {
                     : consoleModel.current.state === SessionConsole.Sleeping ? "已休眠 · 已保存画面"
                     : consoleModel.current.state === 0 ? "后端不可用 · 已保存画面" : "正在核对后端") + "　" + consoleModel.current.cwd
             }
+            RowLayout {
+                CheckBox {
+                    id: interactive
+                    visible: surface.supported && consoleModel.ownsInput
+                    enabled: consoleModel.current.state === 1
+                    text: "交互终端"
+                    onToggled: if (checked) Qt.callLater(() => surface.forceActiveFocus())
+                }
+                Label { visible: surface.visible; text: surface.error; Layout.fillWidth: true; wrapMode: Text.Wrap }
+            }
+            TerminalSurface {
+                id: surface
+                ToolTip { id: pasteNotice; timeout: 3000 }
+                onPasteRejected: reason => pasteNotice.show(reason)
+                Layout.fillWidth: true; Layout.fillHeight: true
+                visible: root.visible && interactive.visible && interactive.checked && interactive.enabled
+                target: visible ? consoleModel.current.id || "" : ""
+            }
             ScrollView {
+                visible: !surface.visible
                 Layout.fillWidth: true; Layout.fillHeight: true
                 TextArea {
                     id: output
@@ -142,6 +161,7 @@ Window {
             Label { visible: !!text; text: consoleModel.error; Layout.fillWidth: true; wrapMode: Text.Wrap }
             TextField {
                 id: input
+                visible: !surface.visible
                 readonly property string terminalId: consoleModel.current.id || ""
                 onTerminalIdChanged: text = consoleModel.draft(terminalId)
                 onTextEdited: consoleModel.setDraft(terminalId, text)

@@ -30,6 +30,7 @@ qt_add_qml_module(ex_agent_chat
     URI ExAgent.Chat
     VERSION 1.0
     SOURCES
+        plugins/interactive_terminal/terminal_surface.h plugins/interactive_terminal/terminal_surface.cpp
         plugins/session_history/session_console.h plugins/session_history/session_console.cpp
         plugins/session_history/terminal_hibernation.cpp plugins/session_history/history_provider.cpp plugins/session_history/terminal_backend.cpp
         domain/project/project_catalog.h domain/project/project_catalog.cpp
@@ -65,7 +66,13 @@ qt_add_qml_module(ex_agent_chat
 )
 target_link_libraries(ex_agent_chat PUBLIC ex_agent_domain ex_agent_ipc ex_agent_codex Qt6::Gui Qt6::Qml Qt6::Quick Qt6::Concurrent)
 target_include_directories(ex_agent_chat PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}"
-    PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/plugins/session_history" "${CMAKE_CURRENT_SOURCE_DIR}/application/agent" "${CMAKE_CURRENT_SOURCE_DIR}/application/chat" "${CMAKE_CURRENT_SOURCE_DIR}/presentation/chat" "${CMAKE_CURRENT_SOURCE_DIR}/presentation/code")
+    PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/plugins/interactive_terminal" "${CMAKE_CURRENT_SOURCE_DIR}/plugins/session_history" "${CMAKE_CURRENT_SOURCE_DIR}/application/agent" "${CMAKE_CURRENT_SOURCE_DIR}/application/chat" "${CMAKE_CURRENT_SOURCE_DIR}/presentation/chat" "${CMAKE_CURRENT_SOURCE_DIR}/presentation/code")
+if(APPLE)
+    find_path(VTERM_INCLUDE_DIR vterm.h REQUIRED)
+    find_file(VTERM_ARCHIVE libvterm.a PATH_SUFFIXES lib REQUIRED)
+    target_include_directories(ex_agent_chat PRIVATE "${VTERM_INCLUDE_DIR}")
+    target_link_libraries(ex_agent_chat PRIVATE "${VTERM_ARCHIVE}")
+endif()
 target_compile_options(ex_agent_chat PRIVATE -Wall -Wextra -Wpedantic)
 target_include_directories(ex_agent_chat PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/presentation/text")
 target_include_directories(ex_agent_chat PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/presentation/workspace")

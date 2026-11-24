@@ -213,7 +213,7 @@ void SessionConsole::start(const QString& title, const QString& cwd, const QStri
         { "conversationId", conversation }, { "hibernatable", supported }, { "state", -1 } });
     select(m_tabs.size() - 1);
 }
-void SessionConsole::poll()
+void SessionConsole::poll(bool withText)
 {
     if (m_polling || m_selected < 0)
         return;
@@ -250,7 +250,7 @@ void SessionConsole::poll()
         if (index != m_selected)
             poll();
     });
-    w->setFuture(QtConcurrent::run(terminalSnapshot, id));
+    w->setFuture(QtConcurrent::run(terminalSnapshot, id, withText));
 }
 void SessionConsole::sendNavigationKey(int key)
 {

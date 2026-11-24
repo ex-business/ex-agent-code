@@ -6,6 +6,7 @@ struct TerminalResult {
     bool ok;
     QByteArray output;
 };
+QString terminalSocket();
 TerminalResult terminalCommand(QStringList args);
-QVariantMap terminalSnapshot(const QString& id);
+QVariantMap terminalSnapshot(const QString& id, bool withText = true);
 }

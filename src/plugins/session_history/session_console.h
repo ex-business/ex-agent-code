@@ -11,6 +11,7 @@ class SessionConsole : public QObject {
     QML_ELEMENT
     Q_PROPERTY(QVariantList history MEMBER m_history NOTIFY changed)
     Q_PROPERTY(QVariantList tabs READ tabs NOTIFY changed)
+    Q_PROPERTY(bool ownsInput READ ownsInput CONSTANT)
     Q_PROPERTY(int selected READ selected NOTIFY changed)
     Q_PROPERTY(QVariantMap current READ current NOTIFY changed)
     Q_PROPERTY(bool hibernationEnabled READ hibernationEnabled NOTIFY changed)
@@ -21,6 +22,7 @@ public:
     explicit SessionConsole(QObject* parent = nullptr);
     ~SessionConsole() override;
     QVariantList tabs() const { return m_tabs; }
+    bool ownsInput() const { return m_writer->isLocked(); }
     int selected() const { return m_selected; }
     QVariantMap current() const { return m_tabs.value(m_selected).toMap(); }
     enum RuntimeState { Unknown = -1, Ended = 0, Running = 1, Sleeping = 2 };
@@ -41,7 +43,7 @@ public:
     Q_INVOKABLE void continueCodex(const QVariantMap& binding);
     Q_INVOKABLE void shell(const QString& cwd);
     Q_INVOKABLE void select(int index);
-    Q_INVOKABLE void poll();
+    Q_INVOKABLE void poll(bool withText = true);
     Q_INVOKABLE void sendNavigationKey(int key);
     Q_INVOKABLE void send(const QString& text);
 signals:
