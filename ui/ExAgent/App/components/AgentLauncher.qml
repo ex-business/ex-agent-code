@@ -12,7 +12,7 @@ WorkbenchDialog {
     title: "启动终端 Agent"
     modal: true
     anchors.centerIn: parent
-    width: parent ? Math.min(parent.width - 32, 480) : 480
+    sizeClass: WorkbenchDialog.Normal
     readonly property var profiles: Catalog.entries
     property string resolved
     property string feedback

@@ -63,7 +63,7 @@ Rectangle {
         anchors.centerIn: Overlay.overlay
         modal: true
         standardButtons: Dialog.Ok | Dialog.Cancel
-        width: 390
+        sizeClass: WorkbenchDialog.Compact
         Connections {
             target: root.controller.projects
             function onTaskFieldsReady(request: int, fields: var) {
@@ -133,7 +133,7 @@ Rectangle {
         id: createDialog
         title: Design.UiText.get("新建项目")
         anchors.centerIn: Overlay.overlay
-        modal: true; width: 360
+        modal: true; sizeClass: WorkbenchDialog.Compact
         standardButtons: Dialog.Ok | Dialog.Cancel
         onOpened: {
             standardButton(Dialog.Ok).text = "创建"

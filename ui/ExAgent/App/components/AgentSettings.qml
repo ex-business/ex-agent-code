@@ -14,7 +14,7 @@ WorkbenchDialog {
     title: Design.UiText.get("会话执行设置")
     modal: true
     anchors.centerIn: Overlay.overlay
-    width: Math.min(440, parent ? parent.width - 24 : 440)
+    sizeClass: WorkbenchDialog.Compact
     standardButtons: Dialog.Ok | Dialog.Cancel
     onOpened: {
         turns = controller.transfer.turns(controller.currentSessionId)
@@ -41,7 +41,16 @@ WorkbenchDialog {
         function onAccountUpdated(loggedIn: bool) { feedback.text = loggedIn ? Design.UiText.get("专用账号登录成功") : Design.UiText.get("专用账号已退出") }
         function onFailure(reason: string) { if (root.visible) feedback.text = reason }
     }
-    contentItem: ColumnLayout {
+    contentItem: ScrollView {
+        id: body
+        clip: true
+        contentWidth: availableWidth
+        contentHeight: form.implicitHeight
+        implicitHeight: Math.min(contentHeight, root.maximumBodyHeight)
+        ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
+        ColumnLayout {
+        id: form
+        width: body.availableWidth
         spacing: 9
         Label { text: Design.UiText.get("运行账号") }
         DialogSelect { id: mode; Layout.fillWidth: true; translateOptions: true; model: ["仅本地聊天", "本机 Codex 账号", "EX 专用 OpenAI API Key"] }
@@ -122,6 +131,7 @@ WorkbenchDialog {
             visible: mode.currentIndex > 0; Layout.fillWidth: true; wrapMode: Text.Wrap
             color: Design.Theme.tokens.panelPlaceholderText; font.pixelSize: 12
             text: Design.UiText.get("首次运行从新输入开始；续接线程时沿用已有上下文。")
+        }
         }
     }
 }

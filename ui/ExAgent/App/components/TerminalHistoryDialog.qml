@@ -15,7 +15,7 @@ WorkbenchDialog {
     title: Design.UiText.get("搜索终端回滚")
     anchors.centerIn: parent
     modal: true
-    width: Math.min(parent ? parent.width - 24 : 640, 740)
+    sizeClass: WorkbenchDialog.Wide
     standardButtons: Dialog.Close
     function refresh() {
         history.text = ""

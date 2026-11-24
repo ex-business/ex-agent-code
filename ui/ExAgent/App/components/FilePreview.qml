@@ -11,6 +11,38 @@ Item {
     required property ChatController controller
     property bool renderedMarkdown: true
     readonly property bool markdown: workspace.language === "md" && workspace.source.length < 128 * 1024 && renderedMarkdown
+    property bool editing: true
+    property int closeIndex: -1
+    property string closeRoot: ""
+    property EditorDocument closeDocument
+    function finishClose(save) {
+        if (root.workspace.rootPath!==closeRoot || root.workspace.documentAt(closeIndex)!==closeDocument) { closeDialog.close(); return }
+        if (save && !closeDocument.save()) return
+        root.workspace.closeTab(closeIndex,true)
+        if (root.workspace.documentAt(closeIndex)!==closeDocument) closeDialog.close()
+    }
+    ColumnLayout {
+        anchors.fill: parent; spacing: 0
+        RowLayout {
+            visible: !!root.workspace.document && (root.workspace.document.editable ? !root.editing : root.workspace.document.state===EditorDocument.Conflict)
+            Layout.fillWidth: true; Layout.margins: 8
+            Item { Layout.fillWidth: true }
+            DialogAction { text: "重新载入"; visible: !!root.workspace.document && !root.workspace.document.editable && root.workspace.document.state===EditorDocument.Conflict; onClicked: root.workspace.document.reload() }
+            DialogAction { text: "编辑"; visible: !!root.workspace.document && root.workspace.document.editable; enabled: !!root.workspace.document && root.workspace.document.editable; onClicked: root.editing=!root.editing }
+        }
+        Label { visible: !!root.workspace.document && !root.workspace.document.editable; text: root.workspace.document ? root.workspace.document.reason : ""; wrapMode: Text.Wrap; color: Design.Theme.secondary; Layout.fillWidth: true; Layout.margins: 12 }
+        Loader {
+            Layout.fillWidth: true; Layout.fillHeight: true
+            active: root.visible && !!root.workspace.document
+            sourceComponent: root.editing && root.workspace.document && root.workspace.document.editable ? editable : readOnlyPreview
+        }
+    }
+    Component {
+        id: editable
+        Design.WorkspaceEditor { document: root.workspace.document; onPreviewRequested: root.editing=false }
+    }
+    Component {
+        id: readOnlyPreview
     Flickable {
         id: preview
         property bool pixelWheelEnabled: true
@@ -54,5 +86,24 @@ Item {
             }
         }
     }
-    Connections { target: root.workspace; function onPreviewChanged() { preview.contentY = 0 } }
+    }
+    Connections {
+        target: root.workspace
+        function onCloseRequested(index: int) {
+            root.closeIndex=index; root.closeRoot=root.workspace.rootPath; root.closeDocument=root.workspace.documentAt(index)
+            closeDialog.open()
+        }
+    }
+    WorkbenchConfirmDialog {
+        id: closeDialog
+        title: Design.UiText.get("关闭前保存修改？")
+        contextText: root.closeDocument ? root.closeDocument.path : ""
+        detail: root.closeDocument ? root.closeDocument.error : ""
+        detailIsError: !!detail
+        primaryText: "保存并关闭"
+        secondaryText: "放弃修改"
+        secondaryDestructive: true
+        onPrimaryRequested: root.finishClose(true)
+        onSecondaryRequested: root.finishClose(false)
+    }
 }

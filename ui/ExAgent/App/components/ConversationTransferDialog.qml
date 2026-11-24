@@ -10,7 +10,7 @@ WorkbenchDialog {
     required property ChatController controller
     title: "整理会话"
     anchors.centerIn: Overlay.overlay
-    width: Math.min(460, parent ? parent.width - 32 : 460)
+    sizeClass: WorkbenchDialog.Normal
     modal: true
     property string sourceId
     property var turns: []

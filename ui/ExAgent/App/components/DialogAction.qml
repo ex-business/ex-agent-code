@@ -6,9 +6,12 @@ import QtQuick.Controls
 Button {
     id: action
     property bool primary: false
-    leftPadding: 12; rightPadding: 12; topPadding: 6; bottomPadding: 6
+    property bool quiet: false
+    property bool destructive: false
+    transform: Design.PressFeedback { button: action }
+    leftPadding: 12; rightPadding: 12; topPadding: 7; bottomPadding: 7
     implicitWidth: Math.max(52, contentItem.implicitWidth + leftPadding + rightPadding)
-    implicitHeight: 32
+    implicitHeight: Design.Theme.dialogButtonHeight
     hoverEnabled: true
     readonly property string caption: {
         const plain = text.replace(/&/g,"")
@@ -16,13 +19,13 @@ Button {
     }
     Accessible.name: caption
     contentItem: Text {
-        text: action.caption; font: action.font
+        text: action.caption; textFormat: Text.PlainText; font: action.font
         horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter
-        color: !action.enabled ? action.palette.placeholderText : action.primary ? action.palette.window : action.palette.windowText
+        color: !action.enabled ? action.palette.placeholderText : action.primary ? action.palette.window : action.destructive ? Design.Theme.danger : action.palette.windowText
     }
     background: Rectangle {
         radius: 6
-        color: action.primary && action.enabled ? action.palette.windowText : action.hovered && action.enabled ? action.palette.mid : action.palette.button
+        color: action.primary && action.enabled ? (action.destructive ? Design.Theme.danger : action.palette.windowText) : action.quiet && !action.hovered && !action.down ? "transparent" : action.hovered && action.enabled ? action.palette.mid : action.palette.button
         border.color: action.visualFocus ? action.palette.highlight : "transparent"
     }
 }

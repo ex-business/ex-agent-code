@@ -36,7 +36,8 @@ ApplicationWindow {
     font.family: Design.Theme.font
     property bool sidebarVisible: true
     property bool filesVisible: true
-    WorkspaceController { id: workspaceController }
+    property bool editorCloseApproved: false
+    WorkspaceController { id: workspaceController; onExitRequested: { editorExit.open(); window.raise(); window.requestActivate() } }
     Design.AgentApprovalDialog { id: agentApproval; controller: window.controller }
     Design.ConversationTransferDialog { id: transferDialog; controller: window.controller }
     Design.SessionConsoleWindow {
@@ -99,9 +100,33 @@ ApplicationWindow {
         target: Qt.application
         function onAboutToQuit() { if (window.visible) window.saveWindowLayout() }
     }
-    onClosing: {
+    onClosing: event => {
+        if (!window.editorCloseApproved && workspaceController.hasUnsaved) {
+            event.accepted=false; editorExit.open(); return
+        }
         saveWindowLayout()
         consoleWindow.hide()
+    }
+    Design.WorkbenchConfirmDialog {
+        id: editorExit
+        title: Design.UiText.get("退出前保存修改？")
+        message: "可将修改保存到原文件，或保留恢复草稿以便下次继续。"
+        detail: workspaceController.error
+        detailIsError: !!detail
+        primaryText: "保存并退出"
+        secondaryText: "保留草稿退出"
+        onPrimaryRequested: {
+            if (workspaceController.saveAll()) {
+                workspaceController.approveExit(); window.editorCloseApproved=true
+                close(); window.close()
+            }
+        }
+        onSecondaryRequested: {
+            if (workspaceController.flushDrafts()) {
+                workspaceController.approveExit(); window.editorCloseApproved=true
+                close(); window.close()
+            }
+        }
     }
     Component.onCompleted: {
         sidebarVisible = layoutSettings.sidebarShown
@@ -114,8 +139,8 @@ ApplicationWindow {
         workspaceController.bindFolder(controller.workspacePath, controller.previewMode)
     }
 
-    Shortcut { sequence: StandardKey.New; onActivated: window.controller.newSession() }
-    Shortcut { sequence: StandardKey.Copy; enabled: SelectionCoordinator.hasSelection; onActivated: SelectionCoordinator.copy() }
+    Shortcut { sequences: [StandardKey.New]; onActivated: window.controller.newSession() }
+    Shortcut { sequences: [StandardKey.Copy]; enabled: SelectionCoordinator.hasSelection; onActivated: SelectionCoordinator.copy() }
     Shortcut { sequence: "Ctrl+B"; onActivated: window.sidebarVisible = !window.sidebarVisible }
     Shortcut {
         sequence: "Ctrl+K"

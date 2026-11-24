@@ -9,7 +9,7 @@ WorkbenchDialog {
     required property ChatController controller
     property string token
     title: "工具审批"; modal: true; anchors.centerIn: Overlay.overlay
-    width: Math.min(520, Overlay.overlay.width - 32); height: Math.min(380, Overlay.overlay.height - 32)
+    sizeClass: WorkbenchDialog.Wide; height: Math.min(380, Overlay.overlay.height - 32)
     standardButtons: Dialog.Ok | Dialog.Cancel
     onOpened: {
         token = root.controller.agent.approval.token

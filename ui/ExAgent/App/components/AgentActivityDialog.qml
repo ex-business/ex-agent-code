@@ -14,7 +14,7 @@ WorkbenchDialog {
     readonly property var states: ["未知","执行中","等待输入","已完成","失败","已停止"]
     title: "Agent 活动与仓库记忆"
     anchors.centerIn: parent
-    width: parent ? Math.min(parent.width - 32, 660) : 660
+    sizeClass: WorkbenchDialog.Wide
     modal: true
     standardButtons: Dialog.Close
     function refresh() { backend.refreshActivity(workspace) }

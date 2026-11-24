@@ -14,25 +14,17 @@ WorkbenchDialog {
     readonly property color fieldColor: Design.Theme.dark ? Design.Theme.tokens.panelBase : "#171c23"
     readonly property color secondaryColor: Design.Theme.dark ? Design.Theme.tokens.panelPlaceholderText : "#a2abb8"
     modal: true
-    width: Math.min(480, parent ? parent.width - 32 : 480)
+    sizeClass: WorkbenchDialog.Normal
     anchors.centerIn: parent
     standardButtons: Dialog.Cancel
-    footer: Control {
-        padding: 20; topPadding: 8; bottomPadding: 16
-        background: Item {}
-        contentItem: RowLayout {
-            spacing: 8
-            Item { Layout.fillWidth: true }
-            DialogAction { text: "取消"; onClicked: root.reject() }
-            DialogAction {
-                text: "保存"; primary: true
-                onClicked: {
-                    const error=TerminalPreferences.save(shell.text,args.text,commands.text)
-                    if (error) feedback.text=error
-                    else root.accept()
-                }
-            }
-    }
+    footer: WorkbenchDialogActions {
+        primaryText: "保存"
+        onCancelled: root.reject()
+        onPrimaryRequested: {
+            const error=TerminalPreferences.save(shell.text,args.text,commands.text)
+            if (error) feedback.text=error
+            else root.accept()
+        }
     }
     onOpened: {
         shell.text=TerminalPreferences.values.shell

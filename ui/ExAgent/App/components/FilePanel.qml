@@ -12,7 +12,11 @@ Rectangle {
     property int mode: 0
     property bool renderedMarkdown: true
     color: Design.Theme.background
-    Connections { target: root.workspace; function onPreviewChanged() { root.mode = root.workspace.activePath ? 1 : 0 } }
+    Connections {
+        target: root.workspace
+        function onFileActivated() { root.mode=root.workspace.activePath ? 1 : 0 }
+        function onPreviewChanged() { if (!root.workspace.activePath) root.mode=0 }
+    }
     ColumnLayout {
         anchors.fill: parent
         spacing: 0
@@ -27,7 +31,10 @@ Rectangle {
                 Text { anchors.fill: parent; anchors.leftMargin: 12; anchors.rightMargin: 12; verticalAlignment: Text.AlignVCenter; text: root.mode === 1 ? root.workspace.activePath.replace(/\//g, "  ›  ") : !root.workspace.rootPath ? "此会话暂无可用工作区" : root.workspace.rootPath.replace(/\//g, "  ›  "); elide: Text.ElideLeft; color: Design.Theme.secondary; font.pixelSize: 12 }
             }
             Design.IconButton { iconName: root.mode === 0 ? "file" : "folder"; tooltip: root.mode === 0 ? "查看文件预览" : "浏览工作区文件"; enabled: root.mode === 1 || root.workspace.activePath.length > 0; onClicked: root.mode = root.mode === 0 ? 1 : 0 }
-            Design.IconButton { visible: root.mode === 1 && root.workspace.language === "md"; iconName: "code"; tooltip: root.renderedMarkdown ? "查看源代码" : "查看格式化文档"; onClicked: root.renderedMarkdown = !root.renderedMarkdown }
+            Design.IconButton { visible: root.mode === 1 && root.workspace.language === "md"; iconName: "code"; tooltip: root.workspace.document && root.workspace.document.editable ? filePreview.editing ? "预览格式化文档" : "编辑源代码" : root.renderedMarkdown ? "查看源代码" : "查看格式化文档"; onClicked: {
+                if (root.workspace.document && root.workspace.document.editable) { root.renderedMarkdown=true; filePreview.editing=!filePreview.editing }
+                else root.renderedMarkdown=!root.renderedMarkdown
+            } }
         }
         Rectangle { Layout.fillWidth: true; implicitHeight: 1; color: Design.Theme.border }
         RowLayout {
@@ -68,6 +75,6 @@ Rectangle {
                 }
             }
         }
-        Design.FilePreview { visible: root.mode === 1; Layout.fillWidth: true; Layout.fillHeight: true; workspace: root.workspace; controller: root.controller; renderedMarkdown: root.renderedMarkdown }
+        Design.FilePreview { id: filePreview; visible: root.mode === 1; Layout.fillWidth: true; Layout.fillHeight: true; workspace: root.workspace; controller: root.controller; renderedMarkdown: root.renderedMarkdown }
     }
 }

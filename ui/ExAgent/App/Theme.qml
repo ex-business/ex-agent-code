@@ -6,6 +6,15 @@ QtObject {
     readonly property bool dark: AppearanceRegistry.dark
     readonly property var tokens: AppearanceRegistry.colors
     function toggle() { AppearanceRegistry.theme = dark ? "light" : "dark" }
+    readonly property var dialogWidths: [440, 480, 720, 960]
+    readonly property int dialogPadding: 24
+    readonly property int dialogRadius: 12
+    readonly property int dialogTitleSize: 17
+    readonly property int dialogButtonHeight: 34
+    readonly property int dialogButtonGap: 8
+    readonly property int dialogHeaderGap: 12
+    readonly property int dialogFooterPadding: 20
+    readonly property int dialogScreenMargin: 20
     property bool motionEnabled: true
     readonly property int pressDuration: motionEnabled ? 90 : 0
     readonly property int disclosureDuration: motionEnabled ? 160 : 0

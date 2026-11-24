@@ -28,6 +28,8 @@
     "panelMid": "#d9dce1",
     "panelPlaceholderText": "#737a84",
     "panelHighlight": "#526d89",
-    "panelHighlightedText": "#ffffff"
+    "panelHighlightedText": "#ffffff",
+    "panelWarningSurface": "#fff6e8",
+    "panelWarningBorder": "#ead3af"
   }
 }
