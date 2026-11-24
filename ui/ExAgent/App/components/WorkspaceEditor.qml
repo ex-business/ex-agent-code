@@ -10,6 +10,7 @@ ColumnLayout {
     required property EditorDocument document
     signal previewRequested()
     property bool ready: false
+    property bool showPreviewAction: true
     spacing: 0
     readonly property int selectionLength: Math.abs(editor.selectionEnd-editor.selectionStart)
     function clearSelection() { editor.deselect() }
@@ -18,18 +19,18 @@ ColumnLayout {
     Component.onCompleted: { ready=true; attachDocument() }
     onDocumentChanged: attachDocument()
     Connections { target: Design.Theme; function onDarkChanged() { root.attachDocument() } }
-    Shortcut { sequences: [StandardKey.Save]; enabled: editor.activeFocus; onActivated: root.document.save() }
+    Shortcut { sequences: [StandardKey.Save]; enabled: editor.activeFocus && !!root.document; onActivated: root.document.save() }
     RowLayout {
         Layout.fillWidth: true; Layout.margins: 8; spacing: 6
-        Text { text: root.document.state===EditorDocument.Conflict ? Design.UiText.get("磁盘版本已变化") : root.document.state===EditorDocument.Modified ? Design.UiText.get("未保存") : Design.UiText.get("已保存"); color: root.document.state===EditorDocument.Conflict ? Design.Theme.warning : Design.Theme.secondary; font.pixelSize: 12; Layout.fillWidth: true; Layout.minimumWidth: 0; elide: Text.ElideRight }
-        Design.IconButton { text: Design.UiText.get("撤销"); iconName: "back"; tooltip: Design.UiText.get("撤销"); implicitWidth: 28; enabled: root.document.undoAvailable; focusPolicy: Qt.NoFocus; onClicked: editor.undo() }
-        Design.IconButton { text: Design.UiText.get("重做"); iconName: "right"; tooltip: Design.UiText.get("重做"); implicitWidth: 28; enabled: root.document.redoAvailable; focusPolicy: Qt.NoFocus; onClicked: editor.redo() }
-        DialogAction { text: Design.UiText.get("预览"); onClicked: root.previewRequested() }
-        DialogAction { text: Design.UiText.get("保存"); enabled: root.document.editable; primary: true; onClicked: { root.document.save(); editor.forceActiveFocus() } }
+        Text { text: root.document && root.document.state===EditorDocument.Conflict ? Design.UiText.get("磁盘版本已变化") : root.document && root.document.state===EditorDocument.Modified ? Design.UiText.get("未保存") : Design.UiText.get("已保存"); color: root.document && root.document.state===EditorDocument.Conflict ? Design.Theme.warning : Design.Theme.secondary; font.pixelSize: 12; Layout.fillWidth: true; Layout.minimumWidth: 0; elide: Text.ElideRight }
+        Design.IconButton { text: Design.UiText.get("撤销"); iconName: "back"; tooltip: Design.UiText.get("撤销"); implicitWidth: 28; enabled: !!root.document && root.document.undoAvailable; focusPolicy: Qt.NoFocus; onClicked: editor.undo() }
+        Design.IconButton { text: Design.UiText.get("重做"); iconName: "right"; tooltip: Design.UiText.get("重做"); implicitWidth: 28; enabled: !!root.document && root.document.redoAvailable; focusPolicy: Qt.NoFocus; onClicked: editor.redo() }
+        DialogAction { visible: root.showPreviewAction; text: Design.UiText.get("预览"); onClicked: root.previewRequested() }
+        DialogAction { text: Design.UiText.get("保存"); enabled: !!root.document && root.document.editable; primary: true; onClicked: { root.document.save(); editor.forceActiveFocus() } }
     }
-    Label { visible: !!root.document.error; text: Design.UiText.get(root.document.error); textFormat: Text.PlainText; color: Design.Theme.warning; wrapMode: Text.Wrap; Layout.fillWidth: true; Layout.leftMargin: 12; Layout.rightMargin: 12 }
+    Label { visible: !!root.document && !!root.document.error; text: root.document ? Design.UiText.get(root.document.error) : ""; textFormat: Text.PlainText; color: Design.Theme.warning; wrapMode: Text.Wrap; Layout.fillWidth: true; Layout.leftMargin: 12; Layout.rightMargin: 12 }
     RowLayout {
-        visible: root.document.state===EditorDocument.Conflict; Layout.margins: 8
+        visible: root.document && root.document.state===EditorDocument.Conflict; Layout.margins: 8
         DialogAction { text: Design.UiText.get("重新载入…"); onClicked: { decision.targetDocument=root.document; decision.overwrite=false; decision.open() } }
         DialogAction { text: Design.UiText.get("覆盖保存…"); onClicked: { decision.targetDocument=root.document; decision.overwrite=true; decision.open() } }
     }
@@ -43,7 +44,7 @@ ColumnLayout {
             textFormat: TextEdit.PlainText
             wrapMode: TextEdit.NoWrap
             selectByMouse: true; persistentSelection: true
-            readOnly: !root.document.editable
+            readOnly: !root.document || !root.document.editable
             font.family: Design.Theme.monoFont; font.pixelSize: 13
             padding: 12
             color: Design.Theme.text

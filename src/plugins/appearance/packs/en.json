@@ -92,6 +92,15 @@
     "恢复草稿写入失败，请及时保存原文件。": "Recovery draft could not be saved. Save your file.",
     "磁盘文件已变更，请选择重新载入或覆盖保存。": "The file changed on disk. Reload it or choose overwrite.",
     "磁盘版本已变化，已阻止覆盖。": "The disk version changed. Overwriting was blocked.",
-    "文件已移除、不可读取或路径发生变化，编辑内容已保留。": "The file was removed, cannot be read, or its path changed. Your edits are preserved."
+    "文件已移除、不可读取或路径发生变化，编辑内容已保留。": "The file was removed, cannot be read, or its path changed. Your edits are preserved.",
+    "源码": "Source",
+    "联动": "Split preview",
+    "适应": "Fit",
+    "缩小": "Zoom out",
+    "放大": "Zoom in",
+    "独立窗口": "Open in window",
+    "切换源码和预览": "Switch source and preview",
+    "滚轮缩放 · 拖动平移 · 双击切换比例": "Scroll to zoom · Drag to pan · Double-click to toggle scale",
+    "Markdown 超过 128 Ki 字符预览限制，请使用源码视图。": "Markdown exceeds the 128 Ki-character preview limit. Use the source view."
   }
 }

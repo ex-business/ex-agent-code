@@ -16,11 +16,13 @@ Item {
     property Design.ScrollRenderPolicy renderPolicy: null
     property bool pooled: false
     required property Design.ProsePreparation preparation
-    readonly property bool layoutReady: preparation?.state === RichTextPreparation.Ready || preparation?.state === RichTextPreparation.Failed
+    property var suppliedPresentation: null
+    readonly property var activePresentation: suppliedPresentation || preparation?.value || ({})
+    readonly property bool layoutReady: !!suppliedPresentation || preparation?.state === RichTextPreparation.Ready || preparation?.state === RichTextPreparation.Failed
     signal linkActivated(string link)
     readonly property string layoutKey: root.messageId + ':' + (root.block.blockId || root.blockIndex)
     readonly property real rememberedHeight: root.renderPolicy ? root.renderPolicy.heightFor(layoutKey, width) : 0
-    readonly property bool hasPresentation: !!preparation?.value.html && preparation.state !== RichTextPreparation.Failed
+    readonly property bool hasPresentation: !!activePresentation.html && (!!suppliedPresentation || preparation.state !== RichTextPreparation.Failed)
     implicitHeight: hasPresentation ? prose.implicitHeight
                   : Math.max(24, rememberedHeight || Number(preparation?.layoutHint.height || 0) || Geometry.estimatedProse(block.text || "", width))
     clip: true
@@ -65,7 +67,7 @@ Item {
         blockIndex: root.blockIndex
         selectionManager: root.selectionManager
         selectionView: root.selectionView
-        text: root.preparation?.value.html || ""
+        text: root.activePresentation.html || ""
         textFormat: TextEdit.RichText
         Accessible.name: "助手消息"
         Loader {
@@ -79,6 +81,6 @@ Item {
     }
     Design.TableRulesOverlay {
         surface: prose
-        rules: root.hasPresentation ? root.preparation.value.tableRules || [] : []
+        rules: root.hasPresentation ? root.activePresentation.tableRules || [] : []
     }
 }

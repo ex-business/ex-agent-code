@@ -1,4 +1,6 @@
 #include "workspace_controller.h"
+#include "plugins/workspace_viewers/workspace_preview.h"
+#include <QDesktopServices>
 #include <QCoreApplication>
 #include <QEvent>
 #include <QDir>
@@ -27,6 +29,17 @@ WorkspaceController::WorkspaceController(QObject *parent) : QObject(parent)
     });
 }
 
+WorkspaceController::~WorkspaceController() {
+    for (const auto &file:m_files) WorkspaceImageProvider::release(file.image.value("url").toUrl());
+    for (const auto &view:m_cache) for (const auto &file:view.files) WorkspaceImageProvider::release(file.image.value("url").toUrl());
+}
+bool WorkspaceController::imageAvailable(const QUrl &url) const { return WorkspaceImageProvider::contains(url); }
+void WorkspaceController::openLink(const QString &link,const QString &baseFile) {
+    const auto url=QUrl::fromLocalFile(baseFile).resolved(QUrl(link));
+    if (url.isLocalFile()) open(url.toLocalFile());
+    else if (url.scheme()=="https" || url.scheme()=="http") QDesktopServices::openUrl(url);
+    else fail(QStringLiteral("此链接类型不允许打开。"));
+}
 void WorkspaceController::bindFolder(const QString &path, bool preview)
 {
     if (preview && m_previewRoot.isEmpty()) {
@@ -97,7 +110,7 @@ void WorkspaceController::scan(const QString &directory, int depth)
 QVariantList WorkspaceController::tabs() const
 {
     QVariantList result;
-    for (const auto &file : m_files) result.append(QVariantMap{{"path", file.path}, {"name", QFileInfo(file.path).fileName()}, {"state",file.document->state()}});
+    for (const auto &file : m_files) result.append(QVariantMap{{"path", file.path}, {"name", QFileInfo(file.path).fileName()}, {"state",file.document ? file.document->state() : int(EditorDocument::Clean)}});
     return result;
 }
 QString WorkspaceController::activePath() const { return m_active >= 0 ? m_files[m_active].path : QString(); }
@@ -114,24 +127,30 @@ void WorkspaceController::open(const QString &path)
         refresh(); return;
     }
     for (int index = 0; index < m_files.size(); ++index) if (m_files[index].path == relative) { selectTab(index); return; }
+    const auto suffix=QFileInfo(canonical).suffix().toLower();
+    const bool image=QStringList{"png","jpg","jpeg","webp","bmp","gif"}.contains(suffix);
+    QVariantMap imageData;
+    if (image) { QString error; imageData=WorkspaceImageProvider::registerFile(canonical,m_root,&error); if (imageData.isEmpty()) { fail(error); return; } }
     QByteArray bytes;
-    if (QFileInfo::exists(canonical)) {
+    if (!image && QFileInfo::exists(canonical)) {
         QFile file(canonical);
         if (file.size()>2*1024*1024 || !file.open(QIODevice::ReadOnly)) { fail(QStringLiteral("文件无法读取或超过 2 MiB 预览限制。")); return; }
         bytes=file.read(2*1024*1024+1);
         if (bytes.size()>2*1024*1024 || bytes.contains('\0')) { fail(QStringLiteral("此文件不支持文本预览。")); return; }
-    } else if (!EditorDocument::hasDraft(canonical)) { fail(QStringLiteral("文件不存在。")); return; }
+    } else if (!image && !EditorDocument::hasDraft(canonical)) { fail(QStringLiteral("文件不存在。")); return; }
     if (m_files.size() >= 8) {
         int clean=-1;
-        for (int i=0;i<m_files.size();++i) if (m_files[i].document->state()==EditorDocument::Clean) { clean=i; break; }
-        if (clean<0) { fail(QStringLiteral("八个页签均有未处理修改，请先保存或关闭文件。")); return; }
+        for (int i=0;i<m_files.size();++i) if (!m_files[i].document || m_files[i].document->state()==EditorDocument::Clean) { clean=i; break; }
+        if (clean<0) { WorkspaceImageProvider::release(imageData.value("url").toUrl()); fail(QStringLiteral("八个页签均有未处理修改，请先保存或关闭文件。")); return; }
         closeTab(clean);
     }
-    auto *doc=new EditorDocument(canonical,bytes,m_preview,this);
-    m_documents.insert(doc);
-    connect(doc,&EditorDocument::stateChanged,this,[this]{ emit previewChanged(); });
-    connect(doc,&EditorDocument::contentChanged,this,[this,doc]{ if (document()==doc) emit contentChanged(); });
-    m_files.append({relative,QFileInfo(canonical).suffix().toLower(),doc});
+    EditorDocument *doc=image ? nullptr : new EditorDocument(canonical,bytes,m_preview,this);
+    if (doc) {
+        m_documents.insert(doc);
+        connect(doc,&EditorDocument::stateChanged,this,[this]{ emit previewChanged(); });
+        connect(doc,&EditorDocument::contentChanged,this,[this,doc]{ if (document()==doc) emit contentChanged(); });
+    }
+    m_files.append({relative,suffix,doc,imageData});
     m_active = m_files.size() - 1;
     fail({}); emit previewChanged(); emit contentChanged(); if (!m_restoring) emit fileActivated();
 }
@@ -140,11 +159,12 @@ void WorkspaceController::closeTab(int index, bool discard)
 {
     if (index < 0 || index >= m_files.size()) return;
     auto *doc=m_files[index].document;
-    if (doc->editable() && doc->state()!=EditorDocument::Clean && !discard) { emit closeRequested(index); return; }
-    if (discard && doc->state()!=EditorDocument::Clean && !doc->discardDraft()) { fail(doc->error()); return; }
+    if (doc && doc->editable() && doc->state()!=EditorDocument::Clean && !discard) { emit closeRequested(index); return; }
+    if (doc && discard && doc->state()!=EditorDocument::Clean && !doc->discardDraft()) { fail(doc->error()); return; }
     m_documents.remove(doc);
+    WorkspaceImageProvider::release(m_files[index].image.value("url").toUrl());
     m_files.removeAt(index);
-    doc->deleteLater();
+    if (doc) doc->deleteLater();
     if (m_active > index) --m_active;
     else if (m_active == index) m_active = qMin(index, int(m_files.size()) - 1);
     emit previewChanged(); emit contentChanged();

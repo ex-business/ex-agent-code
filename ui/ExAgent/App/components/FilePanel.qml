@@ -31,10 +31,7 @@ Rectangle {
                 Text { anchors.fill: parent; anchors.leftMargin: 12; anchors.rightMargin: 12; verticalAlignment: Text.AlignVCenter; text: root.mode === 1 ? root.workspace.activePath.replace(/\//g, "  ›  ") : !root.workspace.rootPath ? "此会话暂无可用工作区" : root.workspace.rootPath.replace(/\//g, "  ›  "); elide: Text.ElideLeft; color: Design.Theme.secondary; font.pixelSize: 12 }
             }
             Design.IconButton { iconName: root.mode === 0 ? "file" : "folder"; tooltip: root.mode === 0 ? "查看文件预览" : "浏览工作区文件"; enabled: root.mode === 1 || root.workspace.activePath.length > 0; onClicked: root.mode = root.mode === 0 ? 1 : 0 }
-            Design.IconButton { visible: root.mode === 1 && root.workspace.language === "md"; iconName: "code"; tooltip: root.workspace.document && root.workspace.document.editable ? filePreview.editing ? "预览格式化文档" : "编辑源代码" : root.renderedMarkdown ? "查看源代码" : "查看格式化文档"; onClicked: {
-                if (root.workspace.document && root.workspace.document.editable) { root.renderedMarkdown=true; filePreview.editing=!filePreview.editing }
-                else root.renderedMarkdown=!root.renderedMarkdown
-            } }
+            Design.IconButton { visible: root.mode===1 && ["md","markdown","mdown"].includes(root.workspace.language); iconName: "code"; tooltip: Design.UiText.get("切换源码和预览"); onClicked: filePreview.togglePreview() }
         }
         Rectangle { Layout.fillWidth: true; implicitHeight: 1; color: Design.Theme.border }
         RowLayout {
