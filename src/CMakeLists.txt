@@ -25,7 +25,7 @@ target_link_libraries(ex_agent_worker PUBLIC ex_agent_ipc ex_agent_codex)
 
 qt_add_library(ex_agent_chat STATIC)
 qt_add_resources(ex_agent_chat "terminal_hibernation" PREFIX "/terminal-hibernation"
-    BASE "plugins/session_history" FILES plugins/session_history/pi_hibernation.mjs)
+    BASE "plugins/session_history" FILES plugins/session_history/pi_activity.mjs plugins/session_history/pi_hibernation.mjs)
 qt_add_qml_module(ex_agent_chat
     URI ExAgent.Chat
     VERSION 1.0

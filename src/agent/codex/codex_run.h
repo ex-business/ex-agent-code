@@ -1,5 +1,6 @@
 #pragma once
 #include "codex_connection.h"
+#include "thread_input.h"
 namespace exagent::codex {
 // 每次派发拥有独立连接。账号目录与线程用于跨回合恢复，运行事件按 runId 路由。
 class Run final : public QObject {
@@ -25,6 +26,9 @@ private:
     void flushOutput();
     void approval(const QString &method, const QJsonValue &id, const QJsonObject &params);
     QJsonObject m_spec;
+    std::unique_ptr<ThreadInputLock> m_input;
+    void report(int status);
+    QVariantMap m_activity;
     Connection m_connection;
     QTimer m_deadline, m_flush;
     QString m_thread, m_turn;

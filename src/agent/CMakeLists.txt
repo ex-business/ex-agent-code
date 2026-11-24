@@ -1,4 +1,6 @@
 qt_add_library(ex_agent_codex STATIC
+    codex/thread_input.cpp codex/thread_input.h
+    ../plugins/agent_activity/activity_store.cpp
     codex/codex_account.cpp codex/codex_account.h
     codex/codex_connection.cpp codex/codex_connection.h
     codex/model_catalog.cpp codex/model_catalog.h

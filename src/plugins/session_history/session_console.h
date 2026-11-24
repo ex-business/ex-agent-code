@@ -32,8 +32,13 @@ public:
     Q_INVOKABLE void setDraft(const QString& id, const QString& text);
     Q_INVOKABLE QString draft(const QString& id) const { return m_drafts.value(id); }
     Q_INVOKABLE void setConsoleVisible(bool visible);
+    Q_INVOKABLE void refreshActivity(const QString& cwd);
+    Q_INVOKABLE QVariantMap readMemory(const QString& cwd, const QString& path) const;
     Q_INVOKABLE void scan(const QString& workspace);
     Q_INVOKABLE void resume(int index);
+    Q_INVOKABLE QString agentExecutable(const QString& command) const;
+    Q_INVOKABLE QString launchAgent(const QString& title, const QString& cwd, const QString& command, const QString& arguments, const QString& environment);
+    Q_INVOKABLE void continueCodex(const QVariantMap& binding);
     Q_INVOKABLE void shell(const QString& cwd);
     Q_INVOKABLE void select(int index);
     Q_INVOKABLE void poll();
@@ -41,9 +46,10 @@ public:
     Q_INVOKABLE void send(const QString& text);
 signals:
     void changed();
+    void activityReady(QString workspace, QVariantList rows);
 
 private:
-    void start(const QString& title, const QString& cwd, const QStringList& command, const QString& origin);
+    void start(const QString& title, const QString& cwd, const QStringList& command, const QString& origin, const QStringList& environment = {}, const QString& conversation = {});
     void save();
     void updateHibernation();
     bool wake(int index);
@@ -58,5 +64,6 @@ private:
     int m_selected = -1;
     int m_generation = 0;
     bool m_polling = false;
+    int m_activityGeneration = 0;
 };
 }

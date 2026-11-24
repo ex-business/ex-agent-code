@@ -24,6 +24,7 @@ public:
     ~AgentController() override;
     void select(const QString &session, bool writable);
     void restore();
+    Q_INVOKABLE QVariantMap terminalBinding(const QString& workspace) const;
     QStringList models() const { return m_models; }
     QString contextLabel() const;
     Q_INVOKABLE void listModels(int account);

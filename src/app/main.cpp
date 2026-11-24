@@ -8,6 +8,8 @@
 #include "disclosure_input_filter.h"
 #include "services/local/service_worker.h"
 
+#include "agent/codex/thread_input.h"
+#include <QJsonDocument>
 #include <QGuiApplication>
 #include <QQmlApplicationEngine>
 #include <QQuickStyle>
@@ -20,6 +22,11 @@
 
 int main(int argc, char *argv[])
 {
+    if (argc == 3 && QByteArray(argv[1]) == "--continue-codex-terminal") {
+        QCoreApplication app(argc,argv);
+        app.setOrganizationName("EX Business"); app.setApplicationName("EX Agent Code");
+        return exagent::codex::terminalContinuation(QJsonDocument::fromJson(QByteArray::fromBase64(argv[2])).toVariant().toMap());
+    }
     // 后台与IDE共用发行包，但进程入口、事件循环和生命周期独立。
     for (int index = 1; index < argc; ++index)
         if (QByteArray(argv[index]) == "--ipc-service" || QByteArray(argv[index]) == "--agent-worker") return exagent::runServiceWorker(argc, argv);

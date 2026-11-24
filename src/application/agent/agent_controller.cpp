@@ -1,6 +1,7 @@
 #include "agent_controller.h"
 #include "history_context.h"
 #include "agent/codex/codex_account.h"
+#include "agent/codex/thread_input.h"
 #include <QDir>
 #include <QJsonArray>
 #include <QFileInfo>
@@ -142,6 +143,10 @@ void AgentController::configure(int account, const QString &model, bool write, b
     auto *s = find(m_selected);
     if (!s || !m_writable || busy() || account < 0 || account > 2 || model.size() > 128)
         return;
+    if (!codex::threadAvailable(s->agent.value("threadId").toString())) {
+        emit failure(QStringLiteral("请先退出正在使用此线程的终端，再修改会话配置。"));
+        return;
+    }
     s->agent.insert("account", account);
     s->agent.insert("model", model.trimmed());
     s->agent.insert("write", write || fullAccess);
@@ -244,11 +249,32 @@ void AgentController::put(ChatSession &s, ChatMessage msg)
     s.updatedAt = QDateTime::currentDateTimeUtc();
     emit rowChanged(s.id, msg);
 }
+QVariantMap AgentController::terminalBinding(const QString& workspace) const
+{
+    auto binding = config();
+    auto* s = find(m_selected);
+    if (!s || !m_writable || busy() || authenticating() || !account()
+        || binding.value("boundAccount").toInt() != account() || binding.value("identity").toString().isEmpty()
+        || QUuid(binding.value("threadId").toString()).isNull()) return {};
+    const auto cwd = workspace.isEmpty() ? m_repository.sessionDirectory(s->projectId,s->id) + "/chat-cwd" : workspace;
+    if (QFileInfo(cwd).canonicalFilePath() != binding.value("boundCwd").toString()) return {};
+    QVariantMap spec;
+    for (const auto& key : {"threadId","boundCwd","boundAccount","identity","model","write","fullAccess"})
+        spec.insert(key,binding.value(key));
+    spec.insert("conversationId",s->id);
+    spec.insert("program", codex::executable());
+    spec.insert("home", qEnvironmentVariable("CODEX_HOME", QDir::home().filePath(".codex")));
+    return spec;
+}
 bool AgentController::submit(const QString &text, const QString &cwd)
 {
     auto *s = find(m_selected);
     if (!s || !m_writable || !account() || text.trimmed().isEmpty())
         return false;
+    if (!codex::threadAvailable(s->agent.value("threadId").toString())) {
+        emit failure(QStringLiteral("会话正在另一入口中使用。请先在交互终端退出 Codex，再继续聊天。"));
+        return false;
+    }
     if (busy() || authenticating()) {
         emit failure(QStringLiteral("请等待当前运行或账号登录结束。"));
         return false;

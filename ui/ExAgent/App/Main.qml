@@ -28,7 +28,17 @@ ApplicationWindow {
     WorkspaceController { id: workspaceController }
     Design.AgentApprovalDialog { id: agentApproval; controller: window.controller }
     Design.ConversationTransferDialog { id: transferDialog; controller: window.controller }
-    Design.SessionConsoleWindow { id: consoleWindow; workspace: window.controller.workspacePath }
+    Design.SessionConsoleWindow {
+        id: consoleWindow
+        agent: window.controller.agent
+        workspace: window.controller.workspacePath
+        onReturnRequested: conversation => {
+            window.controller.selectSession(conversation)
+            consoleWindow.close()
+            window.raise()
+            window.requestActivate()
+        }
+    }
     Design.ChatMenu { id: chatMenu; onConsoleRequested: consoleWindow.showConsole(); onOrganizeRequested: transferDialog.begin(); onAttachRequested: imageAttachment.open(); controller: window.controller; onImageSequenceRequested: imageFolder.open() }
     Design.BlockWindowManager { controller: window.controller; hostWindow: window }
     FileDialog {

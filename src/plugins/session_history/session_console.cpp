@@ -1,7 +1,11 @@
+#include <QRegularExpression>
 #include "session_console.h"
+#include "plugins/agent_activity/activity_store.h"
 #include "history_provider.h"
 #include "terminal_backend.h"
 #include "terminal_hibernation.h"
+#include <QCoreApplication>
+#include <QJsonDocument>
 #include <QDateTime>
 #include <QDir>
 #include <QFile>
@@ -76,6 +80,17 @@ void SessionConsole::save()
     settings.setValue("terminal/tabs", metadata);
     settings.setValue("terminal/selected", m_selected);
 }
+void SessionConsole::refreshActivity(const QString& cwd)
+{
+    const auto generation = ++m_activityGeneration;
+    auto* watcher = new QFutureWatcher<QVariantList>(this);
+    connect(watcher,&QFutureWatcher<QVariantList>::finished,this,[this,watcher,generation,cwd] {
+        if (generation == m_activityGeneration) emit activityReady(cwd,watcher->result());
+        watcher->deleteLater();
+    });
+    watcher->setFuture(QtConcurrent::run(activity::recent,cwd));
+}
+QVariantMap SessionConsole::readMemory(const QString& cwd,const QString& path) const { return activity::memory(cwd,path); }
 void SessionConsole::scan(const QString& workspace)
 {
     const auto generation = ++m_generation;
@@ -101,6 +116,45 @@ void SessionConsole::select(int index)
     emit changed();
     poll();
 }
+QString SessionConsole::agentExecutable(const QString& command) const
+{
+    const QFileInfo info(command.contains('/') ? command : cliPath(command));
+    if (command.isEmpty() || (command.contains('/') && !QDir::isAbsolutePath(command)))
+        return {};
+    return info.isFile() && info.isExecutable() ? info.absoluteFilePath() : QString();
+}
+QString SessionConsole::launchAgent(const QString& title, const QString& cwd, const QString& command,
+    const QString& arguments, const QString& environment)
+{
+    const QString path = agentExecutable(command);
+    if (path.isEmpty()) return QStringLiteral("找不到可执行文件，请检查路径和执行权限。");
+    const auto variables = environment.split('\n', Qt::SkipEmptyParts);
+    static const QRegularExpression assignment("^[A-Za-z_][A-Za-z0-9_]*=");
+    for (const auto& variable : variables)
+        if (!assignment.match(variable).hasMatch()) return QStringLiteral("环境变量需要使用 NAME=value 格式。");
+    // tmux 对单个命令字符串使用 shell；固定使用 env 加绝对路径以保持参数边界。
+    QStringList launch { "/usr/bin/env", path };
+    launch.append(arguments.split('\n', Qt::SkipEmptyParts));
+    const auto previous = m_tabs.size();
+    start(title, cwd.isEmpty() ? QDir::homePath() : cwd, launch, {}, variables);
+    return previous == m_tabs.size() ? m_error : QString();
+}
+void SessionConsole::continueCodex(const QVariantMap& binding)
+{
+    const auto thread = binding.value("threadId").toString();
+    if (QUuid(thread).isNull()) { fail(QStringLiteral("当前会话没有可恢复的 Codex 线程。")); return; }
+    const auto origin = "codex:" + thread;
+    for (int i = 0; i < m_tabs.size(); ++i) {
+        const auto row = m_tabs[i].toMap();
+        if (row["origin"] == origin && terminalSnapshot(row["id"].toString())["state"].toInt() == Running) {
+            select(i);
+            return;
+        }
+    }
+    start("Codex · " + thread.left(8), binding.value("boundCwd").toString(),
+        {QCoreApplication::applicationFilePath(), "--continue-codex-terminal",
+         QString::fromLatin1(QJsonDocument::fromVariant(binding).toJson(QJsonDocument::Compact).toBase64())}, origin, {}, binding.value("conversationId").toString());
+}
 void SessionConsole::shell(const QString& cwd) { start("Shell", cwd.isEmpty() ? QDir::homePath() : cwd, {}, {}); }
 void SessionConsole::resume(int index)
 {
@@ -121,7 +175,7 @@ void SessionConsole::resume(int index)
     start(row["agent"].toString(), row["cwd"].toString(),
         { row["program"].toString(), row["flag"].toString(), row["argument"].toString() }, origin);
 }
-void SessionConsole::start(const QString& title, const QString& cwd, const QStringList& command, const QString& origin)
+void SessionConsole::start(const QString& title, const QString& cwd, const QStringList& command, const QString& origin, const QStringList& environment, const QString& conversation)
 {
     if (!m_writer->isLocked()) {
         fail(QStringLiteral("终端已由另一窗口管理。"));
@@ -134,12 +188,13 @@ void SessionConsole::start(const QString& title, const QString& cwd, const QStri
     const auto id = "ex-" + QUuid::createUuid().toString(QUuid::WithoutBraces);
     // 命令和参数独立传给 tmux，不将历史路径拼进 shell 脚本。
     QStringList args { "new-session", "-d", "-s", id, "-x", "100", "-y", "30", "-c", cwd };
+    for (const auto& entry : environment) args << "-e" << entry;
     QStringList launch = command;
     bool supported = false;
     if (title == "Pi" && !origin.isEmpty() && !launch.isEmpty()) {
         const auto extension = hibernation::installExtension();
         if (!extension.isEmpty()) {
-            args << "-e"
+            args << "-e" << "EX_ACTIVITY_DIR=" + activity::directory(cwd) << "-e"
                  << "EX_SLEEP_DIR=" + hibernation::directory(id) << "-e"
                  << "EX_SLEEP_ORIGIN=" + origin;
             launch.insert(1, "--extension");
@@ -155,7 +210,7 @@ void SessionConsole::start(const QString& title, const QString& cwd, const QStri
     terminalCommand({ "set-option", "-w", "-t", "=" + id + ":0", "remain-on-exit", "on" });
     m_error.clear();
     m_tabs.append(QVariantMap { { "id", id }, { "title", title }, { "cwd", cwd }, { "origin", origin },
-        { "hibernatable", supported }, { "state", -1 } });
+        { "conversationId", conversation }, { "hibernatable", supported }, { "state", -1 } });
     select(m_tabs.size() - 1);
 }
 void SessionConsole::poll()
@@ -321,7 +376,7 @@ bool SessionConsole::wake(int index)
         if (row["title"] == "Pi" && !program.isEmpty() && !extension.isEmpty()) {
             const auto origin = row["origin"].toString();
             r = terminalCommand({ "new-session", "-d", "-s", id, "-x", "100", "-y", "30", "-c", row["cwd"].toString(),
-                "-e", "EX_SLEEP_DIR=" + hibernation::directory(id), "-e", "EX_SLEEP_ORIGIN=" + origin, program,
+                "-e", "EX_ACTIVITY_DIR=" + activity::directory(row["cwd"].toString()), "-e", "EX_SLEEP_DIR=" + hibernation::directory(id), "-e", "EX_SLEEP_ORIGIN=" + origin, program,
                 "--extension", extension, "--session", origin });
             if (r.ok)
                 terminalCommand({ "set-option", "-w", "-t", "=" + id + ":0", "remain-on-exit", "on" });

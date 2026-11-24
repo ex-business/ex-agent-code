@@ -30,6 +30,9 @@ QString directory(const QString& id)
 }
 QString installExtension()
 {
+    QFile activity(":/terminal-hibernation/pi_activity.mjs");
+    if (!QDir().mkpath(root()) || !activity.open(QIODevice::ReadOnly)
+        || !write(root() + "/pi_activity.mjs", activity.readAll())) return {};
     QFile src(":/terminal-hibernation/pi_hibernation.mjs");
     // Pi 只接受文件路径；从程序资源原子发布与当前版本匹配的扩展。
     const auto path = root() + "/pi_hibernation.mjs";

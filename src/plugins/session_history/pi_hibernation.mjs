@@ -2,9 +2,12 @@
 import {execFileSync} from "node:child_process";
 import fs from "node:fs";
 
+import {registerActivity} from "./pi_activity.mjs";
+
 export default function register(pi)
 {
     const { EX_SLEEP_DIR : dir, EX_SLEEP_ORIGIN : origin, TMUX, TMUX_PANE : pane } = process.env;
+    registerActivity(pi,process.env.EX_ACTIVITY_DIR,origin);
     if (!dir || !origin || !TMUX || !pane)
         return;
     const lease = dir + "/permit";

@@ -9,10 +9,14 @@ Window {
     id: root
     readonly property var sleepingWorkspaces: consoleModel.sleepingWorkspaces
     required property string workspace
+    signal returnRequested(string conversation)
+    required property AgentController agent
     title: "Agent 历史与终端"
     width: 960; height: 630
     minimumWidth: 610; minimumHeight: 390
     SessionConsole { id: consoleModel }
+    AgentLauncher { id: launcher; backend: consoleModel; workspace: root.workspace }
+    AgentActivityDialog { id: activityDialog; backend: consoleModel; workspace: root.workspace }
     Core.Settings {
         id: prefs
         category: "SessionConsoleWindow"
@@ -58,6 +62,7 @@ Window {
                 CheckBox { id: scope; text: "全部工作区"; onClicked: consoleModel.scan(checked ? "" : root.workspace) }
                 Button { text: "刷新"; onClicked: consoleModel.scan(scope.checked ? "" : root.workspace) }
             }
+            Button { text: "Agent 活动与仓库记忆"; enabled: !!root.workspace; onClicked: activityDialog.open() }
             CheckBox {
                 text: "自动休眠后台 Pi 终端"
                 checked: consoleModel.hibernationEnabled
@@ -98,6 +103,22 @@ Window {
                     displayText: (consoleModel.current.title || "") + (consoleModel.current.state === SessionConsole.Sleeping ? " · 休眠" : "")
                     currentIndex: consoleModel.selected
                     onActivated: index => consoleModel.select(index)
+                }
+                Button { text: "启动 Agent"; onClicked: launcher.open() }
+                Button {
+                    text: "续接当前聊天"
+                    enabled: { const active = root.agent.busy; const account = root.agent.account; return !active && account > 0 && !!root.agent.terminalBinding(root.workspace).threadId }
+                    onClicked: consoleModel.continueCodex(root.agent.terminalBinding(root.workspace))
+                    ToolTip.visible: hovered
+                    ToolTip.text: "退出终端中的 Codex 后，即可回到原聊天继续发送"
+                }
+                Button {
+                    visible: !!consoleModel.current.conversationId
+                    enabled: consoleModel.current.state === 0
+                    text: "返回原生聊天"
+                    onClicked: root.returnRequested(consoleModel.current.conversationId)
+                    ToolTip.visible: hovered
+                    ToolTip.text: "在终端输入 /exit 退出后返回"
                 }
                 Button { text: "新终端"; onClicked: consoleModel.shell(root.workspace) }
             }

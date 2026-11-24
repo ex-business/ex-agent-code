@@ -1,4 +1,5 @@
 #include "codex_run.h"
+#include "plugins/agent_activity/activity_store.h"
 #include <QDir>
 #include <QFileInfo>
 #include <QJsonArray>
@@ -28,9 +29,17 @@ Run::Run(QJsonObject spec, QObject *parent)
                     { "name", "ex_agent_code" }, { "title", "EX Agent Code" }, { "version", "0.1" } } } });
     });
 }
+void Run::report(int status)
+{
+    if (m_spec["reconcile"].toBool()) return;
+    m_activity.insert("status",status);
+    m_activity.insert("session",m_spec["conversationId"].toString());
+    activity::publish(m_spec["cwd"].toString(),m_spec["conversationId"].toString(),m_activity);
+}
 void Run::start()
 {
     m_deadline.start();
+    report(activity::Working);
     m_connection.start(Account(m_spec["account"].toInt()), m_spec["cwd"].toString());
 }
 void Run::emitEvent(QJsonObject data)
@@ -56,6 +65,7 @@ void Run::finish(int state, const QString &detail)
     flushOutput();
     if (m_spec["reconcile"].toBool() && !m_dispatched)
         state = int(State::Interrupted);
+    report(state == int(State::Complete) ? activity::Done : state == int(State::Cancelled) ? activity::Stopped : activity::Failed);
     emitEvent({ { "kind", "end" }, { "state", state }, { "detail", detail } });
     emit ended();
 }
@@ -138,6 +148,10 @@ void Run::result(const QString &method, const QJsonObject &value)
         const auto bound = m_spec["threadId"].toString();
         if (!bound.isEmpty())
             options.insert("threadId", bound);
+        if (!bound.isEmpty() && !(m_input = claimThread(bound))) {
+            finish(int(State::Failed), QStringLiteral("线程输入已被占用，请先退出交互终端。"));
+            return;
+        }
         request(bound.isEmpty() ? "thread/start" : "thread/resume", options);
     } else if (method == "thread/read") {
         const auto thread = value["thread"].toObject();
@@ -174,6 +188,10 @@ void Run::result(const QString &method, const QJsonObject &value)
             || value["approvalsReviewer"] != "user"
             || sandbox["type"] != (m_spec["fullAccess"].toBool() ? "dangerFullAccess" : m_spec["write"].toBool() ? "workspaceWrite" : "readOnly")) {
             finish(int(State::Failed), QStringLiteral("引擎返回的目录、线程或权限与派发设置不符。"));
+            return;
+        }
+        if (!m_input && !(m_input = claimThread(m_thread))) {
+            finish(int(State::Failed), QStringLiteral("无法取得线程输入权。"));
             return;
         }
         emitEvent({ { "kind", "thread" }, { "identity", m_spec["identity"] }, { "threadId", m_thread },
@@ -226,6 +244,7 @@ void Run::approval(const QString &method, const QJsonValue &id, const QJsonObjec
         decide(token, false);
         return;
     }
+    report(activity::Waiting);
     emitEvent({ { "kind", "approval" }, { "token", token }, { "detail", text } });
 }
 bool Run::decide(const QString &token, bool allow)
@@ -235,6 +254,7 @@ bool Run::decide(const QString &token, bool allow)
         return false;
     const auto id = it.value();
     m_approvals.erase(it);
+    if (m_approvals.isEmpty()) report(activity::Working);
     return m_connection.send(
         { { "id", id }, { "result", QJsonObject { { "decision", allow ? "accept" : "decline" } } } });
 }
@@ -267,12 +287,29 @@ void Run::flushOutput()
 }
 void Run::notification(const QString &method, const QJsonObject &params)
 {
+    if (method == "account/rateLimits/updated" && m_dispatched) {
+        const auto limits = params["rateLimits"].toObject();
+        for (const auto& entry : {QStringLiteral("primary"), QStringLiteral("secondary")}) {
+            const auto window = limits[entry].toObject();
+            const auto percent = window["usedPercent"].toInt(-1);
+            m_activity.remove(entry);
+            if (percent >= 0 && percent <= 100) {
+                QVariantMap reading {{"percent",percent}};
+                if (window["resetsAt"].toInteger() > 0)
+                    reading.insert("reset",window["resetsAt"].toInteger());
+                m_activity.insert(entry,reading);
+            }
+        }
+        report(m_approvals.isEmpty() ? activity::Working : activity::Waiting);
+        return;
+    }
     if (!m_dispatched || params["threadId"] != m_thread)
         return;
     if (method == "serverRequest/resolved") {
         const auto token = m_approvals.key(params["requestId"]);
         if (!token.isEmpty()) {
             m_approvals.remove(token);
+            if (m_approvals.isEmpty()) report(activity::Working);
             emitEvent({ { "kind", "approvalClosed" }, { "token", token } });
         }
         return;
@@ -289,6 +326,13 @@ void Run::notification(const QString &method, const QJsonObject &params)
         emitEvent({ { "kind", "turn" }, { "turnId", id } });
         if (m_stopping)
             request("turn/interrupt", { { "threadId", m_thread }, { "turnId", id } });
+    }
+    if (method == "thread/tokenUsage/updated") {
+        const auto count = params["tokenUsage"].toObject()["last"].toObject()["totalTokens"].toInteger(-1);
+        if (count >= 0) m_activity.insert("tokens",count);
+        else m_activity.remove("tokens");
+        report(m_approvals.isEmpty() ? activity::Working : activity::Waiting);
+        return;
     }
     const auto item = params["item"].toObject();
     const auto itemId = params["itemId"].toString(item["id"].toString());
