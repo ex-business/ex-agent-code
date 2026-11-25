@@ -5,6 +5,7 @@
   "name": "Light",
   "dark": false,
   "colors": {
+    "diffAdded": "#246c39",
     "background": "#ffffff",
     "sidebar": "#fafafa",
     "surface": "#f1f1f1",

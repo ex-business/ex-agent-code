@@ -5,6 +5,7 @@
   "name": "Dark",
   "dark": true,
   "colors": {
+    "diffAdded": "#85d596",
     "background": "#191919",
     "sidebar": "#222222",
     "surface": "#2f2f2f",

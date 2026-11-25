@@ -4,6 +4,8 @@
   "id": "en",
   "name": "English",
   "strings": {
+    "未跟踪文件超过 8 MiB 预览上限。": "Untracked file exceeds the 8 MiB preview limit.",
+    "此条目没有可显示的差异。": "No diff to display for this entry.",
     "主题": "Theme",
     "语言": "Language",
     "会话执行设置": "Session settings",
@@ -132,6 +134,20 @@
     "单元格输出超过 100 项。": "Cell exceeds 100 outputs.",
     "单元格文本输出超过 512 Ki 字符限制。": "Cell text output exceeds 512 Ki characters.",
     "图片输出无效或超过预览资源限制": "Invalid image output or preview resource limit exceeded",
-    "文件读取失败，未发布不完整内容。": "File read failed. Incomplete content was not published."
+    "文件读取失败，未发布不完整内容。": "File read failed. Incomplete content was not published.",
+    "工作区变更": "Workspace changes",
+    "刷新变更": "Refresh changes",
+    "工作区没有变更": "Working tree clean",
+    "无法启动 Git。": "Could not start Git.",
+    "读取 Git 状态超时。": "Git read timed out.",
+    "当前工作区不在 Git 仓库中。": "This workspace is outside a Git repository.",
+    "Git 读取失败。": "Could not read Git data.",
+    "变更清单仅显示可预览的前一部分。": "Only the first previewable changes are shown.",
+    "此条目无法预览文件差异。": "A file diff is unavailable for this entry.",
+    "差异过长，仅显示开头部分。": "Showing the beginning of this large diff.",
+    "已暂存": "Staged",
+    "未跟踪": "Untracked",
+    "冲突": "Conflict",
+    "未暂存": "Unstaged"
   }
 }
