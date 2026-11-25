@@ -134,6 +134,7 @@ target_include_directories(ex_agent_chat PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/pl
 target_include_directories(ex_agent_chat PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/presentation/workspace")
 
 qt_add_executable(ex-agent-code MACOSX_BUNDLE app/main.cpp app/profiled_application.h app/disclosure_input_filter.h app/disclosure_input_filter.cpp app/scroll_diagnostics.h app/scroll_diagnostics.cpp app/pixel_scroll_filter.h app/pixel_scroll_filter.cpp)
+target_sources(ex-agent-code PRIVATE plugins/computer_use/computer_cli.cpp plugins/computer_use/cua_provider.cpp plugins/computer_use/window_action.cpp)
 target_link_libraries(ex-agent-code PRIVATE ex_git_worktree ex_agent_worker ex_agent_chat ex_agent_chatplugin Qt6::Quick Qt6::QuickControls2)
 if(APPLE)
     target_sources(ex_agent_chat PRIVATE platform/macos/word_boundaries.cpp platform/macos/activity_notifications.mm)

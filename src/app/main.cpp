@@ -1,4 +1,5 @@
 #include "application/chat/chat_controller.h"
+#include "plugins/computer_use/computer_cli.h"
 #include "infrastructure/storage/history_migration.h"
 #include <QStandardPaths>
 #include "plugins/workspace_viewers/workspace_preview.h"
@@ -25,6 +26,11 @@
 
 int main(int argc, char *argv[])
 {
+    // 命令行只连接本机提供方，无需初始化窗口、聊天存储和 WebEngine。
+    if (argc >= 2 && QByteArray(argv[1]) == "computer") {
+        QCoreApplication cli(argc, argv);
+        return exagent::computer::runCli(cli.arguments().mid(2));
+    }
     if (argc == 3 && QByteArray(argv[1]) == "--continue-codex-terminal") {
         QCoreApplication app(argc,argv);
         app.setOrganizationName("EX Business"); app.setApplicationName("EX Agent Code");
