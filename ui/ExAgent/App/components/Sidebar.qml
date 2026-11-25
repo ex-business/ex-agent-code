@@ -46,6 +46,7 @@ Rectangle {
     }
     function showSearch() { searchInput.visible = true; searchInput.forceActiveFocus() }
     color: Design.Theme.sidebar
+    Design.WorkspaceTasksDialog { id: taskLinks; chat: root.controller }
     FolderDialog {
         id: folder
         property string project
@@ -156,6 +157,7 @@ Rectangle {
         RowLayout {
             Layout.fillWidth: true
             Text { text: Design.UiText.get("项目"); font.pixelSize: 17; font.weight: Font.DemiBold; color: Design.Theme.text; Layout.fillWidth: true }
+            Design.IconButton { iconName: "branch"; tooltip: Design.UiText.get("关联任务"); onClicked: taskLinks.present() }
             Design.IconButton { iconName: "plus"; tooltip: Design.UiText.get("新建项目"); enabled: root.controller.projects.writable; onClicked: createDialog.open() }
             Design.IconButton { iconName: "new"; tooltip: Design.UiText.get("新聊天"); enabled: root.controller.projects.writable; onClicked: root.controller.newSession() }
             Design.IconButton { iconName: "search"; tooltip: "搜索项目与聊天"; onClicked: root.showSearch() }

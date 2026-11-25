@@ -70,6 +70,7 @@ public:
     QString currentResourceId() const { return m_projects.catalog.selectedResource; }
     QString currentSessionId() const;
     Q_INVOKABLE void newGroupSession(const QString &project, const QString &workspace);
+    Q_INVOKABLE bool linkWorkspaceTask(const QString &project, const QString &workspace, const QString &url);
     Q_INVOKABLE void openGroup(const QString &project, const QString &workspace);
     Q_INVOKABLE bool moveToGroup(const QString &project, const QString &workspace);
     QString sessionTitle() const;

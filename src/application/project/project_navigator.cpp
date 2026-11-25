@@ -110,6 +110,8 @@ void ProjectNavigator::refresh(const QList<ChatSession> &sessions)
             auto title = QFileInfo(workspace.path).fileName();
             auto item = row(WorkspaceRow, title.isEmpty() ? workspace.path : title, project.id, workspace.id);
             item.insert("path", workspace.path);
+            item.insert("taskLinks", workspace.taskLinks);
+            item.insert("projectTitle", project.name);
             next.append(item);
             next.append(groups.value("w/" + workspace.id));
         }

@@ -64,6 +64,8 @@ QList<ChatSession> ProjectRepository::load(ProjectCatalog &catalog, QString *err
                 const auto data = item.toObject();
                 WorkspaceBinding workspace{data["id"].toString(), data["path"].toString()};
                 if (workspace.id.isEmpty() || !QDir::isAbsolutePath(workspace.path) || workspaceIds.contains(workspace.id)) return invalid();
+                for (const auto &link : data["tasks"].toArray())
+                    if (link.isString()) workspace.taskLinks.append(link.toString());
                 workspaceIds.insert(workspace.id);
                 project.workspaces.append(workspace);
             }
@@ -103,8 +105,11 @@ bool ProjectRepository::save(const ProjectCatalog &catalog, const QList<ChatSess
     QJsonArray projects, entries;
     for (const auto &project : catalog.projects) {
         QJsonArray workspaces;
-        for (const auto &workspace : project.workspaces)
-            workspaces.append(QJsonObject{{"id", workspace.id}, {"path", workspace.path}});
+        for (const auto &workspace : project.workspaces) {
+            QJsonObject item{{"id", workspace.id}, {"path", workspace.path}};
+            if (!workspace.taskLinks.isEmpty()) item.insert("tasks", QJsonArray::fromStringList(workspace.taskLinks));
+            workspaces.append(item);
+        }
         projects.append(QJsonObject{{"id", project.id}, {"name", project.name}, {"workspaces", workspaces}});
     }
     auto generations = m_generations;

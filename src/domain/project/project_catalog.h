@@ -1,13 +1,14 @@
 #pragma once
 
 #include <QList>
-#include <QString>
+#include <QStringList>
 
 namespace exagent {
 
 struct WorkspaceBinding {
     QString id;
     QString path;
+    QStringList taskLinks{};
 };
 
 struct Project {

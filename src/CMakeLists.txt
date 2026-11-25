@@ -34,6 +34,8 @@ qt_add_qml_module(ex_agent_chat
     DEPENDENCIES QtWebEngine
     SOURCES
         plugins/diff_review/session_review.cpp
+        plugins/task_links/task_provider.cpp plugins/task_links/task_provider.h
+        plugins/task_links/task_status.cpp plugins/task_links/task_status.h plugins/task_links/workspace_task_links.cpp
         plugins/git_changes/git_changes.h plugins/git_changes/git_changes.cpp
         plugins/git_changes/git_actions.h plugins/git_changes/git_actions.cpp
         plugins/git_changes/untracked_preview.cpp plugins/git_changes/git_read.cpp plugins/git_changes/revision_range.cpp
@@ -119,7 +121,7 @@ if(APPLE)
     target_link_libraries(ex_agent_chat PRIVATE "${VTERM_ARCHIVE}")
 endif()
 target_compile_options(ex_agent_chat PRIVATE -Wall -Wextra -Wpedantic)
-target_include_directories(ex_agent_chat PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/presentation/text")
+target_include_directories(ex_agent_chat PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/plugins/task_links" "${CMAKE_CURRENT_SOURCE_DIR}/presentation/text")
 target_include_directories(ex_agent_chat PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/presentation/workspace")
 
 qt_add_executable(ex-agent-code MACOSX_BUNDLE app/main.cpp app/profiled_application.h app/disclosure_input_filter.h app/disclosure_input_filter.cpp app/scroll_diagnostics.h app/scroll_diagnostics.cpp app/pixel_scroll_filter.h app/pixel_scroll_filter.cpp)
