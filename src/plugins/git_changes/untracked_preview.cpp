@@ -84,7 +84,7 @@ QVariantMap previewUntracked(const QString &folder, const QString &path)
         if (!partial && !bytes.endsWith('\n')) lines << "\\ No newline at end of file";
         if (partial) lines << QStringLiteral("…");
     }
-    QVariantMap data{{"lines",lines}, {"slow",partial}};
+    QVariantMap data{{"lines",lines}, {"slow",partial}, {"lossy",QString::fromUtf8(bytes).toUtf8() != bytes}};
     if (partial) data.insert("message", QStringLiteral("差异过长，仅显示开头部分。"));
     return data;
 #else

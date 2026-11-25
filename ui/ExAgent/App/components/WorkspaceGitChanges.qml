@@ -7,6 +7,7 @@ import ExAgent.App as Design
 
 FocusScope {
     id: root
+    required property ChatController chat
     property bool writable: false
     required property string folder
     signal revealRequested(string path)
@@ -18,6 +19,15 @@ FocusScope {
         for (let i = 0; i < lines.length; ++i)
             if (/^@{2,} -/.test(lines[i])) rows.push(i)
         return rows
+    }
+    property var origin: ({})
+    function updateOrigin() {
+        origin = visible && git.fileEvidence.signature ? chat.reviewOrigin(git.fileEvidence) : ({})
+    }
+    Connections {
+        target: root.chat
+        function onReviewEvidenceChanged() { root.updateOrigin() }
+        function onWorkspaceChanged() { root.updateOrigin() }
     }
     property int hunk: -1
     function showPath(path: string) {
@@ -35,9 +45,11 @@ FocusScope {
     Shortcut { sequence: "Shift+F7"; enabled: root.visible && root.activeFocus && root.hunks.length > 0; onActivated: root.jump(-1) }
     onHunksChanged: hunk = -1
 
+    Design.DiffReviewDialog { id: review; chat: root.chat }
     GitChanges {
         id: git
         folder: root.visible ? root.folder : ""
+        onLinesChanged: root.updateOrigin()
     }
     function translatedMessage(message: string): string {
         const end = message.indexOf("\n")
@@ -64,6 +76,11 @@ FocusScope {
                 text: Design.UiText.get("工作区变更") + "  ·  " + git.entries.length
                 font.bold: true
                 color: Design.Theme.text
+            }
+            Design.DialogAction {
+                visible: root.chat.reviewNotes.length > 0 && root.chat.workspacePath === root.folder
+                text: Design.UiText.get("待发送批注") + " (" + root.chat.reviewNotes.length + ")"
+                onClicked: review.begin(false)
             }
             Design.IconButton { iconName: "refresh"; tooltip: Design.UiText.get("刷新变更"); onClicked: git.refresh() }
         }
@@ -167,7 +184,20 @@ FocusScope {
                 required property int index
                 required property string modelData
                 width: patch.width
-                leftPadding: 10
+                id: diffLine
+                readonly property var anchor: git.fileEvidence.snapshot ? git.anchorAt(index) : ({})
+                readonly property bool annotatable: root.writable && root.chat.workspacePath === root.folder && !!anchor.snapshot
+                readonly property bool matched: !!root.origin.messageId && annotatable && (!anchor.oldLine || !anchor.newLine)
+                leftPadding: annotatable ? 30 : 10
+                Design.IconButton {
+                    visible: diffLine.annotatable
+                    anchors.left: parent.left
+                    implicitWidth: 26; implicitHeight: 20; iconSize: 12
+                    iconName: diffLine.matched ? "activity" : "plus"
+                    iconColor: diffLine.matched ? Design.Theme.accent : Design.Theme.secondary
+                    tooltip: Design.UiText.get("行级批注") + (diffLine.matched ? " · " + Design.UiText.get("匹配 Codex 文件改动") : "")
+                    onClicked: review.showLine(git.anchorAt(diffLine.index))
+                }
                 rightPadding: 10
                 topPadding: 2
                 bottomPadding: 2

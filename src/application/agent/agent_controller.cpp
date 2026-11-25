@@ -266,7 +266,7 @@ QVariantMap AgentController::terminalBinding(const QString& workspace) const
     spec.insert("home", qEnvironmentVariable("CODEX_HOME", QDir::home().filePath(".codex")));
     return spec;
 }
-bool AgentController::submit(const QString &text, const QString &cwd)
+bool AgentController::submit(const QString &text, const QString &cwd, const QVariantMap &reviewNote)
 {
     auto *s = find(m_selected);
     if (!s || !m_writable || !account() || text.trimmed().isEmpty())
@@ -312,7 +312,8 @@ bool AgentController::submit(const QString &text, const QString &cwd)
     if (s->agent.value("boundAccount").toInt() == account() && s->agent.value("boundCwd").toString() == directory)
         spec.insert("threadId", s->agent.value("threadId").toString());
     spec.insert("identity", s->agent.value("identity").toString());
-    const auto ctx = m_contexts.value(s->id);
+    // 批注是独立输入；普通草稿选中的历史和图片只随该草稿派发。
+    const auto ctx = reviewNote.isEmpty() ? m_contexts.value(s->id) : QVariantMap{};
     if (!ctx.isEmpty()) {
         const auto current = previewHistory(ctx.value("first").toInt(), ctx.value("last").toInt());
         if (current != ctx) {
@@ -336,15 +337,23 @@ bool AgentController::submit(const QString &text, const QString &cwd)
     const auto before = *s;
     if (s->messages.isEmpty())
         s->title = text.simplified().left(32);
+    if (!reviewNote.isEmpty()) user.activity = {{"reviewNote", reviewNote}, {"reviewRunId", run}};
     s->messages.append(user);
     s->messages.append(marker);
-    s->draft.clear();
+    if (reviewNote.isEmpty()) {
+        s->draft.clear();
+    } else {
+        // 与发送消息一起落盘，失败时整次回滚，同时保留输入框原有草稿。
+        auto notes = s->history.value("reviewNotes").toList();
+        if (!notes.removeOne(reviewNote)) { *s = before; return false; }
+        s->history.insert("reviewNotes", notes);
+    }
     s->updatedAt = marker.createdAt;
     if (!save()) {
         *s = before;
         return false;
     }
-    m_contexts.remove(s->id);
+    if (reviewNote.isEmpty()) m_contexts.remove(s->id);
     m_active.insert(s->id, { run, spec, {}, false });
     emit rowChanged(s->id, user);
     emit rowChanged(s->id, marker);
@@ -513,6 +522,18 @@ bool AgentController::consume(const QString &, const QJsonObject &e, QString *er
             return true;
         msg.status = messageStatus(e["state"].toInt());
         msg.activity.insert("taskState", e["state"].toInt());
+        // 对账会重放完成事件，原证明必须随这次权威结果一并替换。
+        msg.activity.remove("filePatches");
+        msg.activity.remove("patchWorkspace");
+        if (e["filePatches"].isObject() && msg.activity.value("blockKind").toInt() == int(content::BlockKind::Diff)
+            && e["state"].toInt() == int(State::Complete)) {
+            msg.activity.insert("filePatches", e["filePatches"].toObject().toVariantMap());
+            for (const auto &marker : std::as_const(s->messages)) {
+                if (marker.id != it->id) continue;
+                msg.activity.insert("patchWorkspace", marker.activity.value("cwd"));
+                break;
+            }
+        }
         const auto readPath = e["readPath"].toString();
         if (!readPath.isEmpty()) {
             msg.activity.insert("readPath", readPath);

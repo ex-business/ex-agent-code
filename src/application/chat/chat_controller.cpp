@@ -24,6 +24,7 @@ ChatController::ChatController(QObject *parent)
     : QObject(parent), m_messages(this), m_sessionModel(this),
       m_repository(QStandardPaths::writableLocation(QStandardPaths::AppDataLocation)), m_service(this), m_blocks(this), m_blockViews(m_blocks, this), m_externalBlocks(m_blocks), m_internalTask(m_blocks, this), m_mediaCatalog(QStandardPaths::writableLocation(QStandardPaths::AppDataLocation), this), m_mediaTask(m_blocks, m_mediaCatalog, this)
 {
+    connect(this, &ChatController::workspaceChanged, this, &ChatController::reviewNotesChanged);
     connect(this,&ChatController::sessionChanged,this,[this] {
         m_agent.select(m_preview ? QString{} : currentSessionId(),m_storageWritable && !m_preview);
     });
@@ -32,7 +33,12 @@ ChatController::ChatController(QObject *parent)
         refreshSessions(); emit sessionChanged(); emit draftChanged();
     });
     connect(&m_agent,&AgentController::rowChanged,this,[this](const QString &session,const ChatMessage &row) {
-        if (!m_preview && currentSessionId() == session) m_messages.upsertServiceMessage(row);
+        if (!m_preview && currentSessionId() == session) {
+            m_messages.upsertServiceMessage(row);
+            if (row.status != MessageStatus::Running
+                && row.activity.value("blockKind").toInt() == int(content::BlockKind::Diff))
+                emit reviewEvidenceChanged();
+        }
         // 事件按会话写入；后台输出同样需要在空闲时保存。
         m_saveTimer.start();
     });

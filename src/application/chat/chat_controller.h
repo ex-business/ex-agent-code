@@ -30,6 +30,7 @@ class ChatController final : public QObject {
     Q_PROPERTY(QString projectName READ projectName NOTIFY workspaceChanged)
     Q_PROPERTY(QString currentProjectId READ currentProjectId NOTIFY workspaceChanged)
     Q_PROPERTY(QString currentWorkspaceId READ currentWorkspaceId NOTIFY workspaceChanged)
+    Q_PROPERTY(QVariantList reviewNotes READ reviewNotes NOTIFY reviewNotesChanged)
     Q_PROPERTY(QString workspacePath READ workspacePath NOTIFY workspaceChanged)
     Q_PROPERTY(QString currentResourceId READ currentResourceId NOTIFY sessionChanged)
     Q_PROPERTY(QString currentSessionId READ currentSessionId NOTIFY sessionChanged)
@@ -62,6 +63,10 @@ public:
     QString currentProjectId() const { return !m_preview && m_current >= 0 ? m_sessions[m_current].projectId : QString{}; }
     QString currentWorkspaceId() const { return !m_preview && m_current >= 0 ? m_sessions[m_current].workspaceId : QString{}; }
     QString workspacePath() const;
+    QVariantList reviewNotes() const;
+    Q_INVOKABLE QVariantMap reviewOrigin(const QVariantMap &anchor) const;
+    Q_INVOKABLE bool saveReviewNote(const QString &sessionId, QVariantMap anchor, const QString &comment);
+    Q_INVOKABLE bool sendReviewNote(const QString &id);
     QString currentResourceId() const { return m_projects.catalog.selectedResource; }
     QString currentSessionId() const;
     Q_INVOKABLE void newGroupSession(const QString &project, const QString &workspace);
@@ -114,6 +119,8 @@ signals:
     void sessionChanged();
     void workspaceChanged();
     void draftChanged();
+    void reviewNotesChanged();
+    void reviewEvidenceChanged();
     void errorChanged();
     void resourcesChanged();
 

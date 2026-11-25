@@ -1,5 +1,6 @@
 #pragma once
 
+#include "plugins/diff_review/patch_lines.h"
 #include <QFutureWatcher>
 #include <QTimer>
 #include <QVariantList>
@@ -14,6 +15,7 @@ class GitChanges : public QObject {
     Q_PROPERTY(QString folder READ folder WRITE setFolder NOTIFY folderChanged)
     Q_PROPERTY(QVariantList entries READ entries NOTIFY entriesChanged)
     Q_PROPERTY(QStringList lines READ lines NOTIFY linesChanged)
+    Q_PROPERTY(QVariantMap fileEvidence READ fileEvidence NOTIFY linesChanged)
     Q_PROPERTY(QString branch READ branch NOTIFY branchChanged)
     Q_PROPERTY(int scope READ scope NOTIFY scopeChanged)
     Q_PROPERTY(QString selection READ selection NOTIFY selectionChanged)
@@ -36,6 +38,8 @@ public:
     Q_INVOKABLE void setRange(int scope, const QString &from, const QString &to);
     Q_INVOKABLE void selectFile(const QString &path);
     Q_INVOKABLE void select(const QString &key);
+    QVariantMap fileEvidence() const;
+    Q_INVOKABLE QVariantMap anchorAt(int index) const;
     Q_INVOKABLE void refresh();
     Q_INVOKABLE void refreshAfterWrite() { invalidate(); }
 
@@ -55,6 +59,9 @@ private:
     int m_scope = Local;
     QString m_from, m_to, m_requestedPath;
     QString m_branch, m_folder, m_key, m_message;
+    QString m_fingerprint;
+    QVariantMap m_version;
+    review::PatchLines m_patch;
     QVariantList m_entries;
     QStringList m_lines;
     QFutureWatcher<QVariantMap> m_job;

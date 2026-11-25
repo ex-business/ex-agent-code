@@ -33,6 +33,7 @@ qt_add_qml_module(ex_agent_chat
     VERSION 1.0
     DEPENDENCIES QtWebEngine
     SOURCES
+        plugins/diff_review/session_review.cpp
         plugins/git_changes/git_changes.h plugins/git_changes/git_changes.cpp
         plugins/git_changes/git_actions.h plugins/git_changes/git_actions.cpp
         plugins/git_changes/untracked_preview.cpp plugins/git_changes/git_read.cpp plugins/git_changes/revision_range.cpp

@@ -41,7 +41,7 @@ public:
     }
     QVariantMap approval() const;
     bool authenticating() const { return m_login.state() != QProcess::NotRunning; }
-    bool submit(const QString &text, const QString &cwd);
+    bool submit(const QString &text, const QString &cwd, const QVariantMap &reviewNote = {});
     Q_INVOKABLE void configure(int account, const QString &model, bool write, bool fullAccess = false);
     Q_INVOKABLE void login(QString key);
     Q_INVOKABLE void logout();

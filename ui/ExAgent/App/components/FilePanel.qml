@@ -88,6 +88,7 @@ Rectangle {
         }
         Design.WorkspaceGitChanges {
             id: changes
+            chat: root.controller
             writable: root.workspace.writableWorkspace
             visible: root.mode === 2
             folder: root.workspace.rootPath

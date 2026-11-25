@@ -1,6 +1,7 @@
 #include "git_changes.h"
 #include "untracked_preview.h"
 #include <QElapsedTimer>
+#include <QFileInfo>
 #include "git_read.h"
 #include "revision_range.h"
 #include <QtConcurrentRun>
@@ -70,7 +71,8 @@ QVariantMap snapshot(const QString &folder, const QString &key, const QString &r
     if (!requestedPath.isEmpty() && selectedPath.isEmpty()) result.insert("message", QStringLiteral("此文件在当前范围没有差异。"));
     if (limited) result.insert("message", QStringLiteral("变更清单仅显示可预览的前一部分。"));
     if (selectedPath.isEmpty() || cancel->load()) return result;
-    QStringList args{"diff", "--no-ext-diff", "--no-textconv", "--no-color", "--no-renames", "--relative",
+    result.insert("revisions", revisions);
+    QStringList args{"diff", "--full-index", "--no-ext-diff", "--no-textconv", "--no-color", "--no-renames", "--relative",
                      "--submodule=short"};
     if (selectedArea == GitChanges::Untracked) {
         result.insert(previewUntracked(folder, selectedPath));
@@ -84,7 +86,9 @@ QVariantMap snapshot(const QString &folder, const QString &key, const QString &r
     result.insert("slow", patch.truncated || diffTime.elapsed() > 500);
     if (!patch.error.isEmpty()) result.insert("message", patch.error);
     else {
-        auto lines = QString::fromUtf8(patch.data).split('\n');
+        const auto text = QString::fromUtf8(patch.data);
+        result.insert("lossy", text.toUtf8() != patch.data);
+        auto lines = text.split('\n');
         if (!lines.isEmpty() && lines.last().isEmpty()) lines.removeLast();
         if (patch.truncated || lines.size() > 3000) {
             lines = lines.mid(0, 3000);
@@ -115,7 +119,20 @@ GitChanges::GitChanges(QObject *parent) : QObject(parent)
         const auto key = data.value("selection").toString();
         if (key != m_key) { m_key = key; emit selectionChanged(); }
         if (!key.isEmpty()) m_requestedPath.clear();
-        publishLines(data.value("lines").toStringList());
+        const auto lines = data.value("lines").toStringList();
+        QVariantMap version;
+        if (!data.value("lossy").toBool() && !lines.isEmpty() && lines.last() != QStringLiteral("…") && !key.isEmpty()) {
+            version = {{"folder", QFileInfo(m_folder).canonicalFilePath()}, {"path", key.section(':',1)},
+                       {"area", key.section(':',0,0).toInt()}, {"scope", m_scope},
+                       {"revisions", data.value("revisions")}};
+        }
+        if (version != m_version || lines != m_lines) {
+            m_version = version;
+            m_patch = version.isEmpty() ? review::PatchLines{} : review::parsePatch(lines);
+            m_lines = lines;
+            if (!m_patch.rows.isEmpty()) m_fingerprint = review::digest(lines.join('\n').toUtf8());
+            emit linesChanged();
+        }
         publishMessage(data.value("message").toString());
         // 超限或慢查询降低自动轮询频率，用户仍可随时手动刷新。
         if (!m_folder.isEmpty()) m_poll.start(data.value("slow").toBool() ? 15000 : 2500);
@@ -123,6 +140,26 @@ GitChanges::GitChanges(QObject *parent) : QObject(parent)
 }
 
 GitChanges::~GitChanges() { if (m_cancel) m_cancel->store(true); }
+
+QVariantMap GitChanges::fileEvidence() const
+{
+    if (m_lines.isEmpty() || m_patch.signature.isEmpty()) return {};
+    auto evidence = m_version;
+    evidence.insert("signature", m_patch.signature);
+    evidence.insert("snapshot", m_fingerprint);
+    return evidence;
+}
+
+QVariantMap GitChanges::anchorAt(int index) const
+{
+    const auto it = m_patch.rows.constFind(index);
+    if (index < 0 || index >= m_lines.size() || it == m_patch.rows.cend()) return {};
+    auto anchor = fileEvidence();
+    anchor.insert("oldLine", it->first);
+    anchor.insert("newLine", it->second);
+    anchor.insert("source", m_lines.at(index).mid(1).left(1000));
+    return anchor;
+}
 
 void GitChanges::publishLines(const QStringList &lines)
 {

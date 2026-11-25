@@ -1,4 +1,5 @@
 #include "codex_run.h"
+#include "plugins/diff_review/codex_evidence.h"
 #include "plugins/agent_activity/activity_store.h"
 #include <QDir>
 #include <QFileInfo>
@@ -372,6 +373,10 @@ void Run::notification(const QString &method, const QJsonObject &params)
                 const auto action = actions.first().toObject();
                 if (action["type"] == "read" && !action["path"].toString().isEmpty())
                     end.insert("readPath", action["path"]);
+            }
+            if (type == "fileChange" && item["status"] == "completed") {
+                const auto proofs = review::codexEvidence(m_spec["cwd"].toString(), item["changes"].toArray());
+                if (!proofs.isEmpty()) end.insert("filePatches", proofs);
             }
             emitEvent(end);
         }
