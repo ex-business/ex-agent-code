@@ -1,80 +1,15 @@
 #include "git_changes.h"
 #include "untracked_preview.h"
 #include <QElapsedTimer>
-#include <QProcess>
+#include "git_read.h"
+#include "revision_range.h"
 #include <QtConcurrentRun>
 
 namespace exagent {
 namespace {
-using Cancel = std::shared_ptr<std::atomic_bool>;
-struct Output {
-    QByteArray data;
-    QString error;
-    bool truncated = false;
-};
-
-// Git 只读进程在工作线程运行，切换工作区或隐藏面板时停止旧请求。
-Output runGit(const QString &folder, QStringList args, const Cancel &cancel,
-              int limit)
+using namespace gitread;
+QVariantMap snapshot(const QString &folder, const QString &key, const QString &requestedPath, const RevisionRange &range, const Cancel &cancel)
 {
-    QProcess process;
-    process.setWorkingDirectory(folder);
-    auto env = QProcessEnvironment::systemEnvironment();
-    for (const auto key : {"GIT_DIR", "GIT_WORK_TREE", "GIT_COMMON_DIR", "GIT_INDEX_FILE",
-                           "GIT_OBJECT_DIRECTORY", "GIT_ALTERNATE_OBJECT_DIRECTORIES"})
-        env.remove(key);
-    env.insert("GIT_NO_LAZY_FETCH", "1");
-    env.insert("LC_ALL", "C");
-    env.insert("GIT_TERMINAL_PROMPT", "0");
-    process.setProcessEnvironment(env);
-    process.setStandardInputFile(QProcess::nullDevice());
-    QStringList options{"--no-pager", "--no-optional-locks", "--literal-pathspecs",
-                        "-c", "core.quotepath=false", "-c", "core.bigFileThreshold=8m",
-                        "-c", "core.fsmonitor=false", "-c", "core.untrackedCache=false"};
-    process.start("git", options + args, QIODevice::ReadOnly);
-    Output out;
-    if (!process.waitForStarted(2000)) {
-        out.error = QStringLiteral("无法启动 Git。");
-        return out;
-    }
-    QByteArray diagnostic;
-    QElapsedTimer elapsed;
-    elapsed.start();
-    do {
-        process.waitForFinished(40);
-        auto chunk = process.readAllStandardOutput();
-        const auto remaining = limit - out.data.size();
-        out.truncated = chunk.size() > remaining;
-        out.data.append(chunk.constData(), qMin(remaining, chunk.size()));
-        diagnostic += process.readAllStandardError().left(2048 - diagnostic.size());
-        if (cancel->load() || out.truncated || elapsed.elapsed() > 10000) {
-            if (!cancel->load() && !out.truncated) out.error = QStringLiteral("读取 Git 状态超时。");
-            if (process.state() != QProcess::NotRunning) {
-                process.kill();
-                process.waitForFinished();
-            }
-            return out;
-        }
-    } while (process.state() != QProcess::NotRunning);
-    if (process.exitStatus() != QProcess::NormalExit ||
-        process.exitCode() != 0) {
-        out.error = diagnostic.contains("not a git repository")
-            ? QStringLiteral("当前工作区不在 Git 仓库中。") : QStringLiteral("Git 读取失败。");
-        if (!diagnostic.isEmpty() && !diagnostic.contains("not a git repository"))
-            out.error += "\n" + QString::fromUtf8(diagnostic).trimmed();
-    }
-    return out;
-}
-
-QVariantMap snapshot(const QString &folder, const QString &key, const Cancel &cancel)
-{
-    // porcelain -z 始终给出仓库相对路径。子目录工作区只显示其边界内的变更。
-    auto prefix = runGit(folder, {"rev-parse", "--show-prefix"}, cancel, 16384);
-    if (!prefix.error.isEmpty()) return {{"message", prefix.error}};
-    if (prefix.data.endsWith('\n')) prefix.data.chop(1);
-    auto status = runGit(folder, {"status", "--porcelain=v1", "-z", "--no-renames",
-                                  "--untracked-files=all", "--ignore-submodules=none", "--", "."}, cancel, 1024*1024);
-    if (!status.error.isEmpty()) return {{"message", status.error}};
     QVariantList entries;
     QString selectedPath;
     int selectedArea = 0;
@@ -82,29 +17,52 @@ QVariantMap snapshot(const QString &folder, const QString &key, const Cancel &ca
         const auto entryKey = QString::number(area) + ":" + path;
         entries.append(QVariantMap{{"path", path}, {"code", QString(QChar::fromLatin1(code))},
                                    {"area", area}, {"key", entryKey}});
-        if (entryKey == key) { selectedPath = path; selectedArea = area; }
-    };
-    bool limited = status.truncated;
-    for (qsizetype offset = 0; offset < status.data.size();) {
-        const auto end = status.data.indexOf('\0', offset);
-        if (end < 0) break;
-        const auto record = status.data.sliced(offset, end-offset);
-        offset = end + 1;
-        if (record.size() < 4 || !record.sliced(3).startsWith(prefix.data)) continue;
-        const auto bytes = record.sliced(3 + prefix.data.size());
-        const auto path = QString::fromUtf8(bytes);
-        // 无法用 QString 往返的文件名不可作为另一个同名路径传给 Git。
-        if (path.toUtf8() != bytes) { limited = true; continue; }
-        const auto xy = record.first(2);
-        if (xy == "??") append(path, '?', GitChanges::Untracked);
-        else if (xy.contains('U') || xy == "AA" || xy == "DD") append(path, 'U', GitChanges::Conflict);
-        else {
-            if (xy[0] != ' ') append(path, xy[0], GitChanges::Index);
-            if (xy[1] != ' ') append(path, xy[1], GitChanges::Worktree);
+        // 文件树跳转优先展示磁盘改动，只有索引变更时自然回落到已暂存项。
+        if (entryKey == key || (path == requestedPath && (!selectedArea || area == GitChanges::Worktree))) {
+            selectedPath = path;
+            selectedArea = area;
         }
-        if (entries.size() >= 3000 && offset < status.data.size()) { limited = true; break; }
+    };
+    QStringList revisions;
+    bool limited = false;
+    if (range.scope != GitChanges::Local) {
+        const auto comparison = compareRevisions(folder, range, cancel);
+        if (!comparison.error.isEmpty()) return {{"message", comparison.error}};
+        revisions = comparison.revisions;
+        limited = comparison.limited;
+        for (const auto &change : comparison.files)
+            append(change.path, change.code, change.untracked ? GitChanges::Untracked : GitChanges::Compared);
+    } else {
+        // porcelain -z 给出仓库相对路径；统一转换为当前工作区相对路径。
+        auto prefix = runGit(folder, {"rev-parse", "--show-prefix"}, cancel, 16384);
+        if (!prefix.error.isEmpty()) return {{"message", prefix.error}};
+        if (prefix.data.endsWith('\n')) prefix.data.chop(1);
+        auto status = runGit(folder, {"status", "--porcelain=v1", "-z", "--no-renames",
+                                      "--untracked-files=all", "--ignore-submodules=none", "--", "."}, cancel, 1024*1024);
+        if (!status.error.isEmpty()) return {{"message", status.error}};
+        limited = status.truncated;
+        for (qsizetype offset = 0; offset < status.data.size();) {
+            const auto end = status.data.indexOf('\0', offset);
+            if (end < 0) break;
+            const auto record = status.data.sliced(offset, end-offset);
+            offset = end + 1;
+            if (record.size() < 4 || !record.sliced(3).startsWith(prefix.data)) continue;
+            const auto bytes = record.sliced(3 + prefix.data.size());
+            const auto path = QString::fromUtf8(bytes);
+            // 无法用 QString 往返的文件名不可作为另一个同名路径传给 Git。
+            if (path.toUtf8() != bytes) { limited = true; continue; }
+            const auto xy = record.first(2);
+            if (xy == "??") append(path, '?', GitChanges::Untracked);
+            else if (xy.contains('U') || xy == "AA" || xy == "DD") append(path, 'U', GitChanges::Conflict);
+            else {
+                if (xy[0] != ' ') append(path, xy[0], GitChanges::Index);
+                if (xy[1] != ' ') append(path, xy[1], GitChanges::Worktree);
+            }
+            if (entries.size() >= 3000 && offset < status.data.size()) { limited = true; break; }
+        }
     }
-    QVariantMap result{{"entries", entries}, {"selection", selectedPath.isEmpty() ? QString{} : key}};
+    QVariantMap result{{"entries", entries}, {"selection", selectedPath.isEmpty() ? QString{} : QString::number(selectedArea) + ":" + selectedPath}};
+    if (!requestedPath.isEmpty() && selectedPath.isEmpty()) result.insert("message", QStringLiteral("此文件在当前范围没有差异。"));
     if (limited) result.insert("message", QStringLiteral("变更清单仅显示可预览的前一部分。"));
     if (selectedPath.isEmpty() || cancel->load()) return result;
     QStringList args{"diff", "--no-ext-diff", "--no-textconv", "--no-color", "--no-renames", "--relative",
@@ -114,7 +72,7 @@ QVariantMap snapshot(const QString &folder, const QString &key, const Cancel &ca
         return result;
     }
     if (selectedArea == GitChanges::Index) args << "--cached";
-    args << "--" << selectedPath;
+    args << revisions << "--" << selectedPath;
     QElapsedTimer diffTime;
     diffTime.start();
     auto patch = runGit(folder, args, cancel, 128*1024);
@@ -149,6 +107,7 @@ GitChanges::GitChanges(QObject *parent) : QObject(parent)
         if (m_entries != entries) { m_entries = entries; emit entriesChanged(); }
         const auto key = data.value("selection").toString();
         if (key != m_key) { m_key = key; emit selectionChanged(); }
+        if (!key.isEmpty()) m_requestedPath.clear();
         publishLines(data.value("lines").toStringList());
         publishMessage(data.value("message").toString());
         // 超限或慢查询降低自动轮询频率，用户仍可随时手动刷新。
@@ -172,6 +131,7 @@ void GitChanges::setFolder(const QString &folder)
 {
     if (m_folder == folder) return;
     m_folder = folder;
+    m_requestedPath.clear();
     m_entries.clear();
     m_key.clear();
     emit folderChanged();
@@ -180,10 +140,34 @@ void GitChanges::setFolder(const QString &folder)
     invalidate();
 }
 
+void GitChanges::setRange(int scope, const QString &from, const QString &to)
+{
+    if (scope < Local || scope > Revisions) return;
+    if (scope == m_scope && from == m_from && to == m_to) return;
+    m_scope = scope;
+    m_from = from.trimmed();
+    m_to = to.trimmed();
+    m_requestedPath.clear();
+    m_entries.clear();
+    m_key.clear();
+    emit entriesChanged();
+    emit selectionChanged();
+    invalidate();
+}
+
 void GitChanges::select(const QString &key)
 {
     if (m_key == key) return;
+    m_requestedPath.clear();
     m_key = key;
+    emit selectionChanged();
+    invalidate();
+}
+
+void GitChanges::selectFile(const QString &path)
+{
+    m_key.clear();
+    m_requestedPath = path;
     emit selectionChanged();
     invalidate();
 }
@@ -202,6 +186,6 @@ void GitChanges::refresh()
     if (m_folder.isEmpty() || m_cancel) return;
     m_poll.stop();
     m_cancel = std::make_shared<std::atomic_bool>(false);
-    m_job.setFuture(QtConcurrent::run(snapshot, m_folder, m_key, m_cancel));
+    m_job.setFuture(QtConcurrent::run(snapshot, m_folder, m_key, m_requestedPath, RevisionRange{m_scope, m_from, m_to}, m_cancel));
 }
 }

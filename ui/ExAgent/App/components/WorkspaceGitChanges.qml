@@ -5,9 +5,34 @@ import QtQuick.Layouts
 import ExAgent.Chat
 import ExAgent.App as Design
 
-Item {
+FocusScope {
     id: root
     required property string folder
+    signal revealRequested(string path)
+    signal openRequested(string path)
+    readonly property string selectedPath: git.selection.slice(git.selection.indexOf(":") + 1)
+    readonly property var hunks: {
+        const rows = []
+        const lines = git.lines
+        for (let i = 0; i < lines.length; ++i)
+            if (/^@{2,} -/.test(lines[i])) rows.push(i)
+        return rows
+    }
+    property int hunk: -1
+    function showPath(path: string) {
+        git.selectFile(path)
+        patch.forceActiveFocus()
+    }
+    function jump(direction: int) {
+        const count = hunks.length
+        if (!count) return
+        hunk = hunk < 0 ? (direction > 0 ? 0 : count - 1) : (hunk + direction + count) % count
+        patch.positionViewAtIndex(hunks[hunk], ListView.Beginning)
+        patch.forceActiveFocus()
+    }
+    Shortcut { sequence: "F7"; enabled: root.visible && root.activeFocus && root.hunks.length > 0; onActivated: root.jump(1) }
+    Shortcut { sequence: "Shift+F7"; enabled: root.visible && root.activeFocus && root.hunks.length > 0; onActivated: root.jump(-1) }
+    onHunksChanged: hunk = -1
 
     GitChanges {
         id: git
@@ -19,6 +44,7 @@ Item {
     }
     function areaName(area: int): string {
         switch (area) {
+        case GitChanges.Compared: return Design.UiText.get("版本差异")
         case GitChanges.Index: return Design.UiText.get("已暂存")
         case GitChanges.Untracked: return Design.UiText.get("未跟踪")
         case GitChanges.Conflict: return Design.UiText.get("冲突")
@@ -39,6 +65,12 @@ Item {
                 color: Design.Theme.text
             }
             Design.IconButton { iconName: "refresh"; tooltip: Design.UiText.get("刷新变更"); onClicked: git.refresh() }
+        }
+        Design.DiffScopeBar {
+            Layout.fillWidth: true
+            Layout.leftMargin: 8; Layout.rightMargin: 8
+            folder: root.folder
+            changes: git
         }
         Label {
             visible: text.length > 0
@@ -67,7 +99,7 @@ Item {
                 height: 34
                 hoverEnabled: true
                 Accessible.name: root.areaName(modelData.area) + " " + modelData.path
-                onClicked: git.select(modelData.key)
+                onClicked: { git.select(modelData.key); patch.forceActiveFocus() }
                 background: Rectangle {
                     radius: 5
                     color: git.selection === entry.modelData.key ? Design.Theme.selected
@@ -89,15 +121,28 @@ Item {
             }
         }
         Rectangle { visible: !!git.selection; Layout.fillWidth: true; implicitHeight: 1; color: Design.Theme.border }
-        Label {
+        RowLayout {
             visible: !!git.selection
             Layout.fillWidth: true
-            Layout.margins: 10
-            text: git.selection.slice(git.selection.indexOf(":") + 1)
-            textFormat: Text.PlainText
-            elide: Text.ElideMiddle
-            font.bold: true
-            color: Design.Theme.text
+            Layout.leftMargin: 8; Layout.rightMargin: 8
+            spacing: 2
+            Label {
+                Layout.fillWidth: true
+                text: root.selectedPath
+                textFormat: Text.PlainText
+                elide: Text.ElideMiddle
+                font.bold: true
+                color: Design.Theme.text
+            }
+            Label {
+                visible: root.hunk >= 0
+                text: (root.hunk + 1) + "/" + root.hunks.length
+                color: Design.Theme.secondary
+            }
+            Design.IconButton { iconName: "back"; tooltip: Design.UiText.get("上一处差异") + " (Shift+F7)"; enabled: root.hunks.length > 0; onClicked: root.jump(-1) }
+            Design.IconButton { iconName: "back"; rotation: 180; tooltip: Design.UiText.get("下一处差异") + " (F7)"; enabled: root.hunks.length > 0; onClicked: root.jump(1) }
+            Design.IconButton { iconName: "folder"; tooltip: Design.UiText.get("在文件树中定位"); onClicked: root.revealRequested(root.selectedPath) }
+            Design.IconButton { iconName: "file"; tooltip: Design.UiText.get("打开工作区文件"); onClicked: root.openRequested(root.selectedPath) }
         }
         ListView {
             id: patch
@@ -109,6 +154,7 @@ Item {
             model: git.lines
             ScrollBar.vertical: ScrollBar {}
             delegate: TextEdit {
+                required property int index
                 required property string modelData
                 width: patch.width
                 leftPadding: 10
@@ -121,6 +167,7 @@ Item {
                 selectByMouse: true
                 wrapMode: TextEdit.WrapAnywhere
                 font.family: Design.Theme.monoFont
+                font.bold: root.hunk >= 0 && root.hunks[root.hunk] === index
                 font.pixelSize: 12
                 color: modelData.startsWith("+++ ") || modelData.startsWith("--- ") || modelData.startsWith("diff ") || modelData.startsWith("index ") ? Design.Theme.secondary
                      : modelData.startsWith("+") ? Design.Theme.tokens.diffAdded

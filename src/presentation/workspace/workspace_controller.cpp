@@ -64,6 +64,7 @@ void WorkspaceController::bindFolder(const QString &path, bool preview)
         const auto cached=m_cache.take(m_root+QString::number(m_preview));
         m_files=cached.files; m_active=cached.active;
         m_expanded.clear();
+        m_revealedPath.clear();
         refresh();
         // 只恢复当前根目录内仍存在的文件；恢复过程不会覆盖尚未加载的页签列表。
         m_restoring = true;
@@ -92,20 +93,73 @@ QString WorkspaceController::resolve(const QString &path) const
     return !m_root.isEmpty() && (resolved == m_root || resolved.startsWith(prefix)) ? resolved : QString{};
 }
 void WorkspaceController::refresh() { m_entries.clear(); if (!m_root.isEmpty()) scan(m_root, 0); emit filesChanged(); }
-void WorkspaceController::scan(const QString &directory, int depth)
+QString WorkspaceController::regularWorkspaceFile(const QString &relative) const
+{
+    const auto parts = relative.split('/');
+    if (m_root.isEmpty() || QDir::isAbsolutePath(relative) || parts.contains("") || parts.contains(".") ||
+        parts.contains("..") || parts.contains(".git", Qt::CaseInsensitive)) return {};
+    // Git 和文件树使用字面路径；即使文件名以 file: 开头也不应解析成 URL。
+    const auto canonical = resolve(QDir(m_root).absoluteFilePath(relative));
+    return !canonical.isEmpty() && QFileInfo(canonical).isFile() ? canonical : QString{};
+}
+
+void WorkspaceController::openWorkspaceFile(const QString &relative)
+{
+    const auto file = regularWorkspaceFile(relative);
+    if (file.isEmpty()) { fail(QStringLiteral("当前工作区中无法定位此文件。")); return; }
+    open(file);
+}
+
+int WorkspaceController::revealFile(const QString &relative)
+{
+    if (regularWorkspaceFile(relative).isEmpty()) {
+        fail(QStringLiteral("当前工作区中无法定位此文件。"));
+        return -1;
+    }
+    const auto parts = relative.split('/');
+    // 只临时显示指定文件及其祖先；其余隐藏项仍沿用原树的过滤规则。
+    m_revealedPath = relative;
+    QStringList prefix;
+    for (const auto &part : parts.sliced(0, parts.size()-1)) {
+        prefix << part;
+        m_expanded.insert(prefix.join('/'));
+    }
+    refresh();
+    for (int i = 0; i < m_entries.size(); ++i) {
+        if (m_entries[i].toMap().value("path") == relative) { fail({}); return i; }
+    }
+    fail(QStringLiteral("此文件超出文件树显示范围。"));
+    return -1;
+}
+void WorkspaceController::scan(const QString &directory, int depth, bool revealOnly)
 {
     if (depth > 8 || m_entries.size() >= 2000) return;
-    const auto files = QDir(directory).entryInfoList(QDir::Dirs | QDir::Files | QDir::NoDotAndDotDot, QDir::DirsFirst | QDir::Name | QDir::IgnoreCase);
+    const QDir dir(directory);
+    const auto excluded = [](const QString &name) {
+        return name.startsWith('.') || name == "build" || name == "node_modules";
+    };
+    QFileInfoList files;
+    if (!revealOnly)
+        files = dir.entryInfoList(QDir::Dirs | QDir::Files | QDir::NoDotAndDotDot, QDir::DirsFirst | QDir::Name | QDir::IgnoreCase);
+    QString next;
+    if (!m_revealedPath.isEmpty()) {
+        const auto suffix = dir.relativeFilePath(QDir(m_root).absoluteFilePath(m_revealedPath));
+        if (!suffix.startsWith("../") && suffix != "..") next = suffix.section('/', 0, 0);
+    }
+    // 隐藏或构建目录仅补入定位路径，不扫描其中无关的兄弟文件。
+    if (!next.isEmpty() && next != "." && (revealOnly || next.startsWith('.')))
+        files.prepend(QFileInfo(dir.filePath(next)));
     for (const auto &file : files) {
         if (m_entries.size() >= 2000) break;
-        if (file.fileName().startsWith('.') || file.fileName() == "build" || file.fileName() == "node_modules") continue;
+        const bool restricted = excluded(file.fileName());
+        if (restricted && file.fileName() != next) continue;
         const auto canonical = resolve(file.absoluteFilePath());
         // 符号链接即使仍在项目内也不递归，防止循环展开；越界链接不展示。
         if (canonical.isEmpty()) continue;
         const auto relative = QDir(m_root).relativeFilePath(file.absoluteFilePath());
         m_entries.append(QVariantMap{{"path", relative}, {"name", file.fileName()}, {"directory", file.isDir()},
                                      {"depth", depth}, {"expanded", m_expanded.contains(relative)}});
-        if (file.isDir() && !file.isSymLink() && m_expanded.contains(relative)) scan(file.absoluteFilePath(), depth + 1);
+        if (file.isDir() && !file.isSymLink() && m_expanded.contains(relative)) scan(file.absoluteFilePath(), depth + 1, revealOnly || restricted);
     }
 }
 QVariantList WorkspaceController::tabs() const

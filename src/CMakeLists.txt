@@ -34,7 +34,7 @@ qt_add_qml_module(ex_agent_chat
     DEPENDENCIES QtWebEngine
     SOURCES
         plugins/git_changes/git_changes.h plugins/git_changes/git_changes.cpp
-        plugins/git_changes/untracked_preview.cpp
+        plugins/git_changes/untracked_preview.cpp plugins/git_changes/git_read.cpp plugins/git_changes/revision_range.cpp
         plugins/workspace_viewers/workspace_preview.h plugins/workspace_viewers/workspace_preview.cpp
         plugins/workspace_viewers/viewer_registry.h plugins/workspace_viewers/viewer_registry.cpp
         plugins/workspace_viewers/viewer_data.h plugins/workspace_viewers/viewer_data.cpp

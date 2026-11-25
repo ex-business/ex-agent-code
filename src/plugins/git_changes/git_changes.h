@@ -17,8 +17,10 @@ class GitChanges : public QObject {
     Q_PROPERTY(QString selection READ selection NOTIFY selectionChanged)
     Q_PROPERTY(QString message READ message NOTIFY messageChanged)
 public:
-    enum Area { Worktree = 1, Index = 2, Untracked = 3, Conflict = 4 };
+    enum Area { Worktree = 1, Index = 2, Untracked = 3, Conflict = 4, Compared = 5 };
     Q_ENUM(Area)
+    enum Scope { Local = 0, RevisionToWorktree = 1, Revisions = 2 };
+    Q_ENUM(Scope)
     explicit GitChanges(QObject *parent = nullptr);
     ~GitChanges() override;
     QString folder() const { return m_folder; }
@@ -27,6 +29,8 @@ public:
     QString selection() const { return m_key; }
     QString message() const { return m_message; }
     void setFolder(const QString &folder);
+    Q_INVOKABLE void setRange(int scope, const QString &from, const QString &to);
+    Q_INVOKABLE void selectFile(const QString &path);
     Q_INVOKABLE void select(const QString &key);
     Q_INVOKABLE void refresh();
 
@@ -41,6 +45,8 @@ private:
     void invalidate();
     void publishLines(const QStringList &lines);
     void publishMessage(const QString &message);
+    int m_scope = Local;
+    QString m_from, m_to, m_requestedPath;
     QString m_folder, m_key, m_message;
     QVariantList m_entries;
     QStringList m_lines;

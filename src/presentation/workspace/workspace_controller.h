@@ -46,6 +46,8 @@ public:
     QString error() const { return m_error; }
     Q_INVOKABLE void bindFolder(const QString &path, bool preview);
     Q_INVOKABLE void refresh();
+    Q_INVOKABLE void openWorkspaceFile(const QString &relative);
+    Q_INVOKABLE int revealFile(const QString &relative);
     Q_INVOKABLE void open(const QString &path);
     Q_INVOKABLE void selectTab(int index);
     Q_INVOKABLE void closeTab(int index, bool discard=false);
@@ -67,10 +69,12 @@ private:
     QSet<EditorDocument*> m_documents;
     bool m_preview=false;
     QString resolve(const QString &path) const;
-    void scan(const QString &directory, int depth);
+    QString regularWorkspaceFile(const QString &relative) const;
+    void scan(const QString &directory, int depth, bool revealOnly=false);
     void fail(const QString &message);
     QString m_root;
     QString m_previewRoot;
+    QString m_revealedPath;
     QString m_error;
     QVariantList m_entries;
     QList<File> m_files;

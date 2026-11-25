@@ -9,12 +9,13 @@ Rectangle {
     id: root
     required property WorkspaceController workspace
     required property ChatController controller
+    property string locatedPath: ""
     property int mode: 0
     property bool renderedMarkdown: true
     color: Design.Theme.background
     Connections {
         target: root.workspace
-        function onFileActivated() { root.mode=root.workspace.activePath ? 1 : 0 }
+        function onFileActivated() { root.locatedPath=""; root.mode=root.workspace.activePath ? 1 : 0 }
         function onPreviewChanged() { if (root.mode === 1 && !root.workspace.activePath) root.mode=0 }
     }
     ColumnLayout {
@@ -47,7 +48,7 @@ Rectangle {
             }
             Design.IconButton { iconName: "refresh"; tooltip: "刷新文件列表"; onClicked: root.workspace.refresh() }
         }
-        Text { visible: root.workspace.error.length > 0; Layout.fillWidth: true; Layout.margins: 12; text: root.workspace.error; wrapMode: Text.Wrap; color: Design.Theme.warning; font.pixelSize: 12 }
+        Text { visible: root.workspace.error.length > 0; Layout.fillWidth: true; Layout.margins: 12; text: Design.UiText.get(root.workspace.error); textFormat: Text.PlainText; wrapMode: Text.Wrap; color: Design.Theme.warning; font.pixelSize: 12 }
         ListView {
             id: files
             visible: root.mode === 0
@@ -64,16 +65,45 @@ Rectangle {
                 visible: height > 0
                 leftPadding: 10 + modelData.depth * 16
                 Accessible.name: (modelData.directory ? "文件夹 " : "预览文件 ") + modelData.path
-                onClicked: root.workspace.open(modelData.path)
-                background: Rectangle { radius: 5; color: entry.hovered ? Design.Theme.hover : "transparent" }
+                onClicked: {
+                    if (modelData.directory) root.workspace.open(root.workspace.rootPath + "/" + modelData.path)
+                    else root.workspace.openWorkspaceFile(modelData.path)
+                }
+                background: Rectangle { radius: 5; color: entry.modelData.path === root.locatedPath ? Design.Theme.selected : entry.hovered ? Design.Theme.hover : "transparent" }
                 contentItem: RowLayout {
                     spacing: 6
                     Design.Icon { name: entry.modelData.directory ? entry.modelData.expanded ? "down" : "right" : "file"; implicitWidth: 13; implicitHeight: 13 }
-                    Text { text: entry.modelData.name; Layout.fillWidth: true; elide: Text.ElideMiddle; font.pixelSize: 12; color: Design.Theme.text }
+                    Text { text: entry.modelData.name; textFormat: Text.PlainText; Layout.fillWidth: true; elide: Text.ElideMiddle; font.pixelSize: 12; color: Design.Theme.text }
+                    Design.IconButton {
+                        visible: !entry.modelData.directory && (entry.hovered || entry.activeFocus || activeFocus || root.locatedPath === entry.modelData.path)
+                        implicitWidth: 26; implicitHeight: 26; iconSize: 14
+                        iconName: "branch"; tooltip: Design.UiText.get("查看文件差异")
+                        onClicked: {
+                            root.mode = 2
+                            changes.showPath(entry.modelData.path)
+                        }
+                    }
                 }
             }
         }
-        Design.WorkspaceGitChanges { visible: root.mode === 2; folder: root.workspace.rootPath; Layout.fillWidth: true; Layout.fillHeight: true }
+        Design.WorkspaceGitChanges {
+            id: changes
+            visible: root.mode === 2
+            folder: root.workspace.rootPath
+            Layout.fillWidth: true; Layout.fillHeight: true
+            onOpenRequested: path => root.workspace.openWorkspaceFile(path)
+            onRevealRequested: path => {
+                const row = root.workspace.revealFile(path)
+                if (row < 0) return
+                filter.clear()
+                root.locatedPath = path
+                root.mode = 0
+                files.currentIndex = row
+                files.forceLayout()
+                files.positionViewAtIndex(row, ListView.Contain)
+                files.forceActiveFocus()
+            }
+        }
         Design.FilePreview { id: filePreview; visible: root.mode === 1; Layout.fillWidth: true; Layout.fillHeight: true; workspace: root.workspace; controller: root.controller; renderedMarkdown: root.renderedMarkdown }
     }
 }
