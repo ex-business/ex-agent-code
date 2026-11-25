@@ -26,7 +26,7 @@ Design.WorkbenchWindow {
     WorkspaceController { id: workspaceController; onExitRequested: { editorExit.open(); window.raise(); window.requestActivate() } }
     Design.GlobalNavigation {
         id: navigation
-        chat: window.controller; workspace: workspaceController; consoleWindow: consoleWindow
+        chat: window.controller; workspace: workspaceController; terminals: consoleWindow
         onActivateHost: { window.raise(); window.requestActivate() }
         onRevealChat: dock.showPanel("chat")
         onRevealFiles: window.revealFiles()

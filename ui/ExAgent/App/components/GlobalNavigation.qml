@@ -7,7 +7,7 @@ Item {
     id: hub
     required property ChatController chat
     required property WorkspaceController workspace
-    required property Design.SessionConsoleWindow consoleWindow
+    required property Design.SessionConsoleWindow terminals
     readonly property int unread: notices.unread
     signal revealChat()
     signal revealFiles()
@@ -22,8 +22,8 @@ Item {
             workspace.openWorkspaceFile(row.file)
             hub.revealFiles()
         } else if (row.terminal) {
-            if (!consoleWindow.navigationTabs.some(tab=>tab.id === row.terminal)) return false
-            consoleWindow.openActivityTab(row.terminal)
+            if (!terminals.navigationTabs.some(tab=>tab.id === row.terminal)) return false
+            terminals.openActivityTab(row.terminal)
         } else {
             if (row.session) {
                 if (!chat.projects.rows.some(r=>r.kind === 3 && r.session === row.session)) return false
@@ -65,12 +65,12 @@ Item {
         }
     }
     Connections {
-        target: hub.consoleWindow
-        function onActivityRowsChanged() { if (hub.chat.projects.writable) notices.observeTerminals(hub.consoleWindow.activityRows) }
+        target: hub.terminals
+        function onActivityRowsChanged() { if (hub.chat.projects.writable) notices.observeTerminals(hub.terminals.activityRows) }
     }
     Design.QuickOpenDialog {
         id: jumpDialog; chat: hub.chat; workspace: hub.workspace
-        terminalRows: hub.consoleWindow.activityRows; terminalTabs: hub.consoleWindow.navigationTabs
+        terminalRows: hub.terminals.activityRows; terminalTabs: hub.terminals.navigationTabs
         onTargetChosen: row => {
             if (hub.jump(row,jumpDialog)) close()
             else if (files) begin(true)
