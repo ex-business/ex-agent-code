@@ -8,11 +8,13 @@ Item {
     id: root
     signal promptSelected(string prompt)
     signal previewRequested()
+    readonly property bool compact: height < 260
     ColumnLayout {
         anchors.centerIn: parent
         width: Math.min(parent.width - 64, 560)
-        spacing: 14
+        spacing: root.compact ? 4 : 14
         Rectangle {
+            visible: !root.compact
             Layout.alignment: Qt.AlignHCenter
             implicitWidth: 48; implicitHeight: 48; radius: 14
             color: Design.Theme.surface
@@ -20,21 +22,22 @@ Item {
         }
         Text {
             Layout.alignment: Qt.AlignHCenter
-            Layout.topMargin: 9
+            Layout.topMargin: root.compact ? 0 : 9
             text: "一起把想法变成代码"
             color: Design.Theme.text
             font.family: Design.Theme.font
-            font.pixelSize: 26
+            font.pixelSize: root.compact ? 18 : 26
             font.weight: Font.DemiBold
         }
         Text {
             Layout.alignment: Qt.AlignHCenter
+            visible: root.height >= 154
             text: "从一个问题、一段代码，或一个新想法开始。"
             color: Design.Theme.secondary
             font.pixelSize: 13
         }
         RowLayout {
-            Layout.topMargin: 19
+            Layout.topMargin: root.compact ? 2 : 19
             Layout.alignment: Qt.AlignHCenter
             spacing: 10
             Repeater {
@@ -46,7 +49,7 @@ Item {
                     onClicked: root.promptSelected(modelData)
                     background: Rectangle { radius: 10; color: suggestion.hovered ? Design.Theme.hover : "transparent"; border.color: Design.Theme.border }
                     contentItem: Text { text: suggestion.text; color: Design.Theme.secondary; font.pixelSize: 12; horizontalAlignment: Text.AlignHCenter }
-                    padding: 12
+                    padding: root.compact ? 6 : 12
                 }
             }
         }

@@ -4,6 +4,7 @@ qt_add_qml_module(ex_agent_workbench
     URI ExAgent.App
     VERSION 1.0
     QML_FILES
+        components/docking/PanelTree.js components/docking/DockSurface.qml components/docking/DockPanel.qml components/docking/PanelMoveDialog.qml components/docking/LegacyPanelLayout.qml
         Main.qml Theme.qml UiText.qml InteractionMotion.qml PerformanceTrace.qml BlockRendererRegistry.qml
         components/PressFeedback.qml components/DisclosureHeight.qml components/DisclosureEntrance.qml components/MotionRegistration.qml components/DisclosureRotation.qml
         components/WindowEntrance.qml components/BlockHeader.qml components/ActivityGroupHeader.qml
