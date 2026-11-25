@@ -88,6 +88,7 @@ Rectangle {
         }
         Design.WorkspaceGitChanges {
             id: changes
+            writable: root.workspace.writableWorkspace
             visible: root.mode === 2
             folder: root.workspace.rootPath
             Layout.fillWidth: true; Layout.fillHeight: true

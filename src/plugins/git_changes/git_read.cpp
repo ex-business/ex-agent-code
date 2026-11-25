@@ -3,19 +3,25 @@
 #include <QProcess>
 
 namespace exagent::gitread {
+QProcessEnvironment workspaceEnvironment()
+{
+    auto env = QProcessEnvironment::systemEnvironment();
+    for (const auto key : {"GIT_DIR", "GIT_WORK_TREE", "GIT_COMMON_DIR", "GIT_INDEX_FILE",
+                           "GIT_OBJECT_DIRECTORY", "GIT_ALTERNATE_OBJECT_DIRECTORIES"})
+        env.remove(key);
+    env.insert("LC_ALL", "C");
+    env.insert("GIT_TERMINAL_PROMPT", "0");
+    return env;
+}
+
 // Git 只读进程在工作线程运行，切换工作区或隐藏面板时停止旧请求。
 Output runGit(const QString &folder, QStringList args, const Cancel &cancel,
               int limit)
 {
     QProcess process;
     process.setWorkingDirectory(folder);
-    auto env = QProcessEnvironment::systemEnvironment();
-    for (const auto key : {"GIT_DIR", "GIT_WORK_TREE", "GIT_COMMON_DIR", "GIT_INDEX_FILE",
-                           "GIT_OBJECT_DIRECTORY", "GIT_ALTERNATE_OBJECT_DIRECTORIES"})
-        env.remove(key);
+    auto env = workspaceEnvironment();
     env.insert("GIT_NO_LAZY_FETCH", "1");
-    env.insert("LC_ALL", "C");
-    env.insert("GIT_TERMINAL_PROMPT", "0");
     process.setProcessEnvironment(env);
     process.setStandardInputFile(QProcess::nullDevice());
     QStringList options{"--no-pager", "--no-optional-locks", "--literal-pathspecs",

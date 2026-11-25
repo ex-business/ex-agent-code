@@ -10,6 +10,7 @@ namespace exagent {
 class WorkspaceController : public QObject {
     Q_OBJECT
     QML_NAMED_ELEMENT(WorkspaceController)
+    Q_PROPERTY(bool writableWorkspace READ writableWorkspace NOTIFY filesChanged)
     Q_PROPERTY(QString rootPath READ rootPath NOTIFY filesChanged)
     Q_PROPERTY(QVariantList entries READ entries NOTIFY filesChanged)
     Q_PROPERTY(QVariantList tabs READ tabs NOTIFY previewChanged)
@@ -30,6 +31,7 @@ public:
     Q_INVOKABLE bool imageAvailable(const QUrl &url) const;
     Q_INVOKABLE bool viewerResourceAvailable(const QUrl &url) const { return url.host()=="workspace-images" && imageAvailable(url); }
     Q_INVOKABLE void openLink(const QString &link, const QString &baseFile);
+    bool writableWorkspace() const { return !m_preview && !m_root.isEmpty(); }
     QString rootPath() const { return m_root; }
     QVariantList entries() const { return m_entries; }
     QVariantList tabs() const;

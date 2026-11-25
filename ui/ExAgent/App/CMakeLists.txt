@@ -35,7 +35,7 @@ qt_add_qml_module(ex_agent_workbench
         components/MessageDelegate.qml components/CodeBlock.qml
         components/EmptyState.qml
         components/ChangedFilesCard.qml components/NavigationRail.qml
-        components/FilePanel.qml components/WorkspaceGitChanges.qml components/DiffScopeBar.qml
+        components/FilePanel.qml components/WorkspaceGitChanges.qml components/DiffScopeBar.qml components/GitActionBar.qml
         components/SmoothWheel.qml components/WheelKinetics.qml
         components/ChatOverview.qml
 )

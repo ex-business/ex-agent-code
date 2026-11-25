@@ -7,6 +7,7 @@ import ExAgent.App as Design
 
 FocusScope {
     id: root
+    property bool writable: false
     required property string folder
     signal revealRequested(string path)
     signal openRequested(string path)
@@ -116,7 +117,16 @@ FocusScope {
                         elide: Text.ElideMiddle
                         color: Design.Theme.text
                     }
-                    Label { Layout.rightMargin: 12; text: root.areaName(entry.modelData.area); color: Design.Theme.secondary; font.pixelSize: 11 }
+                    Label { Layout.rightMargin: 4; text: root.areaName(entry.modelData.area); color: Design.Theme.secondary; font.pixelSize: 11 }
+                    Design.IconButton {
+                        readonly property bool staged: entry.modelData.area === GitChanges.Index
+                        visible: actionBar.visible && git.branch.length > 0 && entry.modelData.area !== GitChanges.Conflict
+                        enabled: !actionBar.busy
+                        iconName: staged ? "minus" : "plus"
+                        tooltip: Design.UiText.get(staged ? "撤销暂存" : "暂存文件") + " · " + entry.modelData.path
+                        implicitWidth: 28; implicitHeight: 28; iconSize: 15
+                        onClicked: actionBar.stageFile(entry.modelData.path, staged)
+                    }
                 }
             }
         }
@@ -174,6 +184,13 @@ FocusScope {
                      : modelData.startsWith("-") ? Design.Theme.danger
                      : modelData.startsWith("@@") ? Design.Theme.accent : Design.Theme.text
             }
+        }
+        Design.GitActionBar {
+            id: actionBar
+            Layout.fillWidth: true
+            visible: root.writable && git.scope === GitChanges.Local
+            folder: visible ? root.folder : ""
+            changes: git
         }
     }
 }

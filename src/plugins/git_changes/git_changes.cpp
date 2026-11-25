@@ -62,6 +62,11 @@ QVariantMap snapshot(const QString &folder, const QString &key, const QString &r
         }
     }
     QVariantMap result{{"entries", entries}, {"selection", selectedPath.isEmpty() ? QString{} : QString::number(selectedArea) + ":" + selectedPath}};
+    if (range.scope == GitChanges::Local && !cancel->load()) {
+        const auto head = runGit(folder, {"symbolic-ref","--quiet","HEAD"}, cancel, 4096);
+        if (head.error.isEmpty() && head.data.startsWith("refs/heads/"))
+            result.insert("branch",QString::fromUtf8(head.data.trimmed().sliced(11)));
+    }
     if (!requestedPath.isEmpty() && selectedPath.isEmpty()) result.insert("message", QStringLiteral("此文件在当前范围没有差异。"));
     if (limited) result.insert("message", QStringLiteral("变更清单仅显示可预览的前一部分。"));
     if (selectedPath.isEmpty() || cancel->load()) return result;
@@ -103,6 +108,8 @@ GitChanges::GitChanges(QObject *parent) : QObject(parent)
         m_cancel.reset();
         if (obsolete) { refresh(); return; }
         const auto data = m_job.result();
+        const auto branch = data.value("branch").toString();
+        if (branch != m_branch) { m_branch = branch; emit branchChanged(); }
         const auto entries = data.value("entries").toList();
         if (m_entries != entries) { m_entries = entries; emit entriesChanged(); }
         const auto key = data.value("selection").toString();
@@ -131,6 +138,8 @@ void GitChanges::setFolder(const QString &folder)
 {
     if (m_folder == folder) return;
     m_folder = folder;
+    m_branch.clear();
+    emit branchChanged();
     m_requestedPath.clear();
     m_entries.clear();
     m_key.clear();
@@ -145,6 +154,9 @@ void GitChanges::setRange(int scope, const QString &from, const QString &to)
     if (scope < Local || scope > Revisions) return;
     if (scope == m_scope && from == m_from && to == m_to) return;
     m_scope = scope;
+    m_branch.clear();
+    emit branchChanged();
+    emit scopeChanged();
     m_from = from.trimmed();
     m_to = to.trimmed();
     m_requestedPath.clear();
