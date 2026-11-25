@@ -25,6 +25,11 @@ public:
     ~AgentController() override;
     void select(const QString &session, bool writable);
     void restore();
+    Q_PROPERTY(QVariantList correspondents READ correspondents NOTIFY mailChanged)
+    Q_PROPERTY(QVariantList correspondence READ correspondence NOTIFY mailChanged)
+    QVariantList correspondents() const;
+    QVariantList correspondence() const;
+    Q_INVOKABLE bool sendMail(const QString &target, const QString &text);
     void indexWorkspaceActivity();
     Q_INVOKABLE QVariantMap terminalBinding(const QString& workspace) const;
     QStringList models() const { return m_models; }
@@ -57,6 +62,7 @@ signals:
     void approvalArrived(QString session, QString run, QString token, QString title);
     void runEnded(QString session, QString run, int state, QString title);
     void changed();
+    void mailChanged();
     void failure(QString reason);
     void accountUpdated(bool loggedIn);
     void rowChanged(QString session, exagent::ChatMessage message);
@@ -68,6 +74,11 @@ private:
     bool save();
     void changeCredential(QString key, bool signIn);
     void dispatch();
+    bool enqueueMail(const QString &source, const QString &target, const QString &text, const QString &id);
+    void deliverMail(const QString &session);
+    void settleMail(const QString &session, const QString &run, const QString &id, int state);
+    void recoverMail(ChatSession &session);
+    QHash<QString, QString> m_mailRequests;
     bool consume(const QString &method, const QJsonObject &frame, QString *error);
     void end(const QString &session, int state, const QString &detail);
     void put(ChatSession &session, ChatMessage msg);
@@ -76,6 +87,8 @@ private:
         QJsonObject queued;
         QVariantList approvals;
         bool stopping = false;
+        QString turn, mail;
+        bool reconciliation = false;
     };
     QList<ChatSession> &m_sessions;
     ProjectCatalog &m_catalog;

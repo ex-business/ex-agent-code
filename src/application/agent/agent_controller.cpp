@@ -1,6 +1,7 @@
 #include "agent_controller.h"
 #include "plugins/design_mode/design_selection.h"
 #include "history_context.h"
+#include "plugins/session_mail/mail.h"
 #include "agent/codex/codex_account.h"
 #include "agent/codex/thread_input.h"
 #include <QDir>
@@ -36,7 +37,7 @@ AgentController::AgentController(
     , m_catalog(catalog)
     , m_repository(repository)
     , m_worker(ServiceLaunch { {}, { "--agent-worker" }, "codex-agent",
-                   { "system.ping", "stream.resume", "agent.start", "agent.stop", "agent.approve" } },
+                   { "system.ping", "stream.resume", "agent.start", "agent.stop", "agent.approve", "agent.steer" } },
           this)
 {
     m_worker.setEventSink(
@@ -48,9 +49,20 @@ AgentController::AgentController(
             end(id, int(State::Interrupted), reason);
     });
     connect(&m_worker, &LocalServiceProcess::response, this,
-        [this](const QString &id, const QJsonValue &) { m_starts.remove(id); });
+        [this](const QString &id, const QJsonValue &) { m_starts.remove(id); m_mailRequests.remove(id); });
     connect(&m_worker, &LocalServiceProcess::requestFailed, this,
-        [this](const QString &id, int, const QString &reason) {
+        [this](const QString &id, int code, const QString &reason) {
+            const auto messageId = m_mailRequests.take(id);
+            if (!messageId.isEmpty()) {
+                for (const auto &session : m_active.keys()) {
+                    const auto active = m_active.value(session);
+                    if (active.mail == messageId) {
+                        settleMail(session, active.id, messageId, code == -32602 ? mail::Rejected : mail::Unconfirmed);
+                        break;
+                    }
+                }
+                return;
+            }
             const auto runId = m_starts.take(id);
             if (!runId.isEmpty()) {
                 for (const auto &session : m_active.keys())
@@ -93,8 +105,10 @@ AgentController::~AgentController()
 }
 void AgentController::select(const QString &session, bool writable)
 {
+    const bool mailboxChanged = m_selected != session || m_writable != writable;
     m_selected = session;
     m_writable = writable;
+    if (mailboxChanged) emit mailChanged();
     emit changed();
 }
 ChatSession *AgentController::find(const QString &id) const
@@ -382,6 +396,7 @@ bool AgentController::submit(const QString &text, const QString &cwd, const QVar
 }
 void AgentController::dispatch()
 {
+    for (const auto &session : m_active.keys()) deliverMail(session);
     for (const auto &session : m_active.keys()) {
         auto &a = m_active[session];
         if (a.queued.isEmpty())
@@ -410,7 +425,7 @@ void AgentController::reconcile()
         QJsonObject spec { { "reconcile", true }, { "conversationId", s->id }, { "runId", m.id },
             { "cwd", m.activity.value("cwd").toString() }, { "identity", m.activity.value("identity").toString() },
             { "account", m.activity.value("account").toInt() }, { "threadId", thread }, { "turnId", turn } };
-        m_active.insert(s->id, { m.id, spec, {}, false });
+        m_active.insert(s->id, { m.id, spec, {}, false, {}, {}, true });
         emit changed();
         if (m_worker.state() == ipc::ServiceState::Ready)
             dispatch();
@@ -454,6 +469,7 @@ void AgentController::decide(const QString &token, bool allow)
 void AgentController::end(const QString &session, int state, const QString &detail)
 {
     const auto a = m_active.take(session);
+    if (!a.mail.isEmpty()) settleMail(session, a.id, a.mail, mail::Unconfirmed);
     auto *s = find(session);
     if (!s || a.id.isEmpty())
         return;
@@ -479,6 +495,7 @@ void AgentController::end(const QString &session, int state, const QString &deta
 void AgentController::restore()
 {
     // 宿主重启无法持有旧连接。保留线程与回合供后续恢复，不重放已发送的提示词。
+    for (auto &s : m_sessions) recoverMail(s);
     for (auto &s : m_sessions)
         for (auto &m : s.messages)
             if (m.activity.value("serviceId") == "codex-agent" && m.status == MessageStatus::Running) {
@@ -498,6 +515,11 @@ bool AgentController::consume(const QString &, const QJsonObject &e, QString *er
     const auto kind = e["kind"].toString();
     if (kind == "end") {
         end(session, e["state"].toInt(int(State::Interrupted)), e["detail"].toString());
+        return true;
+    }
+    if (kind == "mailReceipt") {
+        if (e["turnId"].toString() == it->turn && e["mailId"].toString() == it->mail)
+            settleMail(session, it->id, it->mail, e["state"].toInt());
         return true;
     }
     if (kind == "approvalClosed") {
@@ -529,7 +551,8 @@ bool AgentController::consume(const QString &, const QJsonObject &e, QString *er
         msg.activity.insert("threadId", e["threadId"].toString());
         msg.activity.insert("model", e["model"].toString());
     } else if (kind == "turn") {
-        msg.activity.insert("turnId", e["turnId"].toString());
+        it->turn = e["turnId"].toString();
+        msg.activity.insert("turnId", it->turn);
         msg.activity.insert("taskState", int(State::Running));
         msg.content = QStringLiteral("Codex 正在执行");
     } else if (kind == "reasoningPhase") {
@@ -588,6 +611,7 @@ bool AgentController::consume(const QString &, const QJsonObject &e, QString *er
     put(*s, msg);
     if (kind != "output")
         save();
+    if (kind == "turn") deliverMail(session);
     return true;
 }
 }

@@ -35,6 +35,7 @@ qt_add_qml_module(ex_agent_chat
     DEPENDENCIES QtWebEngine
     SOURCES
         plugins/diff_review/session_review.cpp
+        plugins/session_mail/session_mail.cpp
         plugins/task_links/task_provider.cpp plugins/task_links/task_provider.h
         plugins/task_links/task_status.cpp plugins/task_links/task_status.h plugins/task_links/workspace_task_links.cpp
         plugins/git_changes/git_changes.h plugins/git_changes/git_changes.cpp

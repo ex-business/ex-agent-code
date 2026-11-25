@@ -8,7 +8,9 @@ class Run final : public QObject {
 public:
     explicit Run(QJsonObject spec, QObject *parent);
     void start();
+    bool ownsSession(const QString &session) const { return m_spec["conversationId"] == session; }
     void interrupt();
+    bool steer(const QString &id, const QString &turn, const QString &text);
     bool decide(const QString &token, bool allow);
 signals:
     void produced(QJsonObject payload);
@@ -33,6 +35,7 @@ private:
     QTimer m_deadline, m_flush;
     QString m_thread, m_turn;
     QHash<int, QString> m_pending;
+    QHash<int, QString> m_mail;
     QHash<QString, QJsonValue> m_approvals;
     QList<QJsonObject> m_output;
     int m_id = 0;

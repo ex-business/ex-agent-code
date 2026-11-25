@@ -1,4 +1,5 @@
 #include "codex_run.h"
+#include "plugins/session_mail/mail.h"
 #include "plugins/diff_review/codex_evidence.h"
 #include "plugins/agent_activity/activity_store.h"
 #include <QDir>
@@ -83,6 +84,24 @@ void Run::interrupt()
     if (!m_turn.isEmpty())
         request("turn/interrupt", { { "threadId", m_thread }, { "turnId", m_turn } });
 }
+bool Run::steer(const QString &id, const QString &turn, const QString &text)
+{
+    if (m_done || m_stopping || !m_dispatched || m_spec["reconcile"].toBool() || turn.isEmpty()
+        || turn != m_turn || QUuid(id).isNull() || text.isEmpty() || text.size() > mail::MaxText + 256 || !m_mail.isEmpty()) return false;
+    const int requestId = ++m_id;
+    const QJsonObject params{{"threadId", m_thread}, {"expectedTurnId", turn}, {"clientUserMessageId", id},
+        {"input", QJsonArray{QJsonObject{{"type", "text"}, {"text", text}}}}};
+    if (!m_connection.send({{"id", requestId}, {"method", "turn/steer"}, {"params", params}})) return false;
+    m_mail.insert(requestId, id);
+    // 单封信超时只影响回执；保留原回合及其独立的启动和停止期限。
+    QTimer::singleShot(15000, this, [this, requestId] {
+        const auto pending = m_mail.take(requestId);
+        if (!pending.isEmpty() && !m_done)
+            emitEvent({{"kind", "mailReceipt"}, {"mailId", pending}, {"turnId", m_turn}, {"state", mail::Unconfirmed}});
+    });
+    return true;
+}
+
 void Run::receive(const QJsonObject &frame)
 {
     if (m_done)
@@ -94,6 +113,13 @@ void Run::receive(const QJsonObject &frame)
             approval(method, frame["id"], params);
         else
             notification(method, params);
+        return;
+    }
+    const auto mailId = m_mail.take(frame["id"].toInt(-1));
+    if (!mailId.isEmpty()) {
+        const int state = frame.contains("error") ? mail::Rejected
+            : frame["result"].toObject()["turnId"] == m_turn ? mail::Accepted : mail::Unconfirmed;
+        emitEvent({{"kind", "mailReceipt"}, {"mailId", mailId}, {"turnId", m_turn}, {"state", state}});
         return;
     }
     const auto pending = m_pending.take(frame["id"].toInt(-1));

@@ -9,6 +9,11 @@ bool Worker::command(const QString &method, const QJsonObject &p, QString *error
     const auto id = p["runId"].toString();
     const auto session = p["conversationId"].toString();
     auto *run = m_runs.value(id);
+    if (method == "agent.steer") {
+        if (run && run->ownsSession(session) && run->steer(p["mailId"].toString(), p["turnId"].toString(), p["text"].toString())) return true;
+        *error = QStringLiteral("收件会话的回合已变化或不能接收消息。");
+        return false;
+    }
     if (method == "agent.stop" && run) {
         run->interrupt();
         return true;

@@ -73,7 +73,7 @@ void ServiceWorker::connectSocket()
         connect(channel, &RpcChannel::writableChanged, this, &ServiceWorker::replay);
         m_hello = channel->request("protocol.hello", {{"version", Version}, {"token", m_token},
             {"producerId", m_agent ? "codex-agent" : "local-service"}, {"producerEpoch", m_epoch},
-            {"capabilities", m_agent ? QJsonArray{"system.ping","stream.resume","agent.start","agent.stop","agent.approve"} : QJsonArray{"system.ping", "system.echo", "task.start", "task.cancel", "stream.resume"}},
+            {"capabilities", m_agent ? QJsonArray{"system.ping","stream.resume","agent.start","agent.stop","agent.approve","agent.steer"} : QJsonArray{"system.ping", "system.echo", "task.start", "task.cancel", "stream.resume"}},
             {"blockKinds", QJsonArray{int(BlockKind::Text)}}}, 3000);
         if (m_hello.isEmpty()) channel->abort(QStringLiteral("握手请求未能排队"));
     });

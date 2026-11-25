@@ -59,7 +59,8 @@ Design.WorkbenchWindow {
             window.requestActivate()
         }
     }
-    Design.ChatMenu { id: chatMenu; onConsoleRequested: consoleWindow.showConsole(); onOrganizeRequested: transferDialog.begin(); onAttachRequested: imageAttachment.open(); controller: window.controller; onImageSequenceRequested: imageFolder.open() }
+    Design.SessionMailDialog { id: mailDialog; controller: window.controller }
+    Design.ChatMenu { id: chatMenu; onMailRequested: mailDialog.begin(); onConsoleRequested: consoleWindow.showConsole(); onOrganizeRequested: transferDialog.begin(); onAttachRequested: imageAttachment.open(); controller: window.controller; onImageSequenceRequested: imageFolder.open() }
     Design.BlockWindowManager { controller: window.controller; hostWindow: window }
     FileDialog {
         id: imageAttachment; title: "将图片加入会话"
