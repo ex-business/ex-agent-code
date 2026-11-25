@@ -54,6 +54,8 @@ public:
     Q_INVOKABLE void reconcile();
     Q_INVOKABLE void decide(const QString &token, bool allow);
 signals:
+    void approvalArrived(QString session, QString run, QString token, QString title);
+    void runEnded(QString session, QString run, int state, QString title);
     void changed();
     void failure(QString reason);
     void accountUpdated(bool loggedIn);

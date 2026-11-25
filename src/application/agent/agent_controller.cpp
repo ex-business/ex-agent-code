@@ -460,6 +460,7 @@ void AgentController::end(const QString &session, int state, const QString &deta
         emit rowChanged(session, m);
     save();
     emit changed();
+    emit runEnded(session, a.id, state, s->title);
 }
 void AgentController::restore()
 {
@@ -494,6 +495,7 @@ bool AgentController::consume(const QString &, const QJsonObject &e, QString *er
     if (kind == "approval") {
         if (it->stopping) return true;
         it->approvals.append(e.toVariantMap());
+        emit approvalArrived(session, it->id, e["token"].toString(), s->title);
         emit changed();
         return true;
     }

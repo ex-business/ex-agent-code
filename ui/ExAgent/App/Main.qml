@@ -24,6 +24,14 @@ Design.WorkbenchWindow {
     property bool layoutReady: false
     property bool editorCloseApproved: false
     WorkspaceController { id: workspaceController; onExitRequested: { editorExit.open(); window.raise(); window.requestActivate() } }
+    Design.GlobalNavigation {
+        id: navigation
+        chat: window.controller; workspace: workspaceController; consoleWindow: consoleWindow
+        onActivateHost: { window.raise(); window.requestActivate() }
+        onRevealChat: dock.showPanel("chat")
+        onRevealFiles: window.revealFiles()
+        onApprovalRequested: token => agentApproval.present(token)
+    }
     Design.AgentApprovalDialog { id: agentApproval; controller: window.controller }
     Design.WorkspaceActivityDialog {
         id: workspaceActivity
@@ -170,6 +178,9 @@ Design.WorkbenchWindow {
             Layout.preferredWidth: 50
             Layout.fillHeight: true
             pendingCount: workspaceActivity.pendingCount
+            unread: navigation.unread
+            onJumpRequested: navigation.begin(false)
+            onInboxRequested: navigation.showInbox()
             onActivityRequested: workspaceActivity.begin()
             onSidebarRequested: dock.togglePanel("navigation")
         }

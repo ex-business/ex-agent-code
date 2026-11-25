@@ -9,6 +9,7 @@ import ExAgent.Chat
 Window {
     id: root
     readonly property var sleepingWorkspaces: consoleModel.sleepingWorkspaces
+    readonly property var navigationTabs: consoleModel.tabHeaders
     readonly property var activityRows: consoleModel.terminalActivity
     function openActivityTab(id: string) {
         const i = consoleModel.tabHeaders.findIndex(tab => tab.id === id)

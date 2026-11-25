@@ -58,6 +58,9 @@ qt_add_qml_module(ex_agent_chat
         infrastructure/storage/project_repository.h infrastructure/storage/project_repository.cpp
         application/agent/history_context.h application/agent/history_context.cpp
         application/agent/agent_controller.h application/agent/agent_controller.cpp
+        plugins/global_navigation/navigation_guard.h
+        plugins/global_navigation/quick_file_index.h plugins/global_navigation/quick_file_index.cpp
+        plugins/global_navigation/notification_center.h plugins/global_navigation/notification_center.cpp
         plugins/agent_activity/workspace_activity.cpp plugins/agent_activity/terminal_activity.cpp
         application/chat/conversation_transfer.h application/chat/conversation_transfer.cpp
         application/chat/chat_controller.h application/chat/chat_controller.cpp
@@ -113,6 +116,7 @@ endif()
 find_package(yaml-cpp CONFIG REQUIRED)
 target_link_libraries(ex_agent_chat PRIVATE yaml-cpp::yaml-cpp)
 target_link_libraries(ex_agent_chat PUBLIC ex_agent_domain ex_agent_ipc ex_agent_codex Qt6::Gui Qt6::Qml Qt6::Quick Qt6::Concurrent Qt6::WebEngineQuick Qt6::Pdf)
+target_include_directories(ex_agent_chat PRIVATE plugins/global_navigation)
 target_include_directories(ex_agent_chat PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}"
     PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/plugins/git_changes" "${CMAKE_CURRENT_SOURCE_DIR}/plugins/workspace_viewers" "${CMAKE_CURRENT_SOURCE_DIR}/plugins/workspace_editor" "${CMAKE_CURRENT_SOURCE_DIR}/plugins/terminal_settings" "${CMAKE_CURRENT_SOURCE_DIR}/plugins/appearance" "${CMAKE_CURRENT_SOURCE_DIR}/plugins/interactive_terminal" "${CMAKE_CURRENT_SOURCE_DIR}/plugins/session_history" "${CMAKE_CURRENT_SOURCE_DIR}/application/agent" "${CMAKE_CURRENT_SOURCE_DIR}/application/chat" "${CMAKE_CURRENT_SOURCE_DIR}/presentation/chat" "${CMAKE_CURRENT_SOURCE_DIR}/presentation/code")
 if(APPLE)
@@ -128,7 +132,9 @@ target_include_directories(ex_agent_chat PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/pr
 qt_add_executable(ex-agent-code MACOSX_BUNDLE app/main.cpp app/profiled_application.h app/disclosure_input_filter.h app/disclosure_input_filter.cpp app/scroll_diagnostics.h app/scroll_diagnostics.cpp app/pixel_scroll_filter.h app/pixel_scroll_filter.cpp)
 target_link_libraries(ex-agent-code PRIVATE ex_git_worktree ex_agent_worker ex_agent_chat ex_agent_chatplugin Qt6::Quick Qt6::QuickControls2)
 if(APPLE)
-    target_sources(ex_agent_chat PRIVATE platform/macos/word_boundaries.cpp)
+    target_sources(ex_agent_chat PRIVATE platform/macos/word_boundaries.cpp platform/macos/activity_notifications.mm)
+    set_source_files_properties(platform/macos/activity_notifications.mm PROPERTIES COMPILE_OPTIONS "-fobjc-arc")
+    target_link_libraries(ex_agent_chat PRIVATE "-framework UserNotifications" "-framework AppKit")
     target_link_libraries(ex_agent_chat PRIVATE "-framework CoreFoundation")
     target_sources(ex-agent-code PRIVATE platform/macos/window_chrome.mm platform/macos/inactive_hover.mm platform/macos/drawable_timing.mm)
     target_link_libraries(ex-agent-code PRIVATE "-framework AppKit" "-framework QuartzCore")

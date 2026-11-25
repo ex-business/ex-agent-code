@@ -90,7 +90,7 @@ QVariantList SessionConsole::tabHeaders() const
     QVariantList headers;
     for (const auto& tab : m_tabs) {
         const auto row = tab.toMap();
-        headers.append(QVariantMap{{"id",row["id"]},{"title",row["title"]}});
+        headers.append(QVariantMap{{"id",row["id"]},{"title",row["title"]},{"cwd",row["cwd"]}});
     }
     return headers;
 }
