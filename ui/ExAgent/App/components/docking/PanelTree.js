@@ -114,3 +114,12 @@ function geometry(tree, hidden, width, height, editing, sizes) {
     if (tree) visit(measure(tree,""),0,0,Math.max(0,width),Math.max(0,height))
     return result
 }
+
+function appendTab(node,target,id) {
+    if (node.tabs) {
+        if (!node.tabs.includes(target)) return false
+        node.tabs.push(id)
+        return true
+    }
+    return appendTab(node.a,target,id) || appendTab(node.b,target,id)
+}

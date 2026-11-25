@@ -108,7 +108,7 @@ Design.WorkbenchWindow {
         const nav = Math.min(width*0.40,reset ? 325 : layoutSettings.navWidth || 325)
         const files = Math.min((width-nav)*0.70,reset ? 600 : layoutSettings.previewWidth || 600)
         return {axis:1,fraction:nav/width,a:{tabs:["navigation"],active:"navigation"},
-            b:{axis:1,fraction:1-files/(width-nav),a:{tabs:["chat"],active:"chat"},b:{tabs:["files"],active:"files"}}}
+            b:{axis:1,fraction:1-files/(width-nav),a:{tabs:["chat"],active:"chat"},b:{tabs:["files","browser"],active:"files"}}}
     }
     function revealFiles() {
         if (dock.suppressed.includes("files")) dock.customized = true
@@ -180,6 +180,7 @@ Design.WorkbenchWindow {
             pendingCount: workspaceActivity.pendingCount
             unread: navigation.unread
             onJumpRequested: navigation.begin(false)
+            onBrowserRequested: dock.showPanel("browser")
             onInboxRequested: navigation.showInbox()
             onActivityRequested: workspaceActivity.begin()
             onSidebarRequested: dock.togglePanel("navigation")
@@ -187,9 +188,10 @@ Design.WorkbenchWindow {
         Design.DockSurface {
             id: dock
             Layout.fillWidth: true; Layout.fillHeight: true
-            titles: ({"navigation":"项目","chat":"聊天","files":"文件"})
-            minimumSizes: ({"navigation":[200,120],"chat":[360,240],"files":[260,160]})
-            initialHidden: (layoutSettings.sidebarShown ? [] : ["navigation"]).concat(layoutSettings.filesShown ? [] : ["files"])
+            titles: ({"navigation":"项目","chat":"聊天","files":"文件","browser":Design.UiText.get("工作区浏览器")})
+            minimumSizes: ({"navigation":[200,120],"chat":[360,240],"files":[260,160],"browser":[290,160]})
+            optionalTabs: ({"browser":"files"})
+            initialHidden: ["browser"].concat(layoutSettings.sidebarShown ? [] : ["navigation"]).concat(layoutSettings.filesShown ? [] : ["files"])
             suppressed: !customized && window.width < 1100 ? ["files"] : []
             makeDefault: window.defaultPanels
             Design.DockPanel {
@@ -294,6 +296,14 @@ Design.WorkbenchWindow {
                         controller: window.controller
                         onSubmitted: transcript.revealLatest()
                     }
+                }
+            }
+            Design.DockPanel {
+                host: dock; panelId: "browser"
+                Design.WorkspaceBrowser {
+                    anchors.fill: parent
+                    workspaceId: window.controller.currentWorkspaceId
+                    writable: window.controller.projects.writable
                 }
             }
             Design.DockPanel {

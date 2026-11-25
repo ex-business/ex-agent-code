@@ -10,6 +10,7 @@ Item {
     property var minimumSizes: ({})
     required property var makeDefault
     required property var initialHidden
+    property var optionalTabs: ({})
     property var tree: null
     property var hidden: []
     property var suppressed: []
@@ -40,6 +41,15 @@ Item {
         const ids = Object.keys(titles)
         let saved = null
         try { saved = JSON.parse(prefs.value(next,"null")) } catch (e) {}
+        // 新插件作为隐藏页签加入旧布局，保留用户拆分的比例、顺序和选中页。
+        if (saved && saved.version === 1 && Array.isArray(saved.hidden)) {
+            const additions = Object.keys(optionalTabs)
+            if (additions.length && Tree.validate(saved.tree,ids.filter(id=>!additions.includes(id)))) {
+                for (const id of additions) {
+                    if (Tree.appendTab(saved.tree,optionalTabs[id],id)) saved.hidden.push(id)
+                }
+            }
+        }
         const valid = saved && saved.version === 1 && Tree.validate(saved.tree,ids)
                 && Array.isArray(saved.hidden) && saved.hidden.every(id => ids.includes(id)) && saved.hidden.length < ids.length
         dragging = ""; destination = null; arranging = false
@@ -49,7 +59,7 @@ Item {
     }
     function resetLayout() {
         dragging = ""; destination = null
-        customized = false; hidden = []; tree = makeDefault(true)
+        customized = false; hidden = Object.keys(optionalTabs); tree = makeDefault(true)
         store()
     }
     function showPanel(id: string) {
