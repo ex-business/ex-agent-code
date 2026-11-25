@@ -48,6 +48,18 @@ ColumnLayout {
             x: 12; y: 10
             width: parent.width - 24
             spacing: 5
+            RowLayout {
+                Layout.fillWidth: true
+                visible: root.controller.designCaptureBusy || !!root.controller.designSelection.selector
+                spacing: 6
+                Design.Icon { name: "select"; Layout.preferredWidth: 16; Layout.preferredHeight: 16 }
+                Text {
+                    Layout.fillWidth: true
+                    text: root.controller.designCaptureBusy ? Design.UiText.get("正在准备页面截图…") : root.controller.designSelection.selector || ""
+                    color: Design.Theme.secondary; font.pixelSize: 12; textFormat: Text.PlainText; elide: Text.ElideMiddle
+                }
+                Design.IconButton { iconName: "close"; iconSize: 13; implicitHeight: 24; implicitWidth: 24; tooltip: Design.UiText.get("移除页面附件"); onClicked: root.controller.clearDesignSelection() }
+            }
             ScrollView {
                 id: inputScroll
                 Layout.fillWidth: true
@@ -118,7 +130,7 @@ ColumnLayout {
                 configurable: root.controller.projects.writable && !root.controller.previewMode
                 onSettingsRequested: agentSettings.open()
                 Layout.fillWidth: true
-                hasText: editor.text.trim().length > 0
+                hasText: editor.text.trim().length > 0 && !root.controller.designCaptureBusy
                 canPaste: editor.canPaste
                 onSendRequested: root.send()
                 onPasteRequested: editor.paste()

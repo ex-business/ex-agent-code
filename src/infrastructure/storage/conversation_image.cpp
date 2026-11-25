@@ -24,6 +24,11 @@ ImageImport importConversationImage(const QString &source, const QString &direct
         return {{}, QStringLiteral("图片无法读取或超过 20 MiB。")};
     QByteArray bytes = input.read(limit + 1);
     if (bytes.size() != input.size() || bytes.size() > limit) return {{}, QStringLiteral("读取期间图片大小发生变化。")};
+    return storeConversationImage(std::move(bytes), directory, name);
+}
+
+ImageImport storeConversationImage(QByteArray bytes, const QString &directory, const QString &name)
+{
     QBuffer buffer(&bytes);
     buffer.open(QIODevice::ReadOnly);
     QImageReader reader(&buffer);

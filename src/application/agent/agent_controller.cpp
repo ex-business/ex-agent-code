@@ -1,4 +1,5 @@
 #include "agent_controller.h"
+#include "plugins/design_mode/design_selection.h"
 #include "history_context.h"
 #include "agent/codex/codex_account.h"
 #include "agent/codex/thread_input.h"
@@ -326,6 +327,18 @@ bool AgentController::submit(const QString &text, const QString &cwd, const QVar
     ChatMessage user;
     user.id = newId();
     user.content = text;
+    // 页面附件只随普通草稿发送，与批注和手动选择的历史保持各自归属。
+    if (reviewNote.isEmpty()) {
+        QString path;
+        const auto error = design::apply(design::pending(*s), m_repository.sessionDirectory(s->projectId,s->id), user, path);
+        if (!error.isEmpty()) { emit failure(error); return false; }
+        if (!path.isEmpty()) {
+            auto images = spec.value("images").toArray();
+            images.append(path);
+            spec.insert("images",images);
+            spec.insert("designElement", QJsonObject::fromVariantMap(user.activity.value("designElement").toMap()));
+        }
+    }
     ChatMessage marker;
     marker.id = run;
     marker.role = MessageRole::Notice;
@@ -341,6 +354,7 @@ bool AgentController::submit(const QString &text, const QString &cwd, const QVar
     s->messages.append(user);
     s->messages.append(marker);
     if (reviewNote.isEmpty()) {
+        design::setPending(*s, {});
         s->draft.clear();
     } else {
         // 与发送消息一起落盘，失败时整次回滚，同时保留输入框原有草稿。

@@ -1,4 +1,5 @@
 #pragma once
+#include <QImage>
 
 #include "infrastructure/storage/project_repository.h"
 #include "application/project/project_navigator.h"
@@ -35,6 +36,8 @@ class ChatController final : public QObject {
     Q_PROPERTY(QString currentResourceId READ currentResourceId NOTIFY sessionChanged)
     Q_PROPERTY(QString currentSessionId READ currentSessionId NOTIFY sessionChanged)
     Q_PROPERTY(QString sessionTitle READ sessionTitle NOTIFY sessionChanged)
+    Q_PROPERTY(QVariantMap designSelection READ designSelection NOTIFY designSelectionChanged)
+    Q_PROPERTY(bool designCaptureBusy READ designCaptureBusy NOTIFY designSelectionChanged)
     Q_PROPERTY(QString draft READ draft WRITE setDraft NOTIFY draftChanged)
     Q_PROPERTY(QString errorMessage READ errorMessage NOTIFY errorChanged)
     Q_PROPERTY(bool previewMode READ previewMode NOTIFY sessionChanged)
@@ -84,6 +87,10 @@ public:
     QString resourcePath() const;
     QVariantMap changeSummary() const { return m_preview ? m_changeSummary : m_current < 0 ? QVariantMap{} : m_sessions[m_current].history.value("changeSummary").toMap(); }
     int activityStatus() const { return m_preview ? m_activityStatus : m_current < 0 ? 0 : m_sessions[m_current].history.value("activityStatus").toInt(); }
+    QVariantMap designSelection() const;
+    bool designCaptureBusy() const;
+    Q_INVOKABLE void clearDesignSelection();
+    Q_INVOKABLE void captureDesignElement(const QString &session, const QVariantMap &details, const QImage &surface);
     void setDraft(const QString &text);
     Q_INVOKABLE void newSession();
     Q_INVOKABLE void selectSession(const QString &id);
@@ -120,6 +127,7 @@ signals:
     void sessionChanged();
     void workspaceChanged();
     void draftChanged();
+    void designSelectionChanged();
     void reviewNotesChanged();
     void reviewEvidenceChanged();
     void errorChanged();
@@ -161,6 +169,7 @@ private:
     MediaContentTask m_mediaTask;
     QThreadPool m_exporter;
     int m_exportPending = 0;
+    QHash<QString, QString> m_designCaptures;
     QHash<QString, QString> m_internalTasks;
     QHash<QString, QString> m_backgroundTasks;
     QList<QJsonObject> m_waitingTasks;

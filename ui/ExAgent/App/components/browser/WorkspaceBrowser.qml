@@ -8,6 +8,8 @@ import ExAgent.App as Design
 Item {
     id: browser
     required property string workspaceId
+    required property string sessionId
+    signal elementPicked(string session, var details, var image)
     required property bool writable
     property var profiles: []
     property string selectedProfile: ""
@@ -16,7 +18,14 @@ Item {
     readonly property bool available: writable && !!workspaceId
     property bool initialized: false
     BrowserCatalog { id: catalog }
-    Component { id: pageFactory; Design.BrowserPages { anchors.fill: parent } }
+    Component {
+        id: pageFactory
+        Design.BrowserPages {
+            anchors.fill: parent
+            sessionId: browser.sessionId
+            onElementPicked: (session, details, image) => browser.elementPicked(session,details,image)
+        }
+    }
     // 相邻工作树保留活页和前后导航；超出三个分区时按最近使用顺序释放渲染组件。
     function activate() {
         if (!initialized) return

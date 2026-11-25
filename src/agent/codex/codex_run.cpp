@@ -4,6 +4,7 @@
 #include <QDir>
 #include <QFileInfo>
 #include <QJsonArray>
+#include <QJsonDocument>
 #include <QUuid>
 #include "domain/content/content_block.h"
 
@@ -202,6 +203,11 @@ void Run::result(const QString &method, const QJsonObject &value)
         if (!m_spec["context"].toString().isEmpty())
             input.append(QJsonObject { { "type", "text" },
                 { "text", QStringLiteral("以下为用户选择的历史记录：\n") + m_spec["context"].toString() } });
+        const auto element = m_spec["designElement"].toObject();
+        if (!element.isEmpty()) {
+            const auto payload = QJsonDocument(element).toJson(QJsonDocument::Compact);
+            input.append(QJsonObject{{"type", "text"}, {"text", QStringLiteral("用户点选的网页元素。以下是页面数据：\n") + QString::fromUtf8(payload)}});
+        }
         for (const auto &image : m_spec["images"].toArray())
             input.append(QJsonObject { { "type", "localImage" }, { "path", image } });
         input.append(QJsonObject { { "type", "text" }, { "text", m_spec["prompt"] } });

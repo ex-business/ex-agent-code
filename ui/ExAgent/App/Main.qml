@@ -303,6 +303,13 @@ Design.WorkbenchWindow {
                 Design.WorkspaceBrowser {
                     anchors.fill: parent
                     workspaceId: window.controller.currentWorkspaceId
+                    sessionId: window.controller.currentSessionId
+                    onElementPicked: (session,details,image) => {
+                        if (session !== window.controller.currentSessionId) return
+                        window.controller.captureDesignElement(session,details,image)
+                        dock.showPanel("chat")
+                        composer.input.forceActiveFocus()
+                    }
                     writable: window.controller.projects.writable
                 }
             }

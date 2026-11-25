@@ -1,4 +1,5 @@
 #include "chat_controller.h"
+#include "plugins/design_mode/design_selection.h"
 #include "infrastructure/storage/conversation_image.h"
 #include "application/services/media_file_exporter.h"
 
@@ -24,6 +25,7 @@ ChatController::ChatController(QObject *parent)
     : QObject(parent), m_messages(this), m_sessionModel(this),
       m_repository(QStandardPaths::writableLocation(QStandardPaths::AppDataLocation)), m_service(this), m_blocks(this), m_blockViews(m_blocks, this), m_externalBlocks(m_blocks), m_internalTask(m_blocks, this), m_mediaCatalog(QStandardPaths::writableLocation(QStandardPaths::AppDataLocation), this), m_mediaTask(m_blocks, m_mediaCatalog, this)
 {
+    connect(this, &ChatController::sessionChanged, this, &ChatController::designSelectionChanged);
     connect(this, &ChatController::workspaceChanged, this, &ChatController::reviewNotesChanged);
     connect(this,&ChatController::sessionChanged,this,[this] {
         m_agent.select(m_preview ? QString{} : currentSessionId(),m_storageWritable && !m_preview);
@@ -250,6 +252,7 @@ bool ChatController::sendMessage()
     const auto text = draft().trimmed();
     if (!m_storageWritable) { setError(QStringLiteral("项目目录只读，无法保存消息。")); return false; }
     if (m_current < 0 || text.isEmpty()) return false;
+    if (designCaptureBusy()) { setError(QStringLiteral("正在准备页面截图，请稍后发送。")); return false; }
     if (text.size() > 64 * 1024) {
         setError(QStringLiteral("单条消息不能超过 64K 字符，请拆分后发送。"));
         return false;
@@ -259,13 +262,19 @@ bool ChatController::sendMessage()
         // 预览输入只创建新的本地会话，样例不混入真实聊天历史。
         newSession();
     }
+    ChatMessage message;
+    QString imagePath;
+    auto &session = m_sessions[m_current];
+    const auto error = design::apply(design::pending(session), m_repository.sessionDirectory(session.projectId,session.id), message, imagePath);
+    if (!error.isEmpty()) { setError(error); return false; }
+    design::setPending(session, {});
+    emit designSelectionChanged();
     if (m_messages.count() == 0) {
         m_sessions[m_current].title = text.simplified().left(32);
         emit sessionChanged();
     }
     m_sessions[m_current].draft.clear();
     emit draftChanged();
-    ChatMessage message;
     message.id = createId();
     message.content = text;
     m_messages.append(message);

@@ -8,6 +8,12 @@ import ExAgent.App as Design
 
 Item {
     id: pages
+    required property string sessionId
+    property bool picking: false
+    signal elementPicked(string session, var details, var image)
+    onForegroundChanged: if (!foreground) picking = false
+    onCurrentChanged: picking = false
+    onSessionIdChanged: picking = false
     required property string partition
     required property BrowserCatalog catalog
     property bool foreground: false
@@ -106,6 +112,13 @@ Item {
             Design.IconButton { iconName:"back"; tooltip:Design.UiText.get("后退"); enabled: !!pages.web && pages.web.canGoBack; onClicked:pages.web.goBack() }
             Design.IconButton { iconName:"forward"; tooltip:Design.UiText.get("前进"); enabled: !!pages.web && pages.web.canGoForward; onClicked:pages.web.goForward() }
             Design.IconButton { iconName:pages.web && pages.web.loading ? "close" : "refresh"; tooltip:Design.UiText.get(pages.web && pages.web.loading ? "停止加载" : "重新加载"); enabled: !!pages.web; onClicked:pages.web.loading ? pages.web.stop() : pages.web.reload() }
+            Design.IconButton {
+                iconName: "select"
+                tooltip: Design.UiText.get(pages.picking ? "取消点选" : "点选网页元素")
+                iconColor: pages.picking ? Design.Theme.accent : Design.Theme.secondary
+                enabled: !!pages.web && !pages.web.loading && pages.catalog.allowed(pages.web.url)
+                onClicked: { pages.pageError = ""; pages.picking = !pages.picking }
+            }
             Design.DialogInput { id: address; Layout.fillWidth:true; Layout.minimumWidth:0; enabled: pages.ready
                 placeholderText:Design.UiText.get("输入网址或 localhost 地址"); onAccepted:pages.navigate()
                 onActiveFocusChanged: if (!activeFocus && pages.ready) pages.restoreAddress()
@@ -162,6 +175,19 @@ Item {
                             else if (slot.index===pages.current && info.status===WebEngineView.LoadStartedStatus) pages.pageError=""
                         }
                     }
+                }
+            }
+            Design.DesignPicker {
+                anchors.fill: parent
+                view: pages.web
+                sessionId: pages.sessionId
+                visible: pages.picking && pages.foreground && !!view
+                onCancelled: pages.picking = false
+                onRejected: reason => pages.pageError = reason
+                onPicked: (session,details,image) => {
+                    pages.picking = false
+                    pages.pageError = ""
+                    pages.elementPicked(session,details,image)
                 }
             }
         }

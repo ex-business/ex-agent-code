@@ -28,6 +28,7 @@ qt_add_resources(ex_agent_chat "terminal_hibernation" PREFIX "/terminal-hibernat
     BASE "plugins/session_history" FILES plugins/session_history/pi_activity.mjs plugins/session_history/pi_hibernation.mjs)
 qt_add_resources(ex_agent_chat "appearance_packs" PREFIX "/appearance" BASE plugins/appearance/packs
     FILES plugins/appearance/packs/dark.json plugins/appearance/packs/en.json plugins/appearance/packs/light.json plugins/appearance/packs/zh-CN.json)
+qt_add_resources(ex_agent_chat design_element_script PREFIX "/design-mode" BASE plugins/design_mode FILES plugins/design_mode/element_probe.js)
 qt_add_qml_module(ex_agent_chat
     URI ExAgent.Chat
     VERSION 1.0
@@ -58,6 +59,8 @@ qt_add_qml_module(ex_agent_chat
         infrastructure/storage/project_repository.h infrastructure/storage/project_repository.cpp
         application/agent/history_context.h application/agent/history_context.cpp
         application/agent/agent_controller.h application/agent/agent_controller.cpp
+        plugins/design_mode/design_probe.cpp plugins/design_mode/design_probe.h
+        plugins/design_mode/design_selection.cpp plugins/design_mode/chat_design_selection.cpp
         plugins/workspace_browser/browser_catalog.h plugins/workspace_browser/browser_catalog.cpp
         plugins/global_navigation/navigation_guard.h
         plugins/global_navigation/quick_file_index.h plugins/global_navigation/quick_file_index.cpp
@@ -117,7 +120,7 @@ endif()
 find_package(yaml-cpp CONFIG REQUIRED)
 target_link_libraries(ex_agent_chat PRIVATE yaml-cpp::yaml-cpp)
 target_link_libraries(ex_agent_chat PUBLIC ex_agent_domain ex_agent_ipc ex_agent_codex Qt6::Gui Qt6::Qml Qt6::Quick Qt6::Concurrent Qt6::WebEngineQuick Qt6::Pdf)
-target_include_directories(ex_agent_chat PRIVATE plugins/global_navigation plugins/workspace_browser)
+target_include_directories(ex_agent_chat PRIVATE plugins/global_navigation plugins/workspace_browser plugins/design_mode)
 target_include_directories(ex_agent_chat PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}"
     PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/plugins/git_changes" "${CMAKE_CURRENT_SOURCE_DIR}/plugins/workspace_viewers" "${CMAKE_CURRENT_SOURCE_DIR}/plugins/workspace_editor" "${CMAKE_CURRENT_SOURCE_DIR}/plugins/terminal_settings" "${CMAKE_CURRENT_SOURCE_DIR}/plugins/appearance" "${CMAKE_CURRENT_SOURCE_DIR}/plugins/interactive_terminal" "${CMAKE_CURRENT_SOURCE_DIR}/plugins/session_history" "${CMAKE_CURRENT_SOURCE_DIR}/application/agent" "${CMAKE_CURRENT_SOURCE_DIR}/application/chat" "${CMAKE_CURRENT_SOURCE_DIR}/presentation/chat" "${CMAKE_CURRENT_SOURCE_DIR}/presentation/code")
 if(APPLE)
