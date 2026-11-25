@@ -16,6 +16,7 @@ class AgentController final : public QObject {
     Q_PROPERTY(bool stopping READ stopping NOTIFY changed)
     Q_PROPERTY(bool busy READ busy NOTIFY changed)
     Q_PROPERTY(QVariantMap approval READ approval NOTIFY changed)
+    Q_PROPERTY(int pendingApprovalCount READ pendingApprovalCount NOTIFY changed)
     Q_PROPERTY(QStringList models READ models NOTIFY changed)
     Q_PROPERTY(QString contextLabel READ contextLabel NOTIFY changed)
     Q_PROPERTY(bool authenticating READ authenticating NOTIFY changed)
@@ -24,6 +25,7 @@ public:
     ~AgentController() override;
     void select(const QString &session, bool writable);
     void restore();
+    void indexWorkspaceActivity();
     Q_INVOKABLE QVariantMap terminalBinding(const QString& workspace) const;
     QStringList models() const { return m_models; }
     QString contextLabel() const;
@@ -40,6 +42,9 @@ public:
         return run != m_active.cend() && run->stopping;
     }
     QVariantMap approval() const;
+    int pendingApprovalCount() const;
+    Q_INVOKABLE QVariantList workspaceActivity(bool waitingOnly) const;
+    Q_INVOKABLE bool requestPending(const QString &session, const QString &run, const QString &token) const;
     bool authenticating() const { return m_login.state() != QProcess::NotRunning; }
     bool submit(const QString &text, const QString &cwd, const QVariantMap &reviewNote = {});
     Q_INVOKABLE void configure(int account, const QString &model, bool write, bool fullAccess = false);
@@ -76,6 +81,7 @@ private:
     QString m_selected;
     bool m_writable = false;
     QHash<QString, Active> m_active;
+    QHash<QString, qsizetype> m_latestMarker;
     QHash<QString, QString> m_starts;
     LocalServiceProcess m_worker;
     QHash<QString, QVariantMap> m_contexts;

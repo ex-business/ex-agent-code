@@ -81,6 +81,7 @@ ChatController::ChatController(QObject *parent)
     });
     QString error;
     m_sessions = m_repository.load(m_projects.catalog, &error);
+    m_agent.indexWorkspaceActivity();
     m_storageWritable = error.isEmpty();
     m_projects.setWritable(m_storageWritable);
     connect(&m_projects, &ProjectNavigator::openGroup, this, &ChatController::openGroup);

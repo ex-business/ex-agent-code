@@ -251,7 +251,8 @@ void Run::approval(const QString &method, const QJsonValue &id, const QJsonObjec
 bool Run::decide(const QString &token, bool allow)
 {
     auto it = m_approvals.find(token);
-    if (m_done || it == m_approvals.end())
+    // 停止后只允许拒绝，避免晚到的旧授权启动工具。
+    if (m_done || (m_stopping && allow) || it == m_approvals.end())
         return false;
     const auto id = it.value();
     m_approvals.erase(it);

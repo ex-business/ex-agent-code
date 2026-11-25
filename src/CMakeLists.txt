@@ -58,6 +58,7 @@ qt_add_qml_module(ex_agent_chat
         infrastructure/storage/project_repository.h infrastructure/storage/project_repository.cpp
         application/agent/history_context.h application/agent/history_context.cpp
         application/agent/agent_controller.h application/agent/agent_controller.cpp
+        plugins/agent_activity/workspace_activity.cpp plugins/agent_activity/terminal_activity.cpp
         application/chat/conversation_transfer.h application/chat/conversation_transfer.cpp
         application/chat/chat_controller.h application/chat/chat_controller.cpp
         application/services/internal_content_task.h application/services/internal_content_task.cpp

@@ -9,6 +9,18 @@ import ExAgent.Chat
 Window {
     id: root
     readonly property var sleepingWorkspaces: consoleModel.sleepingWorkspaces
+    readonly property var activityRows: consoleModel.terminalActivity
+    function openActivityTab(id: string) {
+        const i = consoleModel.tabHeaders.findIndex(tab => tab.id === id)
+        if (i < 0) return
+        selectTab(i)
+        if (floating.visible && floatingId === id) { floating.raise(); floating.requestActivate(); return }
+        showConsole()
+        if (consoleModel.ownsInput && primary.supported) {
+            interactive.checked = true
+            Qt.callLater(() => primary.focusTerminal())
+        }
+    }
     required property string workspace
     signal returnRequested(string conversation)
     required property AgentController agent

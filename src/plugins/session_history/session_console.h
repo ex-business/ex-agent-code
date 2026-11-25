@@ -12,6 +12,7 @@ class SessionConsole : public QObject {
     Q_PROPERTY(QVariantList history MEMBER m_history NOTIFY changed)
     Q_PROPERTY(QVariantList tabs READ tabs NOTIFY changed)
     Q_PROPERTY(QVariantList tabHeaders READ tabHeaders NOTIFY tabsChanged)
+    Q_PROPERTY(QVariantList terminalActivity READ terminalActivity NOTIFY terminalActivityChanged)
     Q_PROPERTY(bool ownsInput READ ownsInput CONSTANT)
     Q_PROPERTY(int selected READ selected NOTIFY changed)
     Q_PROPERTY(QVariantMap current READ current NOTIFY changed)
@@ -23,6 +24,7 @@ public:
     explicit SessionConsole(QObject* parent = nullptr);
     ~SessionConsole() override;
     QVariantList tabHeaders() const;
+    QVariantList terminalActivity() const { return m_terminalActivity; }
     QVariantList tabs() const { return m_tabs; }
     bool ownsInput() const { return m_writer->isLocked(); }
     int selected() const { return m_selected; }
@@ -52,6 +54,7 @@ public:
 signals:
     void changed();
     void tabsChanged();
+    void terminalActivityChanged();
     void scrollbackReady(int serial, QString text);
     void activityReady(QString workspace, QVariantList rows);
 
@@ -59,6 +62,9 @@ private:
     void start(const QString& title, const QString& cwd, const QStringList& command, const QString& origin, const QStringList& environment = {}, const QString& conversation = {});
     void save();
     void updateHibernation();
+    void refreshTerminalActivity();
+    bool m_readingActivity = false;
+    QVariantList m_terminalActivity;
     bool wake(int index);
     bool m_sleepEnabled = false, m_visible = false;
     QHash<QString, QString> m_drafts;

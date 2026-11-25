@@ -354,6 +354,7 @@ bool AgentController::submit(const QString &text, const QString &cwd, const QVar
         return false;
     }
     if (reviewNote.isEmpty()) m_contexts.remove(s->id);
+    m_latestMarker.insert(s->id, s->messages.size() - 1);
     m_active.insert(s->id, { run, spec, {}, false });
     emit rowChanged(s->id, user);
     emit rowChanged(s->id, marker);
@@ -418,13 +419,15 @@ void AgentController::stop()
         emit failure(QStringLiteral("停止请求未送达。"));
         return;
     }
+    // 停止请求已经排队，未处理的授权不能再放行工具。
     it->stopping = true;
+    it->approvals.clear();
     emit changed();
 }
 void AgentController::decide(const QString &token, bool allow)
 {
     auto it = m_active.find(m_selected);
-    if (it == m_active.end() || approval().value("token").toString() != token || token.isEmpty())
+    if (it == m_active.end() || it->stopping || approval().value("token").toString() != token || token.isEmpty())
         return;
     if (m_worker.request("agent.approve", { { "runId", it->id }, { "token", token }, { "allow", allow } })
             .isEmpty()) {
@@ -447,8 +450,10 @@ void AgentController::end(const QString &session, int state, const QString &deta
             continue;
         m.status = messageStatus(state);
         m.activity.insert("taskState", state);
-        if (m.id == a.id)
+        if (m.id == a.id) {
             m.content = detail;
+            m.activity.insert("finishedAt", QDateTime::currentDateTimeUtc());
+        }
         updates.append(m);
     }
     for (const auto &m : updates)
@@ -487,6 +492,7 @@ bool AgentController::consume(const QString &, const QJsonObject &e, QString *er
         return true;
     }
     if (kind == "approval") {
+        if (it->stopping) return true;
         it->approvals.append(e.toVariantMap());
         emit changed();
         return true;

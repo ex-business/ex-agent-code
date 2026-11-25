@@ -25,6 +25,20 @@ Design.WorkbenchWindow {
     property bool editorCloseApproved: false
     WorkspaceController { id: workspaceController; onExitRequested: { editorExit.open(); window.raise(); window.requestActivate() } }
     Design.AgentApprovalDialog { id: agentApproval; controller: window.controller }
+    Design.WorkspaceActivityDialog {
+        id: workspaceActivity
+        terminalRows: consoleWindow.activityRows
+        onOpenTerminal: id => { close(); consoleWindow.openActivityTab(id) }
+        agent: window.controller.agent
+        onOpenRun: (session, run, token) => {
+            if (token && !agent.requestPending(session, run, token)) { refresh(); return }
+            window.controller.selectSession(session)
+            if (window.controller.currentSessionId !== session) { refresh(); return }
+            dock.showPanel("chat")
+            close()
+            if (token) agentApproval.present(token)
+        }
+    }
     Design.ConversationTransferDialog { id: transferDialog; controller: window.controller }
     Design.SessionConsoleWindow {
         id: consoleWindow
@@ -155,6 +169,8 @@ Design.WorkbenchWindow {
         Design.NavigationRail {
             Layout.preferredWidth: 50
             Layout.fillHeight: true
+            pendingCount: workspaceActivity.pendingCount
+            onActivityRequested: workspaceActivity.begin()
             onSidebarRequested: dock.togglePanel("navigation")
         }
         Design.DockSurface {
@@ -257,7 +273,7 @@ Design.WorkbenchWindow {
                         onFileRequested: (path) => { window.revealFiles(); workspaceController.open(path) }
                     }
                     Design.Composer {
-                        onApprovalRequested: agentApproval.open()
+                        onApprovalRequested: agentApproval.present(window.controller.agent.approval.token || "")
                         id: composer
                         Layout.fillWidth: true
                         Layout.maximumWidth: Math.min(parent.width - 30, 780)

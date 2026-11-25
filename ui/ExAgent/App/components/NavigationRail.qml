@@ -6,6 +6,8 @@ import ExAgent.App as Design
 Rectangle {
     id: root
     signal sidebarRequested()
+    signal activityRequested()
+    property int pendingCount: 0
     color: Design.Theme.dark ? "#242424" : "#f5f5f5"
     ColumnLayout {
         anchors.fill: parent
@@ -14,12 +16,23 @@ Rectangle {
         Repeater {
             model: ["home", "folder", "clock", "chat", "dots", "grid"]
             delegate: Design.IconButton {
+                id: button
                 required property string modelData
                 Layout.alignment: Qt.AlignHCenter
                 implicitWidth: 36; implicitHeight: 34
                 iconName: modelData
-                tooltip: modelData === "home" ? Design.UiText.get("显示或收起导航") : "导航展示 · " + modelData
-                onClicked: if (modelData === "home") root.sidebarRequested()
+                tooltip: modelData === "home" ? Design.UiText.get("显示或收起导航") : modelData === "clock" ? Design.UiText.get("工作区活动") : "导航展示 · " + modelData
+                onClicked: {
+                    if (modelData === "home") root.sidebarRequested()
+                    else if (modelData === "clock") root.activityRequested()
+                }
+                Rectangle {
+                    visible: button.modelData === "clock" && root.pendingCount > 0
+                    anchors.right: parent.right; anchors.top: parent.top
+                    width: Math.max(16, countText.implicitWidth + 6); height: 16; radius: 8
+                    color: Design.Theme.accent
+                    Text { id: countText; anchors.centerIn: parent; text: root.pendingCount; color: Design.Theme.onAccent; font.pixelSize: 10 }
+                }
             }
         }
         Item { Layout.fillHeight: true }

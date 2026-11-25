@@ -43,6 +43,9 @@ SessionConsole::SessionConsole(QObject* parent)
     auto* maintenance = new QTimer(this);
     maintenance->setInterval(5000);
     connect(maintenance, &QTimer::timeout, this, &SessionConsole::updateHibernation);
+    connect(maintenance, &QTimer::timeout, this, &SessionConsole::refreshTerminalActivity);
+    connect(this, &SessionConsole::tabsChanged, this, &SessionConsole::refreshTerminalActivity);
+    QTimer::singleShot(0, this, &SessionConsole::refreshTerminalActivity);
     maintenance->start();
     m_tabs = s.value("terminal/tabs").toList();
     m_selected = qBound(-1, s.value("terminal/selected", -1).toInt(), int(m_tabs.size()) - 1);
