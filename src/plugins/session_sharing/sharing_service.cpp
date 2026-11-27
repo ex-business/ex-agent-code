@@ -1,4 +1,5 @@
 #include "sharing_service.h"
+#include "plugins/mobile_gateway/mobile_service.h"
 #include <QDateTime>
 #include <QLoggingCategory>
 #include <QScopedValueRollback>
@@ -9,6 +10,19 @@ namespace exagent::sharing {
 Service::Service(control::Host &host)
     : QObject(&host), m_host(host),
       m_epoch(QUuid::createUuid().toString(QUuid::WithoutBraces)) {
+  if (auto *gateway = qobject_cast<mobile::Service *>(host.chat.mobile())) {
+    QPointer<Service> guard(this);
+    gateway->auditShared = [guard](const QString &session, int event,
+                                   const QString &actor, const QString &object,
+                                   int phase, const QString &op, QString *e) {
+      if (!guard) {
+        *e = QStringLiteral("共享审计插件已退出。");
+        return false;
+      }
+      return guard->m_audit.append(session, Event(event), actor, object,
+                                   Phase(phase), op, e);
+    };
+  }
   m_clock.start();
   auto *expiry = new QTimer(this);
   expiry->setInterval(1000);
@@ -20,6 +34,11 @@ Service::Service(control::Host &host)
   const QList<QPair<QString, QSet<QString>>> methods{
       {"offer", {"session", "scope"}},
       {"status", {"session"}},
+      {"invites", {"session"}},
+      {"cancel-invite", {"session", "id"}},
+      {"close", {"session", "epoch", "revision"}},
+      {"revoke", {"session", "device"}},
+      {"audit", {"session", "after", "limit"}},
       {"grant", {"session", "device", "epoch", "revision"}},
       {"reclaim", {"session", "epoch", "revision"}},
       {"access", {"session", "device"}},
@@ -63,6 +82,12 @@ Service::Lease &Service::lease(const QString &session) {
   // 使用单调时钟判断失联；撤销、授权过期也在每次派发前重新核实。
   if (!value.device.isEmpty() && (value.deadline <= m_clock.elapsed() ||
                                   !eligible(device(value.device), session))) {
+    const auto previous = value.device;
+    const auto op = QUuid::createUuid().toString(QUuid::WithoutBraces);
+    QString warning;
+    if (!m_audit.append(session, Event::Expire, "runtime", previous,
+                        Phase::Completed, op, &warning))
+      qCWarning(sharingLog) << warning;
     value.device.clear();
     value.deadline = 0;
     ++value.revision;
@@ -109,11 +134,35 @@ QJsonObject Service::execute(const QString &a, const QJsonObject &p,
         rows.append(d);
     }
     result.insert("devices", rows);
+    result.insert("auditState", m_audit.state());
     return result;
+  }
+  if (a == "invites")
+    return m_host.invoke("mobile.offers", {{"session", session}}, e);
+  if (a == "cancel-invite")
+    return m_host.invoke("mobile.cancel-offer",
+                         {{"session", session}, {"id", p["id"]}}, e);
+  if (a == "audit") {
+    const auto after = p["after"].isUndefined() ? QJsonValue(0) : p["after"],
+               limit = p["limit"].isUndefined() ? QJsonValue(20) : p["limit"];
+    if (!ipc::integer(after, 0, 4096) || !ipc::integer(limit, 1, 100)) {
+      *e = QStringLiteral("审计分页参数无效。");
+      return {};
+    }
+    return m_audit.page(session, after.toInt(), limit.toInt(), e);
   }
   const auto id = p["device"].toString();
   const auto d = device(id);
   auto &current = lease(session);
+  if (a == "revoke") {
+    if (d["session"] != session || d["sharing"].toInt() != 1) {
+      *e = QStringLiteral("设备不属于此共享会话。");
+      return {};
+    }
+    auto result = m_host.invoke("mobile.revoke", {{"id", id}}, e);
+    lease(session);
+    return result;
+  }
   if (a == "access") {
     if (current.device == id)
       current.deadline = m_clock.elapsed() + 60000;
@@ -133,6 +182,24 @@ QJsonObject Service::execute(const QString &a, const QJsonObject &p,
     }
     return true;
   };
+  if (a == "close") {
+    if (!checkRevision())
+      return {};
+    auto result =
+        m_host.invoke("mobile.close-shared", {{"session", session}}, e);
+    if (!e->isEmpty())
+      return {};
+    // 关闭只撤销此会话的共享授权；普通移动设备与其他会话继续沿用既有授权。
+    current.device.clear();
+    current.deadline = 0;
+    current.requests.clear();
+    ++current.revision;
+    QTimer::singleShot(0, this, [this, session] {
+      m_host.chat.agent()->reconsiderSessionInput(session);
+    });
+    result.insert("auditState", m_audit.state());
+    return result;
+  }
   if (a == "grant" || a == "reclaim") {
     if (!checkRevision())
       return {};
@@ -144,11 +211,28 @@ QJsonObject Service::execute(const QString &a, const QJsonObject &p,
       *e = QStringLiteral("目标协作者没有有效的发送授权。");
       return {};
     }
+    const auto op = QUuid::createUuid().toString(QUuid::WithoutBraces);
+    const auto event = a == "grant" ? Event::Grant : Event::Reclaim;
+    QString warning;
+    const auto actor = QStringLiteral("desktop"),
+               object = a == "grant" ? id : current.device;
+    // 新增控制权必须先留下意图；撤回操作不因审计故障而被阻止。
+    const bool recorded = m_audit.append(session, event, actor, object,
+                                         Phase::Intent, op, &warning);
+    if (!recorded && a == "grant") {
+      *e = warning;
+      return {};
+    }
+    if (!recorded)
+      qCWarning(sharingLog) << warning;
     // 交接只改变后续输入入口；不取消或重新启动当前正在执行的 Agent。
     current.device = a == "grant" ? id : QString();
     current.deadline = current.device.isEmpty() ? 0 : m_clock.elapsed() + 60000;
     current.requests.remove(id);
     ++current.revision;
+    if (!m_audit.append(session, event, actor, object, Phase::Completed, op,
+                        &warning))
+      qCWarning(sharingLog) << warning;
     qCInfo(sharingLog) << "共享控制权已更新，会话：" << session << "持有设备："
                        << current.device << "版本：" << current.revision;
     if (current.device.isEmpty())
@@ -167,6 +251,15 @@ QJsonObject Service::execute(const QString &a, const QJsonObject &p,
       return {};
     }
     if (p["action"].toInt() == 1) {
+      if (current.requests.contains(id))
+        return view(session);
+      const auto op = QUuid::createUuid().toString(QUuid::WithoutBraces);
+      QString warning;
+      if (!m_audit.append(session, Event::Request, id, id, Phase::Completed, op,
+                          &warning)) {
+        *e = warning;
+        return {};
+      }
       current.requests.insert(id);
       return view(session);
     }
@@ -175,6 +268,11 @@ QJsonObject Service::execute(const QString &a, const QJsonObject &p,
         *e = QStringLiteral("只有当前持有者可以交还。");
       return {};
     }
+    const auto op = QUuid::createUuid().toString(QUuid::WithoutBraces);
+    QString warning;
+    if (!m_audit.append(session, Event::Release, id, id, Phase::Completed, op,
+                        &warning))
+      qCWarning(sharingLog) << warning;
     current.device.clear();
     current.deadline = 0;
     ++current.revision;

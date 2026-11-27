@@ -1,4 +1,5 @@
 #pragma once
+#include "audit_store.h"
 #include "plugins/workbench_control/control_host.h"
 #include <QElapsedTimer>
 namespace exagent::sharing {
@@ -20,6 +21,7 @@ private:
   bool eligible(const QJsonObject &, const QString &) const;
   QJsonObject view(const QString &);
   control::Host &m_host;
+  AuditStore m_audit;
   QHash<QString, Lease> m_leases;
   QElapsedTimer m_clock;
   QString m_epoch, m_dispatchSession, m_dispatchDevice;

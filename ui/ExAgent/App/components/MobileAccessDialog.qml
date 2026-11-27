@@ -31,10 +31,11 @@ WorkbenchDialog {
     function refresh() {
         const status = api("status"), list = api("devices")
         if (status) origin = status.origin || ""
-        if (list) devices = list.items.filter(d => !root.sharingMode || (d.sharing === 1 && d.session === root.sessionId))
+        if (list) { const rows = list.items.filter(d => !root.sharingMode || (d.sharing === 1 && d.session === root.sessionId)); if (JSON.stringify(devices) !== JSON.stringify(rows)) devices = rows }
         if (root.sharingMode && root.sessionId) { const lease = api("sharing.status", {session: root.sessionId}); if (lease) leaseInfo = lease }
+        if (lifecycle.item) lifecycle.item.refresh()
     }
-    function begin(shared = false) { sharingMode = shared; scope.currentIndex = 0; sessionId = controller.currentSessionId; sessionTitle = controller.sessionTitle; errorText = ""; offerUrl = ""; refresh(); open() }
+    function begin(shared = false) { lifecycle.active = false; sharingMode = shared; lifecycle.active = shared; scope.currentIndex = 0; sessionId = controller.currentSessionId; sessionTitle = controller.sessionTitle; errorText = ""; offerUrl = ""; refresh(); open() }
     Timer { interval: 1500; repeat: true; running: root.visible; onTriggered: root.refresh() }
     contentItem: ScrollView {
         implicitHeight: Math.min(root.maximumBodyHeight, form.implicitHeight, 520)
@@ -77,7 +78,15 @@ WorkbenchDialog {
                     Layout.fillWidth: true
                     Label { text: modelData.name + " · " + Design.UiText.get(modelData.scope === 1 ? "只读" : "允许发送") + " · " + Design.UiText.get(modelData.state === 1 ? "已授权" : "已撤销"); textFormat: Text.PlainText; Layout.fillWidth: true; wrapMode: Text.Wrap }
                     DialogAction { visible: root.sharingMode && modelData.scope === 2; text: Design.UiText.get(root.leaseInfo.requests && root.leaseInfo.requests.indexOf(modelData.id) >= 0 ? "同意交接" : "交接控制"); enabled: modelData.state === 1 && modelData.expires * 1000 > Date.now() && root.leaseInfo.owner !== modelData.id; onClicked: { root.api("sharing.grant", {session: root.sessionId, device: modelData.id, epoch: root.leaseInfo.epoch, revision: root.leaseInfo.revision}); root.refresh() } }
-                    DialogAction { text: Design.UiText.get("撤销授权"); enabled: modelData.state === 1; onClicked: { root.api("revoke", {id: modelData.id}); root.refresh() } }
+                    DialogAction { text: Design.UiText.get("撤销授权"); enabled: modelData.state === 1; onClicked: { root.api(root.sharingMode ? "sharing.revoke" : "revoke", root.sharingMode ? {session: root.sessionId, device: modelData.id} : {id: modelData.id}); root.refresh() } }
+                }
+            }
+            Loader {
+                id: lifecycle; active: root.sharingMode; Layout.fillWidth: true
+                sourceComponent: SharingLifecycleSection {
+                    gateway: root.controller.mobile; sessionId: root.sessionId; sessionTitle: root.sessionTitle; leaseInfo: root.leaseInfo
+                    onFailure: reason => root.errorText = reason
+                    onSharingClosed: { root.offerUrl = ""; root.refresh() }
                 }
             }
         }

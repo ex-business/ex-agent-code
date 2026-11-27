@@ -1,4 +1,7 @@
 #include "mobile_service.h"
+#include "plugins/session_sharing/sharing_events.h"
+#include <QLoggingCategory>
+Q_LOGGING_CATEGORY(sharedAuditLog,"exagent.sharing.audit")
 #include <QCryptographicHash>
 #include <QDateTime>
 #include <QDir>
@@ -78,7 +81,8 @@ Service::Service(control::Host &h) : QObject(&h), m_host(h), m_server(this) {
     const QList<QPair<QString, QSet<QString>>> methods{
         {"status", {}},  {"start", {"address", "port", "certificate", "key"}},
         {"stop", {}},    {"offer", {"session", "scope", "sharing"}},
-        {"devices", {}}, {"revoke", {"id"}}};
+        {"devices", {}}, {"revoke", {"id"}},
+        {"offers", {"session"}}, {"cancel-offer", {"session","id"}}, {"close-shared", {"session"}}};
     for (const auto &m : methods)
         h.add("mobile." + m.first, m.second,
               [this, a = m.first](const QJsonObject &p, QString *e) { return execute(a, p, e); });
@@ -106,6 +110,12 @@ QVariantMap Service::operate(const QString &a, const QVariantMap &p) {
     const auto r = m_host.invoke(a.startsWith("sharing.") ? a : "mobile." + a, QJsonObject::fromVariantMap(p), &e);
     return e.isEmpty() ? QVariantMap{{"ok", true}, {"result", r.toVariantMap()}}
                        : QVariantMap{{"ok", false}, {"error", e}};
+}
+bool Service::audit(const QString &session,int event,const QString &actor,const QString &object,int phase,const QString &op,QString *error) {
+    if(!auditShared){*error=QStringLiteral("共享审计插件未就绪。");return false;}
+    const bool ok=auditShared(session,event,actor,object,phase,op,error);
+    if(!ok)qCWarning(sharedAuditLog)<<"共享审计未完成，会话："<<session<<"事件："<<event<<"阶段："<<phase<<"原因："<<*error;
+    return ok;
 }
 bool Service::save(const QJsonObject &data, QString *e) {
     const auto bytes = QJsonDocument(data).toJson(QJsonDocument::Compact);
@@ -167,9 +177,44 @@ QJsonObject Service::execute(const QString &a, const QJsonObject &p, QString *e)
         }
         if (!p["sharing"].isUndefined() && !ipc::integer(p["sharing"],0,1)) { *e=QStringLiteral("共享方式无效。"); return {}; }
         const auto code = secret();
-        const QJsonObject offer{{"session", p["session"]}, {"scope", p["scope"]}, {"expires", now + 300}, {"sharing",p["sharing"].toInt()}};
+        const auto id=QUuid::createUuid().toString(QUuid::WithoutBraces);
+        const auto op=QUuid::createUuid().toString(QUuid::WithoutBraces);
+        const bool shared=p["sharing"].toInt()==1;
+        if(shared && !audit(p["session"].toString(),int(sharing::Event::Invite),"desktop",id,int(sharing::Phase::Intent),op,e))return {};
+        const QJsonObject offer{{"id",id},{"session", p["session"]}, {"scope", p["scope"]}, {"expires", now + 300}, {"sharing",p["sharing"].toInt()}};
         m_offers.insert(digest(code), offer);
-        return {{"url", m_server.origin() + "/#" + code}, {"expires", now + 300}, {"scope", p["scope"]}};
+        QString auditError;if(shared)audit(p["session"].toString(),int(sharing::Event::Invite),"desktop",id,int(sharing::Phase::Completed),op,&auditError);
+        return {{"id",id},{"url", m_server.origin() + "/#" + code}, {"expires", now + 300}, {"scope", p["scope"]}};
+    }
+    if(a=="offers") {
+        QJsonArray rows;
+        for(const auto &offer:m_offers)if(offer["session"]==p["session"] && offer["sharing"].toInt()==1 && offer["expires"].toDouble()>QDateTime::currentSecsSinceEpoch())rows.append(offer);
+        return {{"items",rows}};
+    }
+    if(a=="cancel-offer") {
+        for(const auto &key:m_offers.keys()) {
+            const auto offer=m_offers[key];
+            if(offer["id"]!=p["id"] || offer["session"]!=p["session"] || offer["sharing"].toInt()!=1)continue;
+            const auto op=QUuid::createUuid().toString(QUuid::WithoutBraces);QString warning;
+            audit(p["session"].toString(),int(sharing::Event::CancelInvite),"desktop",offer["id"].toString(),int(sharing::Phase::Intent),op,&warning);
+            m_offers.remove(key);
+            audit(p["session"].toString(),int(sharing::Event::CancelInvite),"desktop",offer["id"].toString(),int(sharing::Phase::Completed),op,&warning);
+            return {{"id",offer["id"]},{"state",2}};
+        }
+        *e=QStringLiteral("待配对邀请不存在或不属于此共享会话。");return {};
+    }
+    if(a=="close-shared") {
+        if(!p["session"].isString() || m_host.invoke("sessions.show",{{"session",p["session"]}},e).isEmpty())return {};
+        const auto op=QUuid::createUuid().toString(QUuid::WithoutBraces);QString warning;
+        audit(p["session"].toString(),int(sharing::Event::Close),"desktop",p["session"].toString(),int(sharing::Phase::Intent),op,&warning);
+        auto next=m_data;auto rows=next["devices"].toArray();int count=0;
+        for(qsizetype i=0;i<rows.size();++i){auto d=rows[i].toObject();if(d["session"]==p["session"] && d["sharing"].toInt()==1 && d["state"].toInt()==1){d.insert("state",2);rows[i]=d;++count;}}
+        next.insert("devices",rows);
+        // 必须先持久撤销全部共享设备；写入失败时不能声称整会话已停止共享。
+        if(!save(next,e)){audit(p["session"].toString(),int(sharing::Event::Close),"desktop",p["session"].toString(),int(sharing::Phase::Failed),op,&warning);return {};}
+        for(const auto &key:m_offers.keys())if(m_offers[key]["session"]==p["session"] && m_offers[key]["sharing"].toInt()==1)m_offers.remove(key);
+        audit(p["session"].toString(),int(sharing::Event::Close),"desktop",p["session"].toString(),int(sharing::Phase::Completed),op,&warning);
+        return {{"state",2},{"revoked",count}};
     }
     if (a == "devices") {
         QJsonArray rows;
@@ -186,12 +231,18 @@ QJsonObject Service::execute(const QString &a, const QJsonObject &p, QString *e)
             auto d = rows[i].toObject();
             if (d["id"] != p["id"])
                 continue;
+            const auto op=QUuid::createUuid().toString(QUuid::WithoutBraces);QString warning;
+            const bool shared=d["sharing"].toInt()==1;
+            if(shared)audit(d["session"].toString(),int(sharing::Event::Revoke),"desktop",d["id"].toString(),int(sharing::Phase::Intent),op,&warning);
             d.insert("state", 2);
             rows[i] = d;
             auto next = m_data;
             next.insert("devices", rows);
-            if (!save(next, e))
+            if (!save(next, e)) {
+                if(shared)audit(d["session"].toString(),int(sharing::Event::Revoke),"desktop",d["id"].toString(),int(sharing::Phase::Failed),op,&warning);
                 return {};
+            }
+            if(shared)audit(d["session"].toString(),int(sharing::Event::Revoke),"desktop",d["id"].toString(),int(sharing::Phase::Completed),op,&warning);
             return {{"id", p["id"]}, {"state", 2}};
         }
         *e = QStringLiteral("设备不存在。");
@@ -251,11 +302,17 @@ Response Service::serve(const Request &r) {
                            {"state", 1},
                            {"hash", digest(token)}, {"sharing",offer["sharing"].toInt()},
                            {"expires",QDateTime::currentSecsSinceEpoch()+86400}};
+        const auto op=QUuid::createUuid().toString(QUuid::WithoutBraces);
+        const bool shared=device["sharing"].toInt()==1;
+        if(shared && !audit(device["session"].toString(),int(sharing::Event::Pair),device["id"].toString(),offer["id"].toString(),int(sharing::Phase::Intent),op,&error))return failure(error,503);
         devices.append(device);
         auto next = m_data;
         next.insert("devices", devices);
-        if (!save(next, &error))
+        if (!save(next, &error)) {
+            QString warning;if(shared)audit(device["session"].toString(),int(sharing::Event::Pair),device["id"].toString(),offer["id"].toString(),int(sharing::Phase::Failed),op,&warning);
             return failure(error, 503);
+        }
+        QString warning;if(shared)audit(device["session"].toString(),int(sharing::Event::Pair),device["id"].toString(),offer["id"].toString(),int(sharing::Phase::Completed),op,&warning);
         m_offers.remove(key);
         device.remove("hash");
         return json({{"ok", true}, {"token", token}, {"device", device}});
