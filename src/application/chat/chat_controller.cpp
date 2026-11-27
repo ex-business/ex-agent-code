@@ -156,6 +156,13 @@ ChatController::ChatController(QObject *parent)
     }
 }
 
+void ChatController::setPlugins(QObject *value)
+{
+    m_plugins = value;
+    if (value) connect(value, &QObject::destroyed, this, [this] { if (!m_plugins) emit pluginsChanged(); });
+    emit pluginsChanged();
+}
+
 ChatController::~ChatController()
 {
     // 先断开后台回调再销毁成员，避免等待子进程退出时访问已销毁的内容仓库。

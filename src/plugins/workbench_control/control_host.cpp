@@ -1,5 +1,6 @@
 #include "control_host.h"
 #include "automation_service.h"
+#include "plugins/plugin_lifecycle/plugin_manager.h"
 #include "infrastructure/ipc/rpc_channel.h"
 #include <QFile>
 #include <QFileInfo>
@@ -33,6 +34,7 @@ Host::Host(ChatController &controller, QObject *parent) : QObject(parent), chat(
         }
         return QJsonObject{{"version", 1}, {"methods", QJsonArray::fromStringList(methods)}, {"schemas", schemas}};
     });
+    new plugins::Manager(*this);
     m_server.setSocketOptions(QLocalServer::UserAccessOption);
     connect(&m_server, &QLocalServer::newConnection, this, [this] {
         while (auto *socket = m_server.nextPendingConnection()) {
@@ -56,14 +58,11 @@ Host::Host(ChatController &controller, QObject *parent) : QObject(parent), chat(
                         channel->respond(id, QJsonObject{{"version", 1}});
                         return;
                     }
-                    const auto found = m_methods.constFind(method);
-                    if (found == m_methods.cend()) { channel->reject(id, -32601, QStringLiteral("未知桌面命令。")); return; }
-                    for (auto i = params.begin(); i != params.end(); ++i)
-                        if (!found->fields.contains(i.key())) { channel->reject(id, -32602, QStringLiteral("命令包含未定义的字段。")); return; }
                     QString error;
-                    const auto result = found->handler(params, &error);
+                    int code = -32000;
+                    const auto result = invoke(method, params, &error, &code);
                     if (error.isEmpty()) channel->respond(id, result);
-                    else channel->reject(id, -32000, error);
+                    else channel->reject(id, code, error);
                 });
         }
     });
@@ -79,6 +78,19 @@ Host::Host(ChatController &controller, QObject *parent) : QObject(parent), chat(
 Host::~Host()
 {
     if (m_server.isListening()) QFile::remove(m_descriptor);
+}
+QJsonObject Host::invoke(const QString &method, const QJsonObject &params, QString *error, int *code) const
+{
+    const auto found = m_methods.constFind(method);
+    if (found == m_methods.cend()) {
+        *error = QStringLiteral("未知桌面命令。"); if (code) *code = -32601; return {};
+    }
+    for (auto it = params.begin(); it != params.end(); ++it)
+        if (!found->fields.contains(it.key())) {
+            *error = QStringLiteral("命令包含未定义的字段。"); if (code) *code = -32602; return {};
+        }
+    if (code) *code = -32000;
+    return found->handler(params, error);
 }
 void Host::add(const QString &method, QSet<QString> fields, Handler handler)
 {

@@ -26,6 +26,8 @@ int runCli(QStringList args)
                   "  sessions.list | sessions.create | sessions.select | sessions.show | sessions.send | runs.show\n"
                   "  automations.list | automations.get | automations.create | automations.set | automations.run | automations.runs\n"
                   "  skills.list | skills.get | skills.run\n"
+                  "  plugins.list | plugins.inspect | plugins.install | plugins.upgrade | plugins.get\n"
+                  "  plugins.approve | plugins.enable | plugins.rollback | plugins.invoke | plugins.panels | plugins.panel\n"
                   "  --endpoint <file>  连接指定隔离实例的 control.json\n"
                   "  参数及返回值使用 JSON，对象 ID 由 list 命令获取。");
         return 0;

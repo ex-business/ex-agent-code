@@ -16,6 +16,8 @@ public:
     explicit Host(ChatController &chat, QObject *parent = nullptr);
     ~Host() override;
     void add(const QString &method, QSet<QString> fields, Handler handler);
+    bool hasMethod(const QString &method) const { return m_methods.contains(method); }
+    QJsonObject invoke(const QString &method, const QJsonObject &params, QString *error, int *code = nullptr) const;
     bool ready() const { return m_server.isListening(); }
     ChatController &chat;
 private:
