@@ -1,6 +1,7 @@
 #pragma once
 #include <QObject>
 #include <QVariantMap>
+#include <QQuickTextDocument>
 #include <QtQml/qqmlregistration.h>
 
 namespace exagent {
@@ -14,6 +15,7 @@ class TextSelectionRules final : public QObject {
 public:
     explicit TextSelectionRules(QObject *parent = nullptr) : QObject(parent) {}
     Q_INVOKABLE QVariantMap range(const QString &text, int position, int unit, bool code = false) const;
+    Q_INVOKABLE bool containsText(QQuickTextDocument *document, qreal x, qreal y) const;
     int doubleClickInterval() const;
     int dragDistance() const;
 };

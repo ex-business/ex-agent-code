@@ -66,6 +66,11 @@ QList<ChatSession> ProjectRepository::load(ProjectCatalog &catalog, QString *err
                 if (workspace.id.isEmpty() || !QDir::isAbsolutePath(workspace.path) || workspaceIds.contains(workspace.id)) return invalid();
                 for (const auto &link : data["tasks"].toArray())
                     if (link.isString()) workspace.taskLinks.append(link.toString());
+                const int state = data.contains("state") ? data.value("state").toInt(-1) : 0;
+                if (state < 0 || state > int(WorkspaceState::Cleaned)) return invalid();
+                workspace.launch = data["launch"].toObject().toVariantMap();
+                workspace.state = WorkspaceState(state);
+                workspace.branch = data.value("branch").toString();
                 workspaceIds.insert(workspace.id);
                 project.workspaces.append(workspace);
             }
@@ -108,6 +113,9 @@ bool ProjectRepository::save(const ProjectCatalog &catalog, const QList<ChatSess
         for (const auto &workspace : project.workspaces) {
             QJsonObject item{{"id", workspace.id}, {"path", workspace.path}};
             if (!workspace.taskLinks.isEmpty()) item.insert("tasks", QJsonArray::fromStringList(workspace.taskLinks));
+            item.insert("launch", QJsonObject::fromVariantMap(workspace.launch));
+            item.insert("state", int(workspace.state));
+            item.insert("branch", workspace.branch);
             workspaces.append(item);
         }
         projects.append(QJsonObject{{"id", project.id}, {"name", project.name}, {"workspaces", workspaces}});

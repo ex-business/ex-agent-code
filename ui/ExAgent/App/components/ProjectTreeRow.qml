@@ -16,6 +16,7 @@ Rectangle {
     signal newChat()
     signal bindFolder()
     required property var providers
+    signal resourceRequested(string provider)
     signal taskRequested(string provider, string title)
     signal moveHere()
     property bool canMove
@@ -39,6 +40,8 @@ Rectangle {
         AbstractButton {
             id: label
             Layout.fillWidth: true; Layout.fillHeight: true
+            ToolTip.visible: hovered && !!root.entry.launch?.host
+            ToolTip.text: "运行主机：" + (root.entry.launch?.host || "") + (root.entry.launch?.task ? "\n关联任务：" + root.entry.launch.task : "")
             Accessible.name: root.entry.title
             HoverHandler { cursorShape: Qt.PointingHandCursor }
             onClicked: root.opened()
@@ -67,13 +70,23 @@ Rectangle {
                 Design.ContextMenuItem { text: "在此新建聊天"; iconName: "new"; onTriggered: root.newChat() }
                 Design.ContextMenuItem { visible: root.project; height: visible ? implicitHeight : 0; text: "添加工作区…"; iconName: "folder"; onTriggered: root.bindFolder() }
                 Instantiator {
-                    model: root.entry.kind === ProjectNavigator.WorkspaceRow ? root.providers : []
+                    model: root.group ? root.providers : []
                     delegate: Design.ContextMenuItem {
                         required property var modelData
                         text: modelData.title + "…"
                         onTriggered: root.taskRequested(modelData.id, modelData.title)
                     }
                     onObjectAdded: (index, object) => menu.insertItem(index + 1, object)
+                    onObjectRemoved: (index, object) => menu.removeItem(object)
+                }
+                Instantiator {
+                    model: root.group ? root.providers.filter(p => p.resources) : []
+                    delegate: Design.ContextMenuItem {
+                        required property var modelData
+                        text: "工作树资源管理器…"
+                        onTriggered: root.resourceRequested(modelData.id)
+                    }
+                    onObjectAdded: (index, object) => menu.addItem(object)
                     onObjectRemoved: (index, object) => menu.removeItem(object)
                 }
                 Design.ContextMenuItem { enabled: root.canMove; text: "将当前聊天移到这里"; onTriggered: root.moveHere() }

@@ -49,8 +49,8 @@ FocusScope {
     }
     function hoverCursor(x, y) {
         if (editor.linkAt(x, y)) return Qt.PointingHandCursor
-        // 选择光标属于整个正文区域，不能只覆盖字形墨迹而在行间、字边缘闪回箭头。
-        return Qt.IBeamCursor
+        // 悬停只决定光标，不缩小拖选区域；离开实际文字排版范围立即恢复箭头。
+        return TextSelectionRules.containsText(editor.textDocument, x, y) ? Qt.IBeamCursor : Qt.ArrowCursor
     }
     onActiveFocusChanged: if (activeFocus && !root.selectionManager) SelectionCoordinator.activate(root)
     onSelectionLengthChanged: {

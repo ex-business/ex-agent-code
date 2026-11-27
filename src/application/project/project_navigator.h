@@ -2,6 +2,7 @@
 #include "domain/project/project_catalog.h"
 #include "domain/chat/chat_message.h"
 #include <QObject>
+#include <QSet>
 #include "task_workspace_provider.h"
 #include <QUrl>
 #include <QtQml/qqmlregistration.h>
@@ -18,10 +19,19 @@ public:
     enum RowKind { ProjectRow = 1, WorkspaceRow, SessionRow };
     Q_ENUM(RowKind)
     ProjectCatalog catalog;
+    std::function<QStringList(const QString &)> runningTasks;
+    std::function<bool()> saveCatalog;
+    Q_INVOKABLE void manageResource(const QString &provider, const QString &project, const QString &workspace,
+                                    int action, const QString &branch);
+    enum ResourceAction { Inspect, Archive, Restore, Clean };
+    Q_ENUM(ResourceAction)
+    bool available(const QString &project, const QString &workspace) const;
     void registerTaskProvider(TaskWorkspaceProvider *provider);
     QVariantList taskProviders() const;
     Q_INVOKABLE void createTask(const QString &providerId, const QString &projectId, const QString &workspaceId, const QString &name, const QVariantMap &options = {});
     Q_INVOKABLE void loadTaskFields(const QString &providerId, const QString &projectId, const QString &workspaceId, int request);
+    Q_INVOKABLE QVariantMap launchSettings(const QString &provider, const QString &project, const QString &workspace) const;
+    Q_INVOKABLE QString createLaunchTemplate(const QString &project, const QString &workspace);
     ProjectNavigator() = default;
     const QVariantList &rows() const { return m_rows; }
     bool writable() const { return m_writable; }
@@ -30,11 +40,16 @@ public:
     Q_INVOKABLE void createProject(const QString &name);
     Q_INVOKABLE void bindWorkspace(const QString &projectId, const QUrl &folder);
 signals:
+    void resourceReport(QString project, QString workspace, QVariantMap report);
+    void catalogChanged();
     void taskFieldsReady(int request, QVariantList fields);
     void rowsChanged();
     void openGroup(QString projectId, QString workspaceId);
     void failure(QString reason);
 private:
+    void bindCreatedWorkspace(const QString &projectId, const QUrl &folder, const QVariantMap &launch);
+    QHash<QString, QStringList> m_preparing;
+    QSet<QString> m_changing;
     QList<TaskWorkspaceProvider *> m_providers;
     QVariantList m_rows;
     bool m_writable = true;

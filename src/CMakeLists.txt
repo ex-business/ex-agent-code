@@ -3,8 +3,10 @@ target_include_directories(ex_agent_domain INTERFACE "${CMAKE_CURRENT_SOURCE_DIR
 target_link_libraries(ex_agent_domain INTERFACE Qt6::Core)
 
 add_subdirectory(agent)
-add_library(ex_git_worktree STATIC plugins/git_worktree/git_worktree_provider.cpp)
-target_link_libraries(ex_git_worktree PUBLIC ex_agent_domain)
+add_library(ex_git_worktree STATIC plugins/git_worktree/git_worktree_provider.cpp plugins/git_worktree/git_worktree_resources.cpp)
+target_link_libraries(ex_git_worktree PUBLIC ex_agent_domain Qt6::Concurrent)
+qt_add_resources(ex_git_worktree "worktree_setup" PREFIX "/worktree-setup"
+    BASE "plugins/git_worktree" FILES plugins/git_worktree/prepare_worktree.rb)
 
 # 通信底座只依赖Core/Network，后台模式不创建GUI或加载QML。
 qt_add_library(ex_agent_ipc STATIC
@@ -54,7 +56,7 @@ qt_add_qml_module(ex_agent_chat
         plugins/session_history/session_console.h plugins/session_history/session_console.cpp
         plugins/session_history/terminal_hibernation.cpp plugins/session_history/history_provider.cpp plugins/session_history/terminal_backend.cpp
         domain/project/project_catalog.h domain/project/project_catalog.cpp
-        application/project/project_navigator.h application/project/project_navigator.cpp
+        application/project/project_navigator.h application/project/project_navigator.cpp application/project/project_resources.cpp application/project/project_launch_config.cpp
         infrastructure/storage/conversation_image.h infrastructure/storage/conversation_image.cpp
         infrastructure/storage/history_migration.h infrastructure/storage/history_migration.cpp
         infrastructure/storage/project_repository.h infrastructure/storage/project_repository.cpp

@@ -271,6 +271,9 @@ QVariantMap AgentController::terminalBinding(const QString& workspace) const
     if (!s || !m_writable || busy() || authenticating() || !account()
         || binding.value("boundAccount").toInt() != account() || binding.value("identity").toString().isEmpty()
         || QUuid(binding.value("threadId").toString()).isNull()) return {};
+    if (workspaceAvailable && !workspaceAvailable(*s)) return {};
+    const auto *bindingWorkspace = m_catalog.workspace(s->projectId, s->workspaceId);
+    if (bindingWorkspace && bindingWorkspace->launch.value("host", "local").toString() != "local") return {};
     const auto cwd = workspace.isEmpty() ? m_repository.sessionDirectory(s->projectId,s->id) + "/chat-cwd" : workspace;
     if (QFileInfo(cwd).canonicalFilePath() != binding.value("boundCwd").toString()) return {};
     QVariantMap spec;
@@ -299,6 +302,16 @@ bool AgentController::submitTo(const QString &session, const QString &text, cons
     const QVariantMap &reviewNote, bool worker)
 {
     auto *s = find(session);
+    if (s && workspaceAvailable && !workspaceAvailable(*s)) {
+        emit failure(QStringLiteral("工作区已归档、已清理或正在处理中。"));
+        return false;
+    }
+    const auto *workspace = s ? m_catalog.workspace(s->projectId, s->workspaceId) : nullptr;
+    if (s && !s->workspaceId.isEmpty() && !workspace) return false;
+    if (workspace && workspace->launch.value("host", "local").toString() != "local") {
+        emit failure(QStringLiteral("当前执行器无法在此任务绑定的主机运行。"));
+        return false;
+    }
     if (!s || !m_writable || !s->agent.value("account").toInt() || text.trimmed().isEmpty())
         return false;
     if (!codex::threadAvailable(s->agent.value("threadId").toString())) {

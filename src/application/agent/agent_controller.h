@@ -42,6 +42,8 @@ public:
     bool fullAccess() const { return config().value("fullAccess").toBool(); }
     bool workspaceWrite() const;
     bool busy() const;
+    bool activeSession(const QString &id) const { return m_active.contains(id); }
+    std::function<bool(const ChatSession &)> workspaceAvailable;
     bool stopping() const {
         const auto run = m_active.constFind(m_selected);
         return run != m_active.cend() && run->stopping;

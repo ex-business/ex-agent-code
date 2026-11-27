@@ -1,4 +1,6 @@
 #include "chat_controller.h"
+#include "plugins/session_history/terminal_backend.h"
+#include <QSettings>
 #include "plugins/design_mode/design_selection.h"
 #include "infrastructure/storage/conversation_image.h"
 #include "application/services/media_file_exporter.h"
@@ -86,6 +88,38 @@ ChatController::ChatController(QObject *parent)
     m_agent.indexWorkspaceActivity();
     m_storageWritable = error.isEmpty();
     m_projects.setWritable(m_storageWritable);
+    m_agent.workspaceAvailable = [this](const ChatSession &s) { return m_projects.available(s.projectId,s.workspaceId); };
+    m_projects.runningTasks = [this](const QString &path) {
+        QStringList active;
+        for (const auto &s : m_sessions) {
+            const auto *w = m_projects.catalog.workspace(s.projectId, s.workspaceId);
+            if (!w || w->path != path) continue;
+            const auto running = [this](const QString &id) {
+                const auto state = m_blocks.taskState(id);
+                return state == int(content::TaskState::Created) || state == int(content::TaskState::Running);
+            };
+            if (m_agent.activeSession(s.id) || running(m_backgroundTasks.value(s.id)) || running(m_internalTasks.value(s.id)))
+                active.append(s.title + " · " + s.id);
+        }
+        // 终端可能在后台或其他窗口存活，核对持久绑定及全部分屏，未知后端状态也阻止清理。
+        const auto tabs = QSettings().value("terminal/tabs").toList();
+        for (const auto &value : tabs) {
+            const auto tab = value.toMap();
+            const auto cwd = tab.value("cwd").toString();
+            if (cwd != path && !cwd.startsWith(path + '/')) continue;
+            const auto panes = terminalCommand({"list-panes", "-s", "-t", "=" + tab.value("id").toString(), "-F", "#{pane_dead}"});
+            if (!panes.ok || panes.output.split('\n').contains("0"))
+                active.append(QStringLiteral("终端仍在使用或存活状态待核对 · ") + tab.value("title").toString());
+        }
+        return active;
+    };
+    m_projects.saveCatalog = [this] {
+        QString error;
+        if (m_repository.save(m_projects.catalog, m_sessions, &error)) return true;
+        setError(error);
+        return false;
+    };
+    connect(&m_projects, &ProjectNavigator::catalogChanged, this, [this] { refreshSessions(); emit workspaceChanged(); });
     connect(&m_projects, &ProjectNavigator::openGroup, this, &ChatController::openGroup);
     connect(&m_projects, &ProjectNavigator::failure, this, &ChatController::setError);
     // 仅持有仓库写锁的宿主执行重启恢复；只读窗口看到的任务可能仍由另一实例运行。
@@ -189,6 +223,8 @@ bool ChatController::moveToGroup(const QString &project, const QString &workspac
     if (m_preview || m_current < 0 || !m_storageWritable) return false;
     auto &session = m_sessions[m_current];
     if (session.projectId != project || (!workspace.isEmpty() && !m_projects.catalog.workspace(project, workspace))) return false;
+    if (!m_projects.available(project,workspace) || (!workspacePath().isEmpty() && !m_projects.runningTasks(workspacePath()).isEmpty()))
+        return false;
     session.workspaceId = workspace;
     refreshSessions();
     // 只更新导航和文件区，移动会话时保留正文的阅读位置和选区。
@@ -338,6 +374,7 @@ int ChatController::backgroundTaskState() const
 }
 void ChatController::runBackgroundTask()
 {
+    if (!m_projects.available(currentProjectId(),currentWorkspaceId())) { setError(QStringLiteral("工作区当前不可执行任务。")); return; }
     if (backgroundTaskState() == int(ipc::TaskState::Created) || backgroundTaskState() == int(ipc::TaskState::Running)) return;
     if (m_service.state() == ipc::ServiceState::Failed && m_service.processId() > 0) {
         setError(QStringLiteral("后台进程正在结束，请稍后重试。")); return;
@@ -389,6 +426,7 @@ int ChatController::internalTaskState() const
 }
 void ChatController::analyzeLoadedConversation()
 {
+    if (!m_projects.available(currentProjectId(),currentWorkspaceId())) { setError(QStringLiteral("工作区当前不可执行任务。")); return; }
     if (internalTaskState() == int(content::TaskState::Created) || internalTaskState() == int(content::TaskState::Running)) return;
     // 只复制已加载消息的共享字符串快照，统计本身在线程池执行，不读取额外历史页。
     QStringList texts;
@@ -480,6 +518,7 @@ void ChatController::attachImage(const QUrl &file)
 
 void ChatController::openImageSequence(const QUrl &folder)
 {
+    if (!m_projects.available(currentProjectId(),currentWorkspaceId())) { setError(QStringLiteral("工作区当前不可执行任务。")); return; }
     if (!folder.isLocalFile()) { setError(QStringLiteral("请选择本机图片目录")); return; }
     if (internalTaskState() == 0 || internalTaskState() == 1) { setError(QStringLiteral("请先等待或取消当前内部任务")); return; }
     if (m_preview) newSession();

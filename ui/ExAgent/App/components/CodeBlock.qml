@@ -262,7 +262,12 @@ Rectangle {
             Accessible.description: "已选择 " + lines.selectionLength + " 个字符；支持跨行选择、全选与复制"
             documentPart: selectionPart
             selectionAnchor: lines.selectionAnchor
-            // 代码视口整体可拖选，空格与缩进处也保持选择光标。
+            // 视口仍可完整拖选，光标仅在有效行的文本范围内显示I形。
+            cursorFor: (x, y) => {
+                const p = codeView.mapToItem(codeView.contentItem, x, y)
+                const row = Math.floor(p.y / root.lineHeight)
+                return lines.textAtPixel(row, p.x - 15, metrics.font) ? Qt.IBeamCursor : Qt.ArrowCursor
+            }
             function hitPosition(x, y, nearestCursor) {
                 const p = codeView.mapToItem(codeView.contentItem, x, Math.max(0, Math.min(codeView.height - 1, y)))
                 const rowIndex = Math.max(0, Math.min(lines.lineCount - 1, Math.floor(p.y / root.lineHeight)))

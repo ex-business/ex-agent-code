@@ -1,4 +1,6 @@
 #include "project_navigator.h"
+#include "project_launch_config.h"
+#include <QDir>
 #include <QFileInfo>
 #include <QHash>
 #include <QUuid>
@@ -26,7 +28,7 @@ QVariantList ProjectNavigator::taskProviders() const
 {
     QVariantList actions;
     for (const auto *provider : m_providers)
-        actions.append(QVariantMap{{"id", provider->id()}, {"title", provider->actionTitle()}});
+        actions.append(QVariantMap{{"id", provider->id()}, {"title", provider->actionTitle()}, {"resources", provider->managesResources()}});
     return actions;
 }
 
@@ -41,20 +43,72 @@ void ProjectNavigator::loadTaskFields(const QString &providerId, const QString &
     emit taskFieldsReady(request, {});
 }
 
+namespace {
+QString configRoot(const ProjectCatalog &catalog, const QString &project, const WorkspaceBinding &workspace)
+{
+    // 只接受项目内已有绑定 ID，不从历史元数据读取任意文件路径。
+    const auto *source = catalog.workspace(project, workspace.launch.value("source").toString());
+    return source ? source->path : workspace.path;
+}
+}
+
+QVariantMap ProjectNavigator::launchSettings(const QString &providerId, const QString &project, const QString &workspace) const
+{
+    const auto *binding = catalog.workspace(project, workspace);
+    if (!binding) return {{"error","请先绑定项目工作区。"}};
+    for (auto *provider : m_providers) {
+        if (provider->id() != providerId) continue;
+        QString error;
+        const auto root = configRoot(catalog, project, *binding);
+        auto map = readLaunchDefaults(root, &error);
+        map.insert("hosts", provider->readyHosts(binding->path));
+        map.insert("configPath", QDir(root).filePath("orca.yaml"));
+        map.insert("exists", QFileInfo::exists(map["configPath"].toString()));
+        map.insert("error", error);
+        return map;
+    }
+    return {{"error","任务插件不可用。"}};
+}
+
+QString ProjectNavigator::createLaunchTemplate(const QString &project, const QString &workspace)
+{
+    const auto *binding = catalog.workspace(project, workspace);
+    if (!writable() || !binding) return QStringLiteral("项目工作区不可写。");
+    return writeLaunchTemplate(configRoot(catalog, project, *binding));
+}
+
 void ProjectNavigator::createTask(const QString &providerId, const QString &projectId,
                                   const QString &workspaceId, const QString &name, const QVariantMap &options)
 {
     const auto *workspace = catalog.workspace(projectId, workspaceId);
-    if (!writable() || !workspace || name.trimmed().isEmpty() || name.size() > 80) {
+    if (!writable() || !workspace || !available(projectId, workspaceId) || name.trimmed().isEmpty() || name.size() > 80) {
         emit failure(QStringLiteral("请检查工作区、写入权限及任务名称。"));
         return;
     }
     for (auto *provider : m_providers) {
         if (provider->id() != providerId) continue;
-        provider->create(workspace->path, name.trimmed(), options, [this, projectId](QString path, QString error) {
+        const auto settings = launchSettings(providerId, projectId, workspaceId);
+        const auto host = options.value("host",settings.value("host")).toString();
+        const auto task = options.value("task",settings.value("task")).toString().trimmed();
+        if (!settings.value("error").toString().isEmpty()) { emit failure(settings.value("error").toString()); return; }
+        if (!settings.value("hosts").toMap().contains(host) || task.size() > 2048 || task.contains(QChar::Null)) {
+            emit failure(QStringLiteral("运行主机尚未就绪或任务关联无效。")); return;
+        }
+        auto resolved = options;
+        resolved.insert("host",host);
+        resolved.insert("task",task);
+        if (!resolved.contains("start")) resolved.insert("start",settings.value("start"));
+        const QVariantMap launch{{"host",host},{"task",task},{"provider",providerId},{"name",name.trimmed()},
+            {"source",workspace->launch.value("source",workspaceId)}};
+        const auto sourcePath = workspace->path;
+        const auto preparingTask = name.trimmed() + " · " + newId();
+        m_preparing[sourcePath].append(preparingTask);
+        provider->create(sourcePath, name.trimmed(), resolved, [this, projectId, sourcePath, preparingTask, launch](QString path, QString error) {
+            m_preparing[sourcePath].removeOne(preparingTask);
+            if (m_preparing[sourcePath].isEmpty()) m_preparing.remove(sourcePath);
             // 异步完成后仍绑定发起任务的项目，避免用户切换会话时串到其他项目。
             if (!error.isEmpty()) emit failure(error);
-            else bindWorkspace(projectId, QUrl::fromLocalFile(path));
+            else bindCreatedWorkspace(projectId, QUrl::fromLocalFile(path), launch);
         });
         return;
     }
@@ -75,6 +129,11 @@ void ProjectNavigator::createProject(const QString &name)
 
 void ProjectNavigator::bindWorkspace(const QString &projectId, const QUrl &folder)
 {
+    bindCreatedWorkspace(projectId, folder, {});
+}
+
+void ProjectNavigator::bindCreatedWorkspace(const QString &projectId, const QUrl &folder, const QVariantMap &launch)
+{
     const QFileInfo info(folder.toLocalFile());
     if (!writable() || !folder.isLocalFile() || !info.isDir() || !info.isReadable()) {
         emit failure(QStringLiteral("请选择可读取的本地工作区文件夹。"));
@@ -87,7 +146,12 @@ void ProjectNavigator::bindWorkspace(const QString &projectId, const QUrl &folde
             if (existing.path == path) { emit openGroup(projectId, existing.id); return; }
         }
         const auto id = newId();
-        project.workspaces.append({id, path});
+        WorkspaceBinding binding{id, path};
+        binding.launch = launch;
+        // 同一路径可归属不同项目，新绑定继承已有的归档状态。
+        for (const auto &group : catalog.projects) for (const auto &other : group.workspaces)
+            if (other.path == path) { binding.state = other.state; binding.branch = other.branch; }
+        project.workspaces.append(binding);
         emit openGroup(projectId, id);
         return;
     }
@@ -108,11 +172,15 @@ void ProjectNavigator::refresh(const QList<ChatSession> &sessions)
         next.append(groups.value("p/" + project.id));
         for (const auto &workspace : project.workspaces) {
             auto title = QFileInfo(workspace.path).fileName();
-            auto item = row(WorkspaceRow, title.isEmpty() ? workspace.path : title, project.id, workspace.id);
-            item.insert("path", workspace.path);
-            item.insert("taskLinks", workspace.taskLinks);
-            item.insert("projectTitle", project.name);
-            next.append(item);
+            if (workspace.state == WorkspaceState::Archived) title += QStringLiteral("（已归档）");
+            if (workspace.state == WorkspaceState::Cleaned) title += QStringLiteral("（已清理）");
+            auto entry = row(WorkspaceRow, title.isEmpty() ? workspace.path : title, project.id, workspace.id);
+            entry.insert("state", int(workspace.state));
+            entry.insert("path", workspace.path);
+            entry.insert("taskLinks", workspace.taskLinks);
+            entry.insert("projectTitle", project.name);
+            entry.insert("launch", workspace.launch);
+            next.append(entry);
             next.append(groups.value("w/" + workspace.id));
         }
     }

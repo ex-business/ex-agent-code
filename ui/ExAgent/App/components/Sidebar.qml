@@ -24,6 +24,7 @@ Rectangle {
                 all.push({kind: ProjectNavigator.SessionRow, project: "@resources", workspace: "", resource: item.id, title: item.title})
         }
         const query = searchInput.text.trim().toLocaleLowerCase()
+        const archived = new Set(all.filter(item => item.kind === ProjectNavigator.WorkspaceRow && item.state > 0).map(item => item.workspace))
         const matches = new Set()
         if (query) for (const item of all) {
             if (item.title.toLocaleLowerCase().includes(query)) {
@@ -35,6 +36,7 @@ Rectangle {
             if (query) return item.title.toLocaleLowerCase().includes(query)
                 || (item.kind === ProjectNavigator.ProjectRow && matches.has(item.project))
                 || (item.kind === ProjectNavigator.WorkspaceRow && matches.has(item.workspace))
+            if (archived.has(item.workspace) && item.workspace !== controller.currentWorkspaceId) return false
             if (item.kind !== ProjectNavigator.ProjectRow && folded[item.project]) return false
             return item.kind !== ProjectNavigator.SessionRow || !item.workspace || !folded[item.workspace]
         })
@@ -47,89 +49,22 @@ Rectangle {
     function showSearch() { searchInput.visible = true; searchInput.forceActiveFocus() }
     color: Design.Theme.sidebar
     Design.WorkspaceTasksDialog { id: taskLinks; chat: root.controller }
+    Design.WorktreeResourcesDialog {
+        id: resourcesDialog
+        navigator: root.controller.projects
+        onOpenHistory: (project, workspace) => {
+            if (root.folded[project]) root.toggle(project)
+            if (root.folded[workspace]) root.toggle(workspace)
+            root.controller.openGroup(project, workspace)
+        }
+    }
     FolderDialog {
         id: folder
         property string project
         title: "添加本地工作区"
         onAccepted: root.controller.projects.bindWorkspace(project, selectedFolder)
     }
-    WorkbenchDialog {
-        id: taskDialog
-        property int request: 0
-        property var fields: []
-        property bool ready: false
-        property string provider
-        property string project
-        property string workspace
-        anchors.centerIn: Overlay.overlay
-        modal: true
-        standardButtons: Dialog.Ok | Dialog.Cancel
-        sizeClass: WorkbenchDialog.Compact
-        Connections {
-            target: root.controller.projects
-            function onTaskFieldsReady(request: int, fields: var) {
-                if (request !== taskDialog.request) return
-                taskDialog.fields = fields
-                taskDialog.ready = true
-            }
-        }
-        onOpened: {
-            fields = []
-            ready = false
-            request++
-            root.controller.projects.loadTaskFields(provider, project, workspace, request)
-            taskName.clear()
-            taskName.forceActiveFocus()
-        }
-        onAccepted: {
-            const options = {}
-            for (let i = 0; i < editors.count; ++i) {
-                const editor = editors.itemAt(i) as TaskOptionField
-                options[editor.modelData.key] = editor.value
-            }
-            root.controller.projects.createTask(provider, project, workspace, taskName.text, options)
-        }
-        component TaskOptionField: ColumnLayout {
-            id: field
-            required property var modelData
-            readonly property string value: modelData.choices ? choice.editText : input.text
-            Layout.fillWidth: true
-            Label { text: field.modelData.label }
-            DialogSelect {
-                id: choice
-                visible: !!field.modelData.choices
-                Layout.fillWidth: true
-                editable: true
-                model: field.modelData.choices || []
-                Accessible.name: field.modelData.label
-            }
-            DialogInput {
-                id: input
-                visible: !field.modelData.choices
-                Layout.fillWidth: true
-                Accessible.name: field.modelData.label
-            }
-        }
-        contentItem: ColumnLayout {
-            DialogInput {
-                id: taskName
-                Layout.fillWidth: true
-                placeholderText: "任务名称"
-                maximumLength: 80
-                onAccepted: if (taskDialog.ready && text.trim()) taskDialog.accept()
-            }
-            Binding {
-                target: taskDialog.standardButton(Dialog.Ok)
-                property: "enabled"
-                value: taskDialog.ready && taskName.text.trim().length > 0
-            }
-            Repeater {
-                id: editors
-                model: taskDialog.fields
-                delegate: TaskOptionField {}
-            }
-        }
-    }
+    Design.ProjectTaskDialog { id: taskDialog; navigator: root.controller.projects }
     WorkbenchDialog {
         id: createDialog
         title: Design.UiText.get("新建项目")
@@ -202,11 +137,12 @@ Rectangle {
                 }
                 onNewChat: { if (collapsed) root.toggle(key); root.controller.newGroupSession(entry.project, entry.workspace) }
                 providers: root.controller.projects.taskProviders
+                onResourceRequested: provider => resourcesDialog.showProject(provider, entry.project, entry.workspace)
                 onTaskRequested: (provider, title) => {
                     taskDialog.provider = provider
                     taskDialog.title = title
                     taskDialog.project = entry.project
-                    taskDialog.workspace = entry.workspace
+                    taskDialog.initialWorkspace = entry.workspace
                     taskDialog.open()
                 }
                 onBindFolder: { if (collapsed) root.toggle(key); folder.project = entry.project; folder.open() }

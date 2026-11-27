@@ -2,13 +2,19 @@
 
 #include <QList>
 #include <QStringList>
+#include <QVariantMap>
 
 namespace exagent {
+
+enum class WorkspaceState { Active = 0, Archived = 1, Cleaned = 2 };
 
 struct WorkspaceBinding {
     QString id;
     QString path;
     QStringList taskLinks{};
+    QVariantMap launch = {};
+    WorkspaceState state = WorkspaceState::Active;
+    QString branch = {};
 };
 
 struct Project {

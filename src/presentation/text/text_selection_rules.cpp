@@ -2,11 +2,19 @@
 #include <QTextBoundaryFinder>
 #include <QGuiApplication>
 #include <QStyleHints>
+#include <QAbstractTextDocumentLayout>
+#include <QTextDocument>
 #ifdef Q_OS_MACOS
 #include "platform/macos/word_boundaries.h"
 #endif
 
 namespace exagent {
+bool TextSelectionRules::containsText(QQuickTextDocument *document, qreal x, qreal y) const
+{
+    if (!document || !document->textDocument()) return false;
+    // 使用当前富文本排版精确命中，行尾留白和段落间距不能沿用最近字符的选择光标。
+    return document->textDocument()->documentLayout()->hitTest(QPointF(x, y), Qt::ExactHit) >= 0;
+}
 int TextSelectionRules::doubleClickInterval() const { return QGuiApplication::styleHints()->mouseDoubleClickInterval(); }
 int TextSelectionRules::dragDistance() const { return QGuiApplication::styleHints()->startDragDistance(); }
 QVariantMap TextSelectionRules::range(const QString &text, int position, int unit, bool code) const

@@ -73,7 +73,7 @@ Item {
         Loader {
             anchors.fill: parent
             active: root.runningNotice && root.hasPresentation && !root.pooled
-            sourceComponent: Design.ExecutionIndicator { label: prose; running: true; sweepColor: Design.Theme.dark ? "#888888" : lightCrest }
+            sourceComponent: Design.ExecutionIndicator { id: noticeSweep; label: prose; running: true; sweepColor: Design.Theme.dark ? "#888888" : noticeSweep.lightCrest }
         }
         // 在当前布局完成后读取最新身份和高度，避免测量过程中反写缓存触发绑定环。
         onImplicitHeightChanged: Qt.callLater(root.rememberLayout)

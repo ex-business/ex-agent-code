@@ -54,7 +54,7 @@ WorkbenchDialog {
         Label {
             visible: !panel.letters.length; Layout.fillWidth: true
             text: Design.UiText.get("运行中的 Codex 会立即接收消息，空闲会话将在下一回合接收。")
-            wrapMode: Text.Wrap; color: panel.palette.placeholderText
+            wrapMode: Text.Wrap; color: Design.Theme.secondary
         }
         ListView {
             visible: panel.letters.length > 0; Layout.fillWidth: true
@@ -68,7 +68,7 @@ WorkbenchDialog {
                     width: parent.width; elide: Text.ElideRight; textFormat: Text.PlainText
                     text: modelData.sender + " → " + modelData.recipient + "  ·  " +
                           Design.UiText.get(["等待回合","投递中","引擎已接收","引擎已拒绝","投递待核对"][modelData.state] || "投递待核对")
-                    color: panel.palette.placeholderText
+                    color: Design.Theme.secondary
                 }
                 Label { width: parent.width; text: modelData.text; wrapMode: Text.Wrap; textFormat: Text.PlainText }
             }
