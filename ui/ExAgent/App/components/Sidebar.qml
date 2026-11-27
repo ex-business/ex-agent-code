@@ -51,6 +51,7 @@ Rectangle {
     function showSearch() { searchInput.visible = true; searchInput.forceActiveFocus() }
     color: Design.Theme.sidebar
     Design.ProjectGroupDialog { id: importGroup; chat: root.controller }
+    Design.ProjectGroupManageDialog { id: manageGroup; chat: root.controller }
     Design.FolderWorkspaceDialog { id: groupFolders; chat: root.controller }
     Design.WorkspaceTasksDialog { id: taskLinks; chat: root.controller }
     Design.WorktreeResourcesDialog {
@@ -157,6 +158,7 @@ Rectangle {
                     taskDialog.open()
                 }
                 onFolderWorkspace: groupFolders.present(entry.project)
+                onManageGroup: manageGroup.present(entry.project,entry.title)
                 onBindFolder: { if (collapsed) root.toggle(key); folder.project = entry.project; folder.open() }
                 onMoveHere: { if (collapsed) root.toggle(key); root.controller.moveToGroup(entry.project, entry.workspace) }
             }

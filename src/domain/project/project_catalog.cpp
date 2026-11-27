@@ -50,6 +50,17 @@ bool validOrganization(const ProjectCatalog &catalog) {
   }
   for (const auto &p : catalog.projects)
     for (const auto &w : p.workspaces) {
+      if (w.launch.value("provider") == "folder.detached") {
+        const auto repository = w.launch.value("repositoryRoot").toString();
+        if (p.kind() != ProjectKind::Normal || !p.organization.isEmpty() ||
+            !QDir::isAbsolutePath(repository) ||
+            QDir::cleanPath(repository) != repository ||
+            QFileInfo(repository).absolutePath() != w.path ||
+            w.launch.value("host") != "local" ||
+            w.launch.value("name").toString().isEmpty())
+          return false;
+        continue;
+      }
       if (w.launch.value("provider").toString() != "folder.workspace")
         continue;
       const auto *source =

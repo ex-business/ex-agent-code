@@ -11,7 +11,7 @@ WorkbenchDialog {
     required property ProjectNavigator navigator
     property var settings: ({})
     property string initialWorkspace
-    readonly property var workspaces: navigator.rows.filter(r => r.kind === ProjectNavigator.WorkspaceRow && r.project === project)
+    readonly property var workspaces: navigator.rows.filter(r => r.kind === ProjectNavigator.WorkspaceRow && r.project === project && r.launch?.provider !== "folder.workspace" && r.launch?.provider !== "folder.detached")
     function reload() {
         ready = false
         fields = []

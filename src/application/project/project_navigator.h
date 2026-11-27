@@ -26,6 +26,7 @@ public:
     enum ResourceAction { Inspect, Archive, Restore, Clean };
     Q_ENUM(ResourceAction)
     bool available(const QString &project, const QString &workspace) const;
+    bool organizingBusy(const QString &path) const { return m_preparing.contains(path) || m_changing.contains(path); }
     bool setCheckpoint(const QString &project, const QString &workspace, const QString &comment, int state, int revision);
     void registerTaskProvider(TaskWorkspaceProvider *provider);
     QVariantList taskProviders() const;

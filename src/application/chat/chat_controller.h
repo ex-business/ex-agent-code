@@ -74,6 +74,7 @@ public:
     void setBots(QObject *value);
     const ChatMessage *conversationMessage(const QString &session, const QString &message, QString *error) const;
     QString conversationDirectory(const QString &session) const;
+    bool projectInUse(const QString &project) const;
     QJsonObject conversationSnapshot(const QString &session, const QString &before, QString *error) const;
     QJsonObject conversationInfo(const QString &session, QString *error) const;
     QJsonArray conversationRows(const QString &session, const QSet<QString> &messages, QString *error) const;

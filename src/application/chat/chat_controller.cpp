@@ -183,6 +183,14 @@ const ChatMessage *ChatController::conversationMessage(const QString &session,co
     }
     *error=QStringLiteral("授权会话内没有此消息。");return nullptr;
 }
+bool ChatController::projectInUse(const QString &project) const {
+    for(const auto &s:m_sessions)if(s.projectId==project) {
+        const auto running=[this](const QString &id){const auto state=m_blocks.taskState(id);return state==int(content::TaskState::Created)||state==int(content::TaskState::Running);};
+        // 无工作区的聊天也可能正在执行或被交互终端接管，不能只按文件目录检查。
+        if(m_agent.activeSession(s.id) || !m_agent.canTransferInput(s.id) || running(m_backgroundTasks.value(s.id)) || running(m_internalTasks.value(s.id)))return true;
+    }
+    return false;
+}
 QString ChatController::conversationDirectory(const QString &session) const {
     for(const auto &s:m_sessions)if(s.id==session)return m_repository.sessionDirectory(s.projectId,s.id);
     return {};
@@ -234,7 +242,12 @@ void ChatController::setProjectGroups(QObject *value) {
 }
 QString ChatController::repositoryPath() const {
     const auto *w=m_projects.catalog.workspace(currentProjectId(),currentWorkspaceId());
-    if(!w || w->launch.value("provider").toString()!="folder.workspace")return workspacePath();
+    if(!w)return workspacePath();
+    if(w->launch.value("provider")=="folder.detached") {
+        const auto path=w->launch.value("repositoryRoot").toString();
+        return QFileInfo(path).canonicalFilePath()==path?path:QString();
+    }
+    if(w->launch.value("provider").toString()!="folder.workspace")return workspacePath();
     const auto *source=m_projects.catalog.find(w->launch.value("taskSource").toString());
     if(!source || source->groupId()!=currentProjectId())return {};
     // 文件和执行根仍为父目录；Git操作只定位到创建时确认的任务来源仓库。

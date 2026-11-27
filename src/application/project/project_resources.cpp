@@ -12,6 +12,10 @@ void ProjectNavigator::manageResource(const QString &providerId, const QString &
 {
     const auto *w = catalog.workspace(projectId, workspaceId);
     if (!w || action < Inspect || action > Clean) return;
+    // 父目录文件夹工作区只允许逻辑归档，不得作为Git资源清理对象。
+    if(w->launch.value("provider")=="folder.workspace" || w->launch.value("provider")=="folder.detached") {
+        emit failure(QStringLiteral("文件夹工作区请使用逻辑归档与恢复，不执行Git工作树清理。"));return;
+    }
     if (!runningTasks || !saveCatalog) {
         emit failure(QStringLiteral("工作区资源管理依赖尚未就绪。"));
         return;

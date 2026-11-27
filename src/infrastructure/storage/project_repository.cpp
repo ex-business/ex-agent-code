@@ -53,7 +53,7 @@ QList<ChatSession> ProjectRepository::load(ProjectCatalog &catalog, QString *err
         m_savedIndex = file.readAll();
         const auto root = QJsonDocument::fromJson(m_savedIndex).object();
         const auto version=root["version"].toInt(-1);
-        if ((version!=1 && version!=2) || !root["projects"].isArray() || !root["sessions"].isArray()) return invalid();
+        if ((version!=1 && version!=2 && version!=3) || !root["projects"].isArray() || !root["sessions"].isArray()) return invalid();
         ProjectCatalog restored;
         restored.projects.clear();
         QSet<QString> workspaceIds;
@@ -70,6 +70,7 @@ QList<ChatSession> ProjectRepository::load(ProjectCatalog &catalog, QString *err
                 const int state = data.contains("state") ? data.value("state").toInt(-1) : 0;
                 if (state < 0 || state > int(WorkspaceState::Cleaned)) return invalid();
                 workspace.launch = data["launch"].toObject().toVariantMap();
+                if(workspace.launch.value("provider")=="folder.detached" && version!=3)return invalid();
                 workspace.state = WorkspaceState(state);
                 workspace.branch = data.value("branch").toString();
                 workspace.checkpoint = data.value("checkpoint").toObject().toVariantMap();
@@ -77,7 +78,7 @@ QList<ChatSession> ProjectRepository::load(ProjectCatalog &catalog, QString *err
                 project.workspaces.append(workspace);
             }
             project.organization=row.value("organization").toObject().toVariantMap();
-            if(row.contains("organization") && (version!=2 || !row["organization"].isObject()))return invalid();
+            if(row.contains("organization") && (version<2 || !row["organization"].isObject()))return invalid();
             restored.projects.append(project);
         }
         if (!restored.find(ProjectCatalog::inboxId()) || !validOrganization(restored)) return invalid();
@@ -118,6 +119,7 @@ bool ProjectRepository::save(const ProjectCatalog &catalog, const QList<ChatSess
         QJsonArray workspaces;
         for (const auto &workspace : project.workspaces) {
             QJsonObject item{{"id", workspace.id}, {"path", workspace.path}};
+            if(workspace.launch.value("provider")=="folder.detached")version=3;
             if (!workspace.taskLinks.isEmpty()) item.insert("tasks", QJsonArray::fromStringList(workspace.taskLinks));
             item.insert("launch", QJsonObject::fromVariantMap(workspace.launch));
             item.insert("state", int(workspace.state));
@@ -126,7 +128,7 @@ bool ProjectRepository::save(const ProjectCatalog &catalog, const QList<ChatSess
             workspaces.append(item);
         }
         QJsonObject row{{"id",project.id},{"name",project.name},{"workspaces",workspaces}};
-        if(!project.organization.isEmpty()){row.insert("organization",QJsonObject::fromVariantMap(project.organization));version=2;}
+        if(!project.organization.isEmpty()){row.insert("organization",QJsonObject::fromVariantMap(project.organization));version=qMax(version,2);}
         projects.append(row);
     }
     auto generations = m_generations;

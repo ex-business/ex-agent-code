@@ -7,6 +7,9 @@
 
 namespace exagent {
 namespace {
+bool folderWorkspace(const WorkspaceBinding *workspace) {
+    return workspace && (workspace->launch.value("provider")=="folder.workspace" || workspace->launch.value("provider")=="folder.detached");
+}
 QString newId() { return QUuid::createUuid().toString(QUuid::WithoutBraces); }
 QVariantMap row(ProjectNavigator::RowKind kind, const QString &title, const QString &project,
                 const QString &workspace = {}, const QString &session = {})
@@ -35,7 +38,7 @@ QVariantList ProjectNavigator::taskProviders() const
 void ProjectNavigator::loadTaskFields(const QString &providerId, const QString &projectId, const QString &workspaceId, int request)
 {
     const auto *workspace = catalog.workspace(projectId, workspaceId);
-    if (workspace) for (auto *provider : m_providers) {
+    if (workspace && !folderWorkspace(workspace)) for (auto *provider : m_providers) {
         if (provider->id() != providerId) continue;
         provider->loadFields(workspace->path, [this, request](QVariantList fields) { emit taskFieldsReady(request, fields); });
         return;
@@ -56,6 +59,7 @@ QVariantMap ProjectNavigator::launchSettings(const QString &providerId, const QS
 {
     const auto *binding = catalog.workspace(project, workspace);
     if (!binding) return {{"error","请先绑定项目工作区。"}};
+    if(folderWorkspace(binding))return {{"error",QStringLiteral("请从独立仓库项目创建任务工作树或项目配置。")}};
     for (auto *provider : m_providers) {
         if (provider->id() != providerId) continue;
         QString error;
@@ -74,6 +78,7 @@ QString ProjectNavigator::createLaunchTemplate(const QString &project, const QSt
 {
     const auto *binding = catalog.workspace(project, workspace);
     if (!writable() || !binding) return QStringLiteral("项目工作区不可写。");
+    if(folderWorkspace(binding))return QStringLiteral("请从独立仓库项目创建任务工作树或项目配置。");
     return writeLaunchTemplate(configRoot(catalog, project, *binding));
 }
 
@@ -85,6 +90,7 @@ void ProjectNavigator::createTask(const QString &providerId, const QString &proj
         emit failure(QStringLiteral("请检查工作区、写入权限及任务名称。"));
         return;
     }
+    if(folderWorkspace(workspace)){emit failure(QStringLiteral("请从独立仓库项目创建任务工作树或项目配置。"));return;}
     for (auto *provider : m_providers) {
         if (provider->id() != providerId) continue;
         const auto settings = launchSettings(providerId, projectId, workspaceId);
@@ -174,17 +180,21 @@ void ProjectNavigator::refresh(const QList<ChatSession> &sessions)
             return item;
         };
         auto header=decorate(row(ProjectRow,project.name,project.id),depth);
-        header.insert("groupRoot",project.kind()==ProjectKind::Group?project.rootPath():QString());next.append(header);
+        header.insert("groupRoot",project.kind()==ProjectKind::Group?project.rootPath():QString());
+        bool detachedFolders=false;for(const auto &w:project.workspaces)if(w.launch.value("provider")=="folder.detached")detachedFolders=true;
+        header.insert("detachedFolders",detachedFolders);
+        bool taskSources=false;for(const auto &w:project.workspaces)if(!folderWorkspace(&w))taskSources=true;
+        header.insert("retainedOnly",detachedFolders && !taskSources);next.append(header);
         for(const auto &v:groups.value("p/"+project.id))next.append(decorate(v.toMap(),depth+1));
         for(const auto &workspace:project.workspaces) {
-            const bool folder=workspace.launch.value("provider").toString()=="folder.workspace";
+            const bool folder=workspace.launch.value("provider").toString()=="folder.workspace" || workspace.launch.value("provider")=="folder.detached";
             auto title=folder?workspace.launch.value("name").toString():QFileInfo(workspace.path).fileName();
             if(workspace.state==WorkspaceState::Archived)title+=QStringLiteral("（已归档）");
             if(workspace.state==WorkspaceState::Cleaned)title+=QStringLiteral("（已清理）");
             auto entry=decorate(row(WorkspaceRow,title.isEmpty()?workspace.path:title,project.id,workspace.id),depth+1);
             entry.insert("state",int(workspace.state));entry.insert("path",workspace.path);entry.insert("taskLinks",workspace.taskLinks);
             entry.insert("projectTitle",project.name);entry.insert("launch",workspace.launch);entry.insert("checkpoint",workspace.checkpoint);
-            if(folder){const auto *source=catalog.find(workspace.launch.value("taskSource").toString());entry.insert("taskSourceTitle",source?source->name:QString());}
+            if(folder){const auto *source=catalog.find(workspace.launch.value("taskSource").toString());entry.insert("taskSourceTitle",source?source->name:QFileInfo(workspace.launch.value("repositoryRoot").toString()).fileName());}
             next.append(entry);
             for(const auto &v:groups.value("w/"+workspace.id))next.append(decorate(v.toMap(),depth+2));
         }

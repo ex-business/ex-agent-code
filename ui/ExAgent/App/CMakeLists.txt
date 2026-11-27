@@ -27,7 +27,7 @@ qt_add_qml_module(ex_agent_workbench
         components/blocks/ImageSequenceRenderer.qml components/blocks/UnknownBlockRenderer.qml
         components/Icon.qml components/IconButton.qml
         components/ContextMenu.qml components/ContextMenuItem.qml
-        components/ProjectGroupDialog.qml components/FolderWorkspaceDialog.qml components/Sidebar.qml components/ProjectTreeRow.qml components/AgentApprovalDialog.qml components/WorkspaceActivityDialog.qml components/GlobalNavigation.qml components/browser/WorkspaceBrowser.qml components/browser/BrowserPages.qml components/browser/DesignPicker.qml components/JumpTargets.js components/QuickOpenDialog.qml components/NotificationInbox.qml components/AgentSettings.qml components/ConversationTransferDialog.qml components/Composer.qml
+        components/ProjectGroupManageDialog.qml components/ProjectGroupDialog.qml components/FolderWorkspaceDialog.qml components/Sidebar.qml components/ProjectTreeRow.qml components/AgentApprovalDialog.qml components/WorkspaceActivityDialog.qml components/GlobalNavigation.qml components/browser/WorkspaceBrowser.qml components/browser/BrowserPages.qml components/browser/DesignPicker.qml components/JumpTargets.js components/QuickOpenDialog.qml components/NotificationInbox.qml components/AgentSettings.qml components/ConversationTransferDialog.qml components/Composer.qml
         components/ExecutionIndicator.qml components/ComposerToolbar.qml components/MessageActions.qml
         components/UserMessageBubble.qml
         components/SelectionSurface.qml components/SelectableText.qml components/SendButton.qml

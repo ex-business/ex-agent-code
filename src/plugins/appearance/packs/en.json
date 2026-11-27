@@ -344,7 +344,7 @@
     "待办": "To do",
     "进行中": "In progress",
     "待审查": "In review",
-    "完成": "Completed",
+    "完成": "Done",
     "运行主机": "Execution host",
     "待配对邀请": "Pending invitations",
     "暂无有效邀请": "No active invitations",
@@ -386,6 +386,18 @@
     "关联任务链接（可选）": "Task link (optional)",
     "创建工作区": "Create workspace",
     "文件夹工作区…": "Folder workspaces…",
-    "此文件不属于当前任务来源仓库": "This file is outside the task source repository"
+    "此文件不属于当前任务来源仓库": "This file is outside the task source repository",
+    "管理项目组": "Manage project group",
+    "管理项目组…": "Manage project group…",
+    "移除只解除成员关系，项目、仓库和会话继续保留。": "Removing a member only unlinks it. Projects, repositories and chats are kept.",
+    "删除项目组…": "Delete project group…",
+    "删除项目组": "Delete project group",
+    "移除项目组成员": "Remove group member",
+    "移除成员…": "Remove member…",
+    "移除成员": "Remove member",
+    "替代任务来源仓库": "Replacement task source repository",
+    "成员将转为独立项目，已有会话与工作树保持原归属。": "The member becomes an independent project. Chats and worktrees keep their ownership.",
+    "没有可替代的仓库。可先取消，再删除项目组并保留全部工作区。": "No replacement repository is available. Cancel and delete the group to keep all workspaces.",
+    "仅删除分组关系。成员转为独立项目；组内工作区和会话保留为独立项目。仓库文件、分支和附件不会删除。": "Only the grouping is deleted. Members become independent projects; group workspaces and chats are kept in an independent project. Repository files, branches and attachments are kept."
   }
 }

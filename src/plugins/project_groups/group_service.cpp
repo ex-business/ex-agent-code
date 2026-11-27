@@ -1,4 +1,5 @@
 #include "group_service.h"
+#include "group_lifecycle.h"
 #include "group_scan.h"
 #include "plugins/task_links/task_provider.h"
 #include <QDir>
@@ -19,6 +20,8 @@ Service::Service(control::Host &host) : QObject(&host), m_host(host) {
       {"cancel-scan", {"id"}},
       {"import", {"scan", "name", "paths"}},
       {"list", {}},
+      {"remove-member", {"group", "member", "replacement"}},
+      {"delete", {"group"}},
       {"create-folder", {"group", "source", "name", "task"}},
       {"archive", {"group", "workspace"}},
       {"restore", {"group", "workspace"}}};
@@ -34,21 +37,28 @@ Service::Service(control::Host &host) : QObject(&host), m_host(host) {
         const auto &catalog = m_host.chat.projects()->catalog;
         const auto *w = catalog.workspace(s.projectId, s.workspaceId);
         if (!w ||
-            w->launch.value("provider").toString() != "folder.workspace" ||
+            (w->launch.value("provider").toString() != "folder.workspace" &&
+             w->launch.value("provider").toString() != "folder.detached") ||
             channel == AgentController::TerminalInput)
           return true;
         const auto *source =
             catalog.find(w->launch.value("taskSource").toString());
-        if (!source || source->groupId() != s.projectId ||
-            QFileInfo(source->rootPath()).canonicalFilePath() !=
-                source->rootPath() ||
+        const auto repository =
+            w->launch.value("provider") == "folder.detached"
+                ? w->launch.value("repositoryRoot").toString()
+            : source ? source->rootPath()
+                     : QString();
+        if (repository.isEmpty() ||
+            (w->launch.value("provider") == "folder.workspace" &&
+             (!source || source->groupId() != s.projectId)) ||
+            QFileInfo(repository).canonicalFilePath() != repository ||
             QFileInfo(w->path).canonicalFilePath() != w->path) {
           *e = QStringLiteral("文件夹工作区的任务来源仓库已失效。");
           return false;
         }
         const auto data =
             QJsonDocument(QJsonObject{{"workspaceRoot", w->path},
-                                      {"taskRepository", source->rootPath()}})
+                                      {"taskRepository", repository}})
                 .toJson(QJsonDocument::Compact);
         // 仅为新文件夹工作区补充定位信息，不赋予额外权限，也不把父目录当作单一Git检出。
         const auto context =
@@ -95,6 +105,22 @@ bool Service::publish(const ProjectCatalog &next, QString *error) {
 QJsonObject Service::execute(const QString &a, const QJsonObject &p,
                              QString *e) {
   auto &nav = *m_host.chat.projects();
+  if (a == "remove-member" || a == "delete") {
+    const auto group = p["group"].toString();
+    for (const auto &project : nav.catalog.projects)
+      if ((project.id == group || project.groupId() == group) &&
+          m_host.chat.projectInUse(project.id)) {
+        *e = QStringLiteral("项目组会话仍在执行或被终端接管，请先结束运行。");
+        return {};
+      }
+    ProjectCatalog next;
+    auto result = lifecycle(nav, a, p, &next, e);
+    if (!e->isEmpty() || !publish(next, e))
+      return {};
+    qCInfo(groupLog) << "项目组归属变更已保存，操作：" << a << " 项目组："
+                     << p["group"].toString();
+    return result;
+  }
   if (a == "scan") {
     const QFileInfo root(p["path"].toString());
     if (!p["path"].isString() || !root.isAbsolute() || !root.isDir() ||
@@ -236,7 +262,8 @@ QJsonObject Service::execute(const QString &a, const QJsonObject &p,
   }
   const auto group = p["group"].toString();
   const auto *g = nav.catalog.find(group);
-  if (!g || g->kind() != ProjectKind::Group) {
+  if (!g ||
+      (g->kind() != ProjectKind::Group && a != "archive" && a != "restore")) {
     *e = QStringLiteral("项目组不存在。");
     return {};
   }
@@ -282,10 +309,16 @@ QJsonObject Service::execute(const QString &a, const QJsonObject &p,
   }
   if (a == "archive" || a == "restore") {
     const auto *w = nav.catalog.workspace(group, p["workspace"].toString());
-    if (!w || w->launch.value("provider").toString() != "folder.workspace" ||
+    if (!w ||
+        !((g->kind() == ProjectKind::Group &&
+           w->launch.value("provider") == "folder.workspace") ||
+          (g->kind() == ProjectKind::Normal &&
+           w->launch.value("provider") == "folder.detached")) ||
         (a == "archive" && w->state != WorkspaceState::Active) ||
         (a == "restore" && w->state != WorkspaceState::Archived) ||
-        !nav.runningTasks || !nav.runningTasks(w->path).isEmpty()) {
+        !nav.runningTasks || nav.organizingBusy(w->path) ||
+        m_host.chat.projectInUse(group) ||
+        !nav.runningTasks(w->path).isEmpty()) {
       *e = QStringLiteral("工作区状态或运行中的任务不允许此操作。");
       return {};
     }
