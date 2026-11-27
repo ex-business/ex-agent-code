@@ -4,6 +4,7 @@ qt_add_qml_module(ex_agent_workbench
     URI ExAgent.App
     VERSION 1.0
     QML_FILES
+        components/DialogTextArea.qml components/BotManagerDialog.qml components/BotSessionBar.qml
         components/PluginManagerDialog.qml
         components/SupervisionDialog.qml
         components/ProjectTaskDialog.qml components/WorktreeResourcesDialog.qml

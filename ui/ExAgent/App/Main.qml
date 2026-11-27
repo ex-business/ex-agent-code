@@ -59,10 +59,11 @@ Design.WorkbenchWindow {
             window.requestActivate()
         }
     }
+    Design.BotManagerDialog { id: botDialog; controller: window.controller }
     Design.PluginManagerDialog { id: pluginDialog; controller: window.controller }
     Design.SupervisionDialog { id: supervisionDialog; controller: window.controller }
     Design.SessionMailDialog { id: mailDialog; controller: window.controller }
-    Design.ChatMenu { id: chatMenu; onPluginsRequested: pluginDialog.begin(); onSupervisionRequested: supervisionDialog.begin(); onMailRequested: mailDialog.begin(); onConsoleRequested: consoleWindow.showConsole(); onOrganizeRequested: transferDialog.begin(); onAttachRequested: imageAttachment.open(); controller: window.controller; onImageSequenceRequested: imageFolder.open() }
+    Design.ChatMenu { id: chatMenu; onBotsRequested: botDialog.begin(); onPluginsRequested: pluginDialog.begin(); onSupervisionRequested: supervisionDialog.begin(); onMailRequested: mailDialog.begin(); onConsoleRequested: consoleWindow.showConsole(); onOrganizeRequested: transferDialog.begin(); onAttachRequested: imageAttachment.open(); controller: window.controller; onImageSequenceRequested: imageFolder.open() }
     Design.BlockWindowManager { controller: window.controller; hostWindow: window }
     FileDialog {
         id: imageAttachment; title: "将图片加入会话"
@@ -211,6 +212,7 @@ Design.WorkbenchWindow {
                 ColumnLayout {
                     anchors.fill: parent
                     spacing: 0
+                    Design.BotSessionBar { Layout.fillWidth: true; controller: window.controller; onManageRequested: botDialog.begin() }
                     Rectangle {
                         visible: window.controller.errorMessage.length > 0
                         Layout.fillWidth: true

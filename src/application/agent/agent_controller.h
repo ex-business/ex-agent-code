@@ -58,6 +58,13 @@ public:
     bool submit(const QString &text, const QString &cwd, const QVariantMap &reviewNote = {});
     QString submitWorker(const QString &session, const QString &text);
     QString submitIndependent(const QString &session, const QString &text);
+    enum InputChannel { ChatInput = 1, TerminalInput = 2, MailInput = 3 };
+    using InputPolicy = std::function<bool(const ChatSession &, int, QString &, QString *)>;
+    void reconsiderSessionInput(const QString &session);
+    void registerInputPolicy(const QString &plugin, QObject *owner, InputPolicy policy);
+    bool applyInputPolicies(const ChatSession &session, int channel, QString &text, QString *error) const;
+    QVariantMap sessionExtension(const QString &session, const QString &plugin) const;
+    bool setSessionExtension(const QString &session, const QString &plugin, const QVariantMap &value, QString *error);
     Q_PROPERTY(QVariantList supervisedTasks READ supervisedTasks NOTIFY supervisionChanged)
     QVariantList supervisedTasks() const;
     Q_PROPERTY(QString workerHost READ workerHost CONSTANT)
@@ -114,6 +121,8 @@ private:
         QString turn, mail;
         bool reconciliation = false;
     };
+    struct Policy { QPointer<QObject> owner; InputPolicy apply; };
+    QHash<QString, Policy> m_inputPolicies;
     QList<ChatSession> &m_sessions;
     ProjectCatalog &m_catalog;
     ProjectRepository &m_repository;

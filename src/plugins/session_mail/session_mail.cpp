@@ -82,6 +82,10 @@ void AgentController::deliverMail(const QString &session)
         if (row.value("state").toInt() != mail::Queued || row.value("to") != session || row.value("project") != s->projectId) continue;
         const auto *sender = find(row.value("from").toString());
         if (!sender || sender->projectId != s->projectId) continue;
+        QString body = QStringLiteral("来自会话「%1」的消息\n%2").arg(row.value("sender").toString().left(128), row.value("text").toString());
+        QString policyError;
+        // 暂停的扩展会话保留信箱消息，恢复后按原有顺序投递，不绕过职责和输入约束。
+        if (!applyInputPolicies(*s, MailInput, body, &policyError)) return;
         const QString id = row.value("id").toString();
         row.insert("state", mail::Sending);
         row.insert("run", run->id);
@@ -91,7 +95,6 @@ void AgentController::deliverMail(const QString &session)
         s->history.insert(Inbox, records);
         if (!save()) { s->history.insert(Inbox, before); return; }
         run->mail = id;
-        const QString body = QStringLiteral("来自会话「%1」的消息\n%2").arg(row.value("sender").toString().left(128), row.value("text").toString());
         const auto request = m_worker.request("agent.steer", {{"conversationId", session}, {"runId", run->id},
             {"turnId", run->turn}, {"mailId", id}, {"text", body}});
         if (request.isEmpty()) settleMail(session, run->id, id, mail::Unconfirmed);

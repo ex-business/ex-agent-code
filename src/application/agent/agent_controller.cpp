@@ -10,6 +10,8 @@
 #include <QFileInfo>
 #include <QUuid>
 #include <QSettings>
+#include <QJsonDocument>
+#include <QRegularExpression>
 #include <algorithm>
 namespace exagent {
 using State = content::TaskState;
@@ -286,6 +288,8 @@ QVariantMap AgentController::terminalBinding(const QString& workspace) const
     if (bindingWorkspace && bindingWorkspace->launch.value("host", "local").toString() != "local") return {};
     const auto cwd = workspace.isEmpty() ? m_repository.sessionDirectory(s->projectId,s->id) + "/chat-cwd" : workspace;
     if (QFileInfo(cwd).canonicalFilePath() != binding.value("boundCwd").toString()) return {};
+    QString input, policyError;
+    if (!applyInputPolicies(*s, TerminalInput, input, &policyError)) return {};
     QVariantMap spec;
     for (const auto& key : {"threadId","boundCwd","boundAccount","identity","model","write","fullAccess"})
         spec.insert(key,binding.value(key));
@@ -293,6 +297,52 @@ QVariantMap AgentController::terminalBinding(const QString& workspace) const
     spec.insert("program", codex::executable());
     spec.insert("home", qEnvironmentVariable("CODEX_HOME", QDir::home().filePath(".codex")));
     return spec;
+}
+void AgentController::reconsiderSessionInput(const QString &session)
+{
+    deliverMail(session);
+}
+void AgentController::registerInputPolicy(const QString &plugin, QObject *owner, InputPolicy policy)
+{
+    m_inputPolicies.insert(plugin, {owner, std::move(policy)});
+}
+bool AgentController::applyInputPolicies(const ChatSession &session, int channel, QString &text, QString *error) const
+{
+    const auto extensions = session.history.value("inputExtensions").toMap();
+    if (extensions.isEmpty()) return true;
+    // 扩展只作用于显式绑定的会话；插件缺失或注册表损坏时不降级绕过其输入约束。
+    for (auto it = extensions.begin(); it != extensions.end(); ++it) {
+        const auto policy = m_inputPolicies.constFind(it.key());
+        if (policy == m_inputPolicies.cend() || !policy->owner) {
+            *error = QStringLiteral("此会话依赖的输入插件尚未就绪：") + it.key();
+            return false;
+        }
+        if (!policy->apply(session, channel, text, error)) return false;
+    }
+    if (text.size() > 65536) { *error = QStringLiteral("扩展上下文与输入合计超过 64K 字符。"); return false; }
+    return true;
+}
+QVariantMap AgentController::sessionExtension(const QString &id, const QString &plugin) const
+{
+    const auto *s = find(id);
+    return s ? s->history.value("inputExtensions").toMap().value(plugin).toMap() : QVariantMap{};
+}
+bool AgentController::setSessionExtension(const QString &id, const QString &plugin, const QVariantMap &value, QString *error)
+{
+    auto *s = find(id);
+    static const QRegularExpression name("^[a-z][a-z0-9-]{0,63}$");
+    if (!s || !m_repository.writable() || activeSession(id) || !name.match(plugin).hasMatch() ||
+        QJsonDocument::fromVariant(value).toJson(QJsonDocument::Compact).size() > 8192) {
+        *error = QStringLiteral("会话扩展绑定无效或当前不能修改。"); return false;
+    }
+    const auto before = s->history;
+    auto extensions = before.value("inputExtensions").toMap();
+    if (extensions.contains(plugin) && extensions.value(plugin).toMap() != value) {
+        *error = QStringLiteral("会话已绑定此插件的另一个对象。"); return false;
+    }
+    extensions.insert(plugin, value); s->history.insert("inputExtensions", extensions);
+    if (!save()) { s = find(id); if (s) s->history = before; *error = QStringLiteral("会话扩展保存失败。"); return false; }
+    return true;
 }
 bool AgentController::submit(const QString &text, const QString &cwd, const QVariantMap &reviewNote)
 {
@@ -338,6 +388,10 @@ bool AgentController::submitTo(const QString &session, const QString &text, cons
         emit failure(QStringLiteral("请等待当前运行或账号登录结束。"));
         return false;
     }
+    QString effectivePrompt = text, policyError;
+    if (!applyInputPolicies(*s, ChatInput, effectivePrompt, &policyError)) {
+        emit failure(policyError); return false;
+    }
     QString directory;
     if (cwd.isEmpty()) {
         if (s->agent.value("write").toBool()) {
@@ -366,7 +420,7 @@ bool AgentController::submitTo(const QString &session, const QString &text, cons
         return false;
     }
     const auto run = newId();
-    QJsonObject spec { { "conversationId", s->id }, { "runId", run }, { "prompt", text }, { "cwd", directory },
+    QJsonObject spec { { "conversationId", s->id }, { "runId", run }, { "prompt", effectivePrompt }, { "cwd", directory },
         { "model", s->agent.value("model").toString() }, { "write", s->agent.value("write").toBool() }, { "fullAccess", s->agent.value("fullAccess").toBool() }, { "account", s->agent.value("account").toInt() } };
     if (s->agent.value("boundAccount").toInt() == s->agent.value("account").toInt() && s->agent.value("boundCwd").toString() == directory)
         spec.insert("threadId", s->agent.value("threadId").toString());

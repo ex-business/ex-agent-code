@@ -10,6 +10,8 @@ Design.ContextMenu {
     signal imageSequenceRequested()
     signal consoleRequested()
     Design.ContextMenuItem { text: Design.UiText.get("Agent 历史与终端…"); iconName: "terminal"; onTriggered: root.consoleRequested() }
+    signal botsRequested()
+    Design.ContextMenuItem { text: Design.UiText.get("本机 Bot"); iconName: "grid"; enabled: !!root.controller.bots; onTriggered: root.botsRequested() }
     signal pluginsRequested()
     Design.ContextMenuItem { text: Design.UiText.get("插件管理"); iconName: "grid"; enabled: !!root.controller.plugins; onTriggered: root.pluginsRequested() }
     signal supervisionRequested()

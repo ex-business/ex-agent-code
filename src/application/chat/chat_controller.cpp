@@ -156,6 +156,13 @@ ChatController::ChatController(QObject *parent)
     }
 }
 
+void ChatController::setBots(QObject *value)
+{
+    m_bots = value;
+    if (value) connect(value, &QObject::destroyed, this, [this] { if (!m_bots) emit botsChanged(); });
+    emit botsChanged();
+}
+
 void ChatController::setPlugins(QObject *value)
 {
     m_plugins = value;

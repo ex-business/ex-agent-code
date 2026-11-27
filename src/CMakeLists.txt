@@ -40,6 +40,7 @@ qt_add_qml_module(ex_agent_chat
         plugins/diff_review/session_review.cpp
         plugins/session_mail/session_mail.cpp
         plugins/workbench_control/control_host.h plugins/workbench_control/control_host.cpp
+        plugins/local_bots/bot_service.h plugins/local_bots/bot_service.cpp
         plugins/plugin_lifecycle/manifest.cpp plugins/plugin_lifecycle/plugin_manager.h plugins/plugin_lifecycle/plugin_manager.cpp
         plugins/workbench_control/core_commands.cpp plugins/workbench_control/skill_commands.cpp
         plugins/workbench_control/automation_service.h plugins/workbench_control/automation_service.cpp

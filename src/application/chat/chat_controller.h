@@ -27,6 +27,7 @@ class ChatController final : public QObject {
     Q_PROPERTY(exagent::SessionListModel *sessions READ sessions CONSTANT)
     Q_PROPERTY(exagent::AgentController *agent READ agent CONSTANT)
     Q_PROPERTY(QObject *plugins READ plugins NOTIFY pluginsChanged)
+    Q_PROPERTY(QObject *bots READ bots NOTIFY botsChanged)
     Q_PROPERTY(exagent::ConversationTransfer *transfer READ transfer CONSTANT)
     Q_PROPERTY(exagent::ProjectNavigator *projects READ projects CONSTANT)
     Q_PROPERTY(QString projectName READ projectName NOTIFY workspaceChanged)
@@ -63,6 +64,8 @@ public:
     AgentController *agent() { return &m_agent; }
     QObject *plugins() const { return m_plugins.data(); }
     void setPlugins(QObject *value);
+    QObject *bots() const { return m_bots.data(); }
+    void setBots(QObject *value);
     ConversationTransfer *transfer() { return &m_transfer; }
     ProjectNavigator *projects() { return &m_projects; }
     QString projectName() const;
@@ -130,6 +133,7 @@ signals:
     void backgroundTaskChanged();
     void sessionChanged();
     void pluginsChanged();
+    void botsChanged();
     void workspaceChanged();
     void draftChanged();
     void designSelectionChanged();
@@ -153,6 +157,7 @@ private:
     ConversationResourceRepository m_resources;
     QList<ChatSession> m_sessions;
     QPointer<QObject> m_plugins;
+    QPointer<QObject> m_bots;
     AgentController m_agent{m_sessions, m_projects.catalog, m_repository};
     ConversationTransfer m_transfer{m_sessions, m_projects.catalog, m_repository};
     int m_current = -1;
