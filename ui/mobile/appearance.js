@@ -1,7 +1,9 @@
 'use strict';
 const english = {
- '移动会话':'Mobile chat','连接桌面的会话':'Connect to a desktop chat','断开':'Disconnect','连接你的桌面':'Connect to your desktop',
- '在桌面「移动接入」中为当前会话生成配对链接。':'Create a pairing link for this chat in Mobile Access on your desktop.',
+ '申请控制权':'Request control','交还控制权':'Return control','你正在控制 · 桌面可随时收回':'You have control · desktop can reclaim',
+ '共享观看 · 发送需桌面交接':'Shared view · desktop must hand over control','已交还桌面控制':'Control returned to desktop','已申请，请桌面确认':'Requested · waiting for desktop approval',
+ '移动会话':'Mobile chat','连接桌面的会话':'Connect to a desktop chat','断开':'Disconnect','连接桌面会话':'Connect to a desktop chat',
+ '使用桌面「移动接入」或「共享 Agent」生成的配对链接。':'Use a pairing link from Mobile Access or Share Agent on the desktop.',
  '设备名称':'Device name','我的手机':'My phone','配对码':'Pairing code','配对':'Pair','加载更早消息':'Load earlier messages','回到最新':'Back to latest',
  '消息':'Message','发送到桌面会话…':'Send to your desktop chat…','发送':'Send','已在桌面核对，解锁输入':'Checked on desktop — unlock input',
  '请求未成功':'Request failed','连接已变化':'Connection changed','连接已失效，请在桌面重新配对':'Access ended. Pair again from desktop.',

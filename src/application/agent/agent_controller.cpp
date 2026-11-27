@@ -298,16 +298,25 @@ QVariantMap AgentController::terminalBinding(const QString& workspace) const
     spec.insert("home", qEnvironmentVariable("CODEX_HOME", QDir::home().filePath(".codex")));
     return spec;
 }
+bool AgentController::canTransferInput(const QString &session) const
+{
+    const auto *s=find(session);
+    // 已在原生聊天运行的任务可共享；外部终端占有线程时不能声称已交接独占输入。
+    return s && (activeSession(session) || codex::threadAvailable(s->agent.value("threadId").toString()));
+}
 void AgentController::reconsiderSessionInput(const QString &session)
 {
     deliverMail(session);
 }
-void AgentController::registerInputPolicy(const QString &plugin, QObject *owner, InputPolicy policy)
+void AgentController::registerInputPolicy(const QString &plugin, QObject *owner, InputPolicy policy, bool global)
 {
-    m_inputPolicies.insert(plugin, {owner, std::move(policy)});
+    m_inputPolicies.insert(plugin, {owner, std::move(policy), global});
 }
 bool AgentController::applyInputPolicies(const ChatSession &session, int channel, QString &text, QString *error) const
 {
+    // 运行期守卫先检查租约，再沿用原有会话绑定策略；默认注册仍只作用于绑定会话。
+    for (const auto &guard : m_inputPolicies)
+        if (guard.global && guard.owner && !guard.apply(session, channel, text, error)) return false;
     const auto extensions = session.history.value("inputExtensions").toMap();
     if (extensions.isEmpty()) return true;
     // 扩展只作用于显式绑定的会话；插件缺失或注册表损坏时不降级绕过其输入约束。

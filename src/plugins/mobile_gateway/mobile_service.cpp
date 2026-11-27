@@ -64,6 +64,8 @@ Service::Service(control::Host &h) : QObject(&h), m_host(h), m_server(this) {
             d["hash"].toString().size() != 64 || !ipc::integer(d["scope"], 1, 2) ||
             !ipc::integer(d["state"], 1, 2) || d["session"].toString().isEmpty())
             m_valid = false;
+        if ((!d["sharing"].isUndefined() && !ipc::integer(d["sharing"],0,1)) ||
+            (d["sharing"].toInt()==1 && (!d["expires"].isDouble() || d["expires"].toDouble()<=0))) m_valid=false;
         ids.insert(d["id"].toString());
     }
     for (const auto &v : m_data["sends"].toArray()) {
@@ -75,7 +77,7 @@ Service::Service(control::Host &h) : QObject(&h), m_host(h), m_server(this) {
     m_server.handle = [this](const Request &r) { return serve(r); };
     const QList<QPair<QString, QSet<QString>>> methods{
         {"status", {}},  {"start", {"address", "port", "certificate", "key"}},
-        {"stop", {}},    {"offer", {"session", "scope"}},
+        {"stop", {}},    {"offer", {"session", "scope", "sharing"}},
         {"devices", {}}, {"revoke", {"id"}}};
     for (const auto &m : methods)
         h.add("mobile." + m.first, m.second,
@@ -101,7 +103,7 @@ void Service::setAppearance(const QVariantMap &colors, const QVariantMap &string
 }
 QVariantMap Service::operate(const QString &a, const QVariantMap &p) {
     QString e;
-    const auto r = m_host.invoke("mobile." + a, QJsonObject::fromVariantMap(p), &e);
+    const auto r = m_host.invoke(a.startsWith("sharing.") ? a : "mobile." + a, QJsonObject::fromVariantMap(p), &e);
     return e.isEmpty() ? QVariantMap{{"ok", true}, {"result", r.toVariantMap()}}
                        : QVariantMap{{"ok", false}, {"error", e}};
 }
@@ -163,8 +165,9 @@ QJsonObject Service::execute(const QString &a, const QJsonObject &p, QString *e)
             *e = QStringLiteral("待配对授权过多，请等待其过期或停止接入。");
             return {};
         }
+        if (!p["sharing"].isUndefined() && !ipc::integer(p["sharing"],0,1)) { *e=QStringLiteral("共享方式无效。"); return {}; }
         const auto code = secret();
-        const QJsonObject offer{{"session", p["session"]}, {"scope", p["scope"]}, {"expires", now + 300}};
+        const QJsonObject offer{{"session", p["session"]}, {"scope", p["scope"]}, {"expires", now + 300}, {"sharing",p["sharing"].toInt()}};
         m_offers.insert(digest(code), offer);
         return {{"url", m_server.origin() + "/#" + code}, {"expires", now + 300}, {"scope", p["scope"]}};
     }
@@ -246,7 +249,8 @@ Response Service::serve(const Request &r) {
                            {"session", offer["session"]},
                            {"scope", offer["scope"]},
                            {"state", 1},
-                           {"hash", digest(token)}};
+                           {"hash", digest(token)}, {"sharing",offer["sharing"].toInt()},
+                           {"expires",QDateTime::currentSecsSinceEpoch()+86400}};
         devices.append(device);
         auto next = m_data;
         next.insert("devices", devices);
@@ -266,7 +270,7 @@ Response Service::serve(const Request &r) {
             device = v.toObject();
             break;
         }
-    if (device.isEmpty())
+    if (device.isEmpty() || (device["sharing"].toInt()==1 && device["expires"].toDouble()<=QDateTime::currentSecsSinceEpoch()))
         return failure(QStringLiteral("设备授权已失效。"), 401);
     if (r.path == "/api/snapshot") {
         if (p.size() > 1 || (!p.isEmpty() && !p["before"].isString()))
@@ -277,7 +281,18 @@ Response Service::serve(const Request &r) {
             return failure(error);
         result.insert("scope", device["scope"]);
         result.insert("appearance", m_appearance);
+        if(device["sharing"].toInt()==1) result.insert("sharing",m_host.invoke("sharing.access",{{"session",device["session"]},{"device",device["id"]}},&error));
         return json({{"ok", true}, {"result", result}});
+    }
+    if (r.path == "/api/control") {
+        if(device["sharing"].toInt()!=1 || (p.size()!=1 && p.size()!=3) || !ipc::integer(p["action"],1,2) ||
+           (p["action"].toInt()==1 && p.size()!=1) || (p["action"].toInt()==2 && (p.size()!=3 || !p["epoch"].isString() || !p["revision"].isDouble())))
+            return failure(QStringLiteral("控制请求参数无效。"));
+        auto params=p;params.insert("session",device["session"]);params.insert("device",device["id"]);
+        m_host.invoke("sharing.request",params,&error);
+        if(!error.isEmpty())return failure(error,409);
+        const auto access=m_host.invoke("sharing.access",{{"session",device["session"]},{"device",device["id"]}},&error);
+        return error.isEmpty()?json({{"ok",true},{"result",access}}):failure(error,409);
     }
     if (r.path == "/api/send") {
         if (device["scope"].toInt() != 2)
@@ -297,6 +312,10 @@ Response Service::serve(const Request &r) {
                                                 {"state", s["state"].toInt() == 0 ? 4 : s["state"].toInt()},
                                                 {"run", s["run"]}}}});
         }
+        if(device["sharing"].toInt()==1) {
+            const auto access=m_host.invoke("sharing.access",{{"session",device["session"]},{"device",device["id"]}},&error);
+            if(!error.isEmpty() || access["canSend"].toInt()!=1)return json({{"ok",false},{"code",1},{"error",QStringLiteral("尚未取得控制权，请向桌面申请交接。")}},409);
+        }
         if (sends.size() >= 256)
             return failure(QStringLiteral("移动发送记录达到首版保留上限，请在桌面检查。"), 409);
         QJsonObject item{{"id", p["id"]}, {"device", device["id"]}, {"prompt", p["prompt"]}, {"state", 0}};
@@ -307,7 +326,9 @@ Response Service::serve(const Request &r) {
             return failure(error, 503);
         // 先保存发送意图；断线/重启不重放未确认输入，同ID查询只返回原结果。
         const auto result =
-            m_host.invoke("sessions.send", {{"session", device["session"]}, {"prompt", p["prompt"]}}, &error);
+            m_host.invoke(device["sharing"].toInt()==1 ? "sharing.send" : "sessions.send",
+                device["sharing"].toInt()==1 ? QJsonObject{{"session",device["session"]},{"device",device["id"]},{"prompt",p["prompt"]}}
+                                            : QJsonObject{{"session",device["session"]},{"prompt",p["prompt"]}}, &error);
         item.insert("state", error.isEmpty() ? 1 : 3);
         item.insert("run", result["run"]);
         item.insert("error", error);

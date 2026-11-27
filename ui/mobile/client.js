@@ -12,12 +12,13 @@ function activateSession(id) {
   $('draft').value=localStorage.getItem(draftKey())||'';messages.clear();older='';windowEpoch++;
  }
 }
+let sharing=null, pairingOffer=false;
 let messages = new Map(), authEpoch = 0, sending = false, windowEpoch = 0, browsing = false;
 try { pending = JSON.parse(localStorage.getItem(pendingKey())); } catch (_) { pending = null; }
 $('draft').value = localStorage.getItem(draftKey()) || '';
 function receiveOffer() {
  if(location.hash.length<=1)return false;
- $('code').value=location.hash.slice(1);history.replaceState(null,'','/');
+ pairingOffer=true; $('code').value=location.hash.slice(1);history.replaceState(null,'','/');
  authEpoch++;windowEpoch++;clearTimeout(timer);connected(false);return true;
 }
 const offered=receiveOffer();
@@ -29,11 +30,11 @@ async function api(path, body, authenticated = true) {
   const response = await fetch('/api/' + path, {method:'POST', cache:'no-store', credentials:'omit', headers:{'Content-Type':'application/json', ...(authenticated ? {Authorization:'Bearer ' + token} : {})}, body:JSON.stringify(body), signal:AbortSignal.timeout(10000)});
   const value = await response.json();
   if (authenticated && epoch !== authEpoch) throw new Error(t('连接已变化'));
-  if (!value.ok) { if (response.status === 401 && authenticated) logout(); throw new Error(value.error || t('请求未成功')); }
+  if (!value.ok) { if (response.status === 401 && authenticated) logout(); const error=new Error(value.error || t('请求未成功'));error.code=value.code;throw error; }
   return value;
 }
 function logout() { authEpoch++; windowEpoch++; browsing=false; older=""; clearTimeout(timer); token = ''; messages.clear(); $('messages').replaceChildren(); localStorage.removeItem('exMobileToken'); connected(false); status(t('连接已失效，请在桌面重新配对')); }
-function controls() { $('draft').readOnly = !!pending || sending || scope !== 2; $('send').disabled = sending || scope !== 2 || running === 1 || (!pending && !$('draft').value.trim()); $('send').textContent = pending ? t('核对发送') : t('发送'); $('latest').hidden=!browsing; $('scope').textContent = scope === 2 ? (running === 1 ? t('桌面正在运行') : t('允许发送 · 沿用桌面权限')) : t('只读访问'); }
+function controls() { $('control').hidden=!sharing || scope!==2; $('control').textContent=t(sharing?.canSend===1?'交还控制权':'申请控制权'); $('draft').readOnly = !!pending || sending || (scope !== 2 || (sharing && sharing.canSend !== 1)); $('send').disabled = sending || scope !== 2 || (!pending && ((sharing && sharing.canSend !== 1) || running === 1 || !$('draft').value.trim())); $('send').textContent = pending ? t('核对发送') : t('发送'); $('latest').hidden=!browsing; $('scope').textContent = scope === 2 ? (running === 1 ? t('桌面正在运行') : t('允许发送 · 沿用桌面权限')) : t('只读访问'); if(sharing && scope===2)$('scope').textContent=t(sharing.canSend===1?'你正在控制 · 桌面可随时收回':'共享观看 · 发送需桌面交接'); }
 function content(article, text) {
   const parts = text.split(/```[^\n]*\n/);
   if (parts.length === 1) { const p = document.createElement('p'); p.textContent = text; article.append(p); return; }
@@ -71,6 +72,7 @@ async function snapshot(before = '') {
   const value = (await api('snapshot', before ? {before} : {})).result;
   if(epoch!==windowEpoch)return;
   if(value.appearance)applyAppearance(value.appearance);
+  sharing=value.sharing||null;
   activateSession(value.session);
   $('title').textContent = value.title || t('移动会话'); running = value.running; scope = value.scope;
   if (before) {
@@ -88,14 +90,14 @@ async function snapshot(before = '') {
   connected(true);render();controls();
 }
 async function poll() {
-  if (!token || browsing) return;
+  if (!token || browsing || pairingOffer || document.hidden) return;
   const epoch=authEpoch;
   try { await snapshot(); backoff = 2000; status(t('已连接桌面')); } catch (e) { if(epoch!==authEpoch)return;status(e.message + ' · '+t('正在重连')); backoff=Math.min(backoff*2,30000); }
-  if (token && epoch===authEpoch) timer=setTimeout(poll,backoff);
+  if (token && epoch===authEpoch && !browsing && !document.hidden) {clearTimeout(timer);timer=setTimeout(poll,backoff);}
 }
 $('pair').onclick = async () => {
-  $('pair').disabled=true;
-  try { const value=await api('pair',{code:$('code').value.trim(),name:$('name').value.trim()},false); authEpoch++;clearTimeout(timer);deviceId=value.device.id;localStorage.setItem('exMobileDevice',deviceId);activateSession(value.device.session);token=value.token;localStorage.setItem('exMobileToken',token);pending=null;browsing=false;windowEpoch++;messages.clear();older='';$('code').value='';await poll(); }
+  const epoch=authEpoch; $('pair').disabled=true;
+  try { const value=await api('pair',{code:$('code').value.trim(),name:$('name').value.trim()},false); if(epoch!==authEpoch)return; authEpoch++;clearTimeout(timer);deviceId=value.device.id;localStorage.setItem('exMobileDevice',deviceId);activateSession(value.device.session);token=value.token;localStorage.setItem('exMobileToken',token);pending=null;pairingOffer=false;browsing=false;windowEpoch++;messages.clear();older='';$('code').value='';await poll(); }
   catch(e) {status(e.message);} finally {$('pair').disabled=false;}
 };
 $('older').onclick = async () => { browsing=true;windowEpoch++;controls();$('older').disabled=true;try {await snapshot(older);}catch(e){status(e.message);}finally{$('older').disabled=false;} };
@@ -110,9 +112,24 @@ $('send').onclick = async () => {
     if (result.state === 1) {pending=null;localStorage.removeItem(pendingKey());$('draft').value='';localStorage.removeItem(draftKey());status(t('已提交桌面执行'));if(!browsing)await snapshot();}
     else if (result.state === 3) {pending=null;localStorage.removeItem(pendingKey());status(result.error || t('桌面未接受输入，草稿已保留'));}
     else {$('resolve').hidden=false;status(t('发送结果待核对，请保留请求ID并在桌面确认'));}
-  } catch(e) { if(epoch!==authEpoch)return;status(e.message + ' · '+t('保留原请求，点击核对发送可安全重试')); }
+  } catch(e) { if(epoch!==authEpoch)return; if(e.code===1){pending=null;localStorage.removeItem(pendingKey());await snapshot().catch(()=>{});status(e.message);}else status(e.message + ' · '+t('保留原请求，点击核对发送可安全重试')); }
   finally { sending=false; controls(); }
 };
 $('resolve').onclick = () => {pending=null;localStorage.removeItem(pendingKey());$('resolve').hidden=true;controls();status(t('已按你的确认解锁，原发送记录仍保留在桌面'));};
+$('control').onclick = async () => {
+  const epoch=authEpoch;
+  $('control').disabled=true;
+  try {
+    const release=sharing?.canSend===1;
+    await api('control',release?{action:2,epoch:sharing.epoch,revision:sharing.revision}:{action:1});
+    if(epoch!==authEpoch)return;
+    status(t(release?'已交还桌面控制':'已申请，请桌面确认'));
+    await snapshot();
+  } catch(e) {
+    if(epoch!==authEpoch)return;
+    await snapshot().catch(()=>{});status(e.message);
+  } finally {$('control').disabled=false;}
+};
+addEventListener('visibilitychange',()=>{clearTimeout(timer);if(!document.hidden)poll();});
 $('disconnect').onclick = logout;
 syncAppearance().catch(()=>{}).finally(()=>{controls();if(token&&!offered)poll();});

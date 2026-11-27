@@ -11,6 +11,8 @@ Design.ContextMenu {
     signal consoleRequested()
     Design.ContextMenuItem { text: Design.UiText.get("Agent 历史与终端…"); iconName: "terminal"; onTriggered: root.consoleRequested() }
     signal mobileRequested()
+    signal sharingRequested()
+    Design.ContextMenuItem { text: Design.UiText.get("共享 Agent…"); iconName: "link"; onTriggered: root.sharingRequested() }
     Design.ContextMenuItem { text: Design.UiText.get("移动接入"); iconName: "grid"; enabled: !!root.controller.mobile; onTriggered: root.mobileRequested() }
     signal sshRequested()
     Design.ContextMenuItem { text: Design.UiText.get("SSH 工作区"); iconName: "terminal"; enabled: !!root.controller.ssh; onTriggered: root.sshRequested() }

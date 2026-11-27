@@ -60,8 +60,9 @@ public:
     QString submitIndependent(const QString &session, const QString &text);
     enum InputChannel { ChatInput = 1, TerminalInput = 2, MailInput = 3 };
     using InputPolicy = std::function<bool(const ChatSession &, int, QString &, QString *)>;
+    bool canTransferInput(const QString &session) const;
     void reconsiderSessionInput(const QString &session);
-    void registerInputPolicy(const QString &plugin, QObject *owner, InputPolicy policy);
+    void registerInputPolicy(const QString &plugin, QObject *owner, InputPolicy policy, bool global = false);
     bool applyInputPolicies(const ChatSession &session, int channel, QString &text, QString *error) const;
     QVariantMap sessionExtension(const QString &session, const QString &plugin) const;
     bool setSessionExtension(const QString &session, const QString &plugin, const QVariantMap &value, QString *error);
@@ -121,7 +122,7 @@ private:
         QString turn, mail;
         bool reconciliation = false;
     };
-    struct Policy { QPointer<QObject> owner; InputPolicy apply; };
+    struct Policy { QPointer<QObject> owner; InputPolicy apply; bool global = false; };
     QHash<QString, Policy> m_inputPolicies;
     QList<ChatSession> &m_sessions;
     ProjectCatalog &m_catalog;
