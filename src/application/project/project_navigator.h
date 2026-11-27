@@ -26,6 +26,7 @@ public:
     enum ResourceAction { Inspect, Archive, Restore, Clean };
     Q_ENUM(ResourceAction)
     bool available(const QString &project, const QString &workspace) const;
+    bool setCheckpoint(const QString &project, const QString &workspace, const QString &comment, int state, int revision);
     void registerTaskProvider(TaskWorkspaceProvider *provider);
     QVariantList taskProviders() const;
     Q_INVOKABLE void createTask(const QString &providerId, const QString &projectId, const QString &workspaceId, const QString &name, const QVariantMap &options = {});

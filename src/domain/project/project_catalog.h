@@ -6,6 +6,8 @@
 
 namespace exagent {
 
+enum class CheckpointState { Todo = 0, InProgress = 1, InReview = 2, Completed = 3 };
+
 enum class WorkspaceState { Active = 0, Archived = 1, Cleaned = 2 };
 
 struct WorkspaceBinding {
@@ -15,6 +17,7 @@ struct WorkspaceBinding {
     QVariantMap launch = {};
     WorkspaceState state = WorkspaceState::Active;
     QString branch = {};
+    QVariantMap checkpoint = {};
 };
 
 struct Project {

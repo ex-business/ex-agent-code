@@ -304,6 +304,12 @@ QString AgentController::submitWorker(const QString &session, const QString &tex
     const auto *target = find(session);
     const auto *source = find(m_selected);
     if (!source || !target || source->projectId != target->projectId || session == m_selected) return {};
+    return submitIndependent(session, text);
+}
+QString AgentController::submitIndependent(const QString &session, const QString &text)
+{
+    const auto *target = find(session);
+    if (!target || text.size() > 65536) return {};
     const auto *workspace = m_catalog.workspace(target->projectId, target->workspaceId);
     if (!submitTo(session, text, workspace ? workspace->path : QString{}, {}, true)) return {};
     return m_active.value(session).id;
@@ -322,7 +328,7 @@ bool AgentController::submitTo(const QString &session, const QString &text, cons
         emit failure(QStringLiteral("当前执行器无法在此任务绑定的主机运行。"));
         return false;
     }
-    if (!s || !m_writable || !s->agent.value("account").toInt() || text.trimmed().isEmpty())
+    if (!s || !(worker ? m_repository.writable() : m_writable) || !s->agent.value("account").toInt() || text.trimmed().isEmpty())
         return false;
     if (!codex::threadAvailable(s->agent.value("threadId").toString())) {
         emit failure(QStringLiteral("会话正在另一入口中使用。请先在交互终端退出 Codex，再继续聊天。"));

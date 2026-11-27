@@ -14,6 +14,7 @@ public:
     QList<ChatSession> load(ProjectCatalog &catalog, QString *error);
     bool save(const ProjectCatalog &catalog, const QList<ChatSession> &sessions, QString *error);
     QString filePath() const;
+    bool writable() const { return m_lock.isLocked(); }
     QString sessionDirectory(const QString &project, const QString &session) const;
 private:
     QString m_directory;

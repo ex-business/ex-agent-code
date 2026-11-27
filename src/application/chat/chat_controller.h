@@ -80,6 +80,7 @@ public:
     QString draft() const;
     QString errorMessage() const;
     QString storagePath() const;
+    bool saveNow(QString *error);
     bool previewMode() const;
     QVariantList resourceConversations() const;
     QVariantList navigationEntries() const;

@@ -13,6 +13,7 @@ qt_add_library(ex_agent_ipc STATIC
     domain/content/content_block.h
     domain/ipc/protocol.h
     infrastructure/ipc/rpc_channel.h infrastructure/ipc/rpc_channel.cpp
+    plugins/workbench_control/control_cli.cpp plugins/workbench_control/control_cli.h
     application/services/local_service_process.h application/services/local_service_process.cpp
     application/services/content_block_store.h application/services/content_block_store.cpp
     application/services/content_block_adapters.h application/services/content_block_adapters.cpp
@@ -38,6 +39,9 @@ qt_add_qml_module(ex_agent_chat
     SOURCES
         plugins/diff_review/session_review.cpp
         plugins/session_mail/session_mail.cpp
+        plugins/workbench_control/control_host.h plugins/workbench_control/control_host.cpp
+        plugins/workbench_control/core_commands.cpp plugins/workbench_control/skill_commands.cpp
+        plugins/workbench_control/automation_service.h plugins/workbench_control/automation_service.cpp
         plugins/supervision/supervised_tasks.cpp plugins/supervision/exchange.cpp plugins/supervision/supervised_exchange.cpp
         plugins/task_links/task_provider.cpp plugins/task_links/task_provider.h
         plugins/task_links/task_status.cpp plugins/task_links/task_status.h plugins/task_links/workspace_task_links.cpp

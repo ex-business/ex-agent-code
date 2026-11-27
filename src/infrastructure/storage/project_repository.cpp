@@ -71,6 +71,7 @@ QList<ChatSession> ProjectRepository::load(ProjectCatalog &catalog, QString *err
                 workspace.launch = data["launch"].toObject().toVariantMap();
                 workspace.state = WorkspaceState(state);
                 workspace.branch = data.value("branch").toString();
+                workspace.checkpoint = data.value("checkpoint").toObject().toVariantMap();
                 workspaceIds.insert(workspace.id);
                 project.workspaces.append(workspace);
             }
@@ -116,6 +117,7 @@ bool ProjectRepository::save(const ProjectCatalog &catalog, const QList<ChatSess
             item.insert("launch", QJsonObject::fromVariantMap(workspace.launch));
             item.insert("state", int(workspace.state));
             item.insert("branch", workspace.branch);
+            item.insert("checkpoint", QJsonObject::fromVariantMap(workspace.checkpoint));
             workspaces.append(item);
         }
         projects.append(QJsonObject{{"id", project.id}, {"name", project.name}, {"workspaces", workspaces}});

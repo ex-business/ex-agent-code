@@ -339,6 +339,12 @@
     "导出到实例…": "Export to instance…",
     "查看结果摘要": "View result summary",
     "结果摘要（最多 8192 字符）": "Result summary (up to 8192 characters)",
-    "打开 worker 会话": "Open worker chat"
+    "打开 worker 会话": "Open worker chat",
+    "进度": "Progress",
+    "待办": "To do",
+    "进行中": "In progress",
+    "待审查": "In review",
+    "完成": "Completed",
+    "运行主机": "Execution host"
   }
 }

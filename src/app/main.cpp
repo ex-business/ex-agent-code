@@ -1,5 +1,7 @@
 #include "application/chat/chat_controller.h"
 #include "plugins/computer_use/computer_cli.h"
+#include "plugins/workbench_control/control_host.h"
+#include "plugins/workbench_control/control_cli.h"
 #include "infrastructure/storage/history_migration.h"
 #include <QStandardPaths>
 #include "plugins/workspace_viewers/workspace_preview.h"
@@ -26,6 +28,11 @@
 
 int main(int argc, char *argv[])
 {
+    if (argc >= 2 && QByteArray(argv[1]) == "control") {
+        QCoreApplication cli(argc, argv);
+        cli.setOrganizationName("EX Business"); cli.setApplicationName("EX Agent Code");
+        return exagent::control::runCli(cli.arguments().mid(2));
+    }
     // 命令行只连接本机提供方，无需初始化窗口、聊天存储和 WebEngine。
     if (argc >= 2 && QByteArray(argv[1]) == "computer") {
         QCoreApplication cli(argc, argv);
@@ -62,6 +69,7 @@ int main(int argc, char *argv[])
 
     exagent::ChatController controller;
     controller.projects()->registerTaskProvider(new exagent::GitWorktreeProvider);
+    exagent::control::Host control(controller);
     QQmlApplicationEngine engine;
     exagent::installWorkspaceViewers(engine);
     const bool profiling = app.arguments().contains("--profile-scroll") || app.arguments().contains("--profile-disclosure");

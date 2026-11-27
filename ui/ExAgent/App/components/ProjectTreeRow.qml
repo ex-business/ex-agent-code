@@ -40,8 +40,14 @@ Rectangle {
         AbstractButton {
             id: label
             Layout.fillWidth: true; Layout.fillHeight: true
-            ToolTip.visible: hovered && !!root.entry.launch?.host
-            ToolTip.text: "运行主机：" + (root.entry.launch?.host || "") + (root.entry.launch?.task ? "\n关联任务：" + root.entry.launch.task : "")
+            ToolTip.visible: hovered && (!!root.entry.launch?.host || !!root.entry.checkpoint?.comment)
+            ToolTip.text: [
+                root.entry.launch?.host ? Design.UiText.get("运行主机") + " " + root.entry.launch.host : "",
+                root.entry.launch?.task ? Design.UiText.get("关联任务") + " " + root.entry.launch.task : "",
+                root.entry.checkpoint?.comment ? Design.UiText.get("进度") + " · "
+                    + [Design.UiText.get("待办"), Design.UiText.get("进行中"), Design.UiText.get("待审查"), Design.UiText.get("完成")][root.entry.checkpoint.state]
+                    + "\n" + root.entry.checkpoint.comment : ""
+            ].filter(Boolean).join("\n")
             Accessible.name: root.entry.title
             HoverHandler { cursorShape: Qt.PointingHandCursor }
             onClicked: root.opened()

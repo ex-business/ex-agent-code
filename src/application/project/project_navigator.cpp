@@ -180,6 +180,7 @@ void ProjectNavigator::refresh(const QList<ChatSession> &sessions)
             entry.insert("taskLinks", workspace.taskLinks);
             entry.insert("projectTitle", project.name);
             entry.insert("launch", workspace.launch);
+            entry.insert("checkpoint", workspace.checkpoint);
             next.append(entry);
             next.append(groups.value("w/" + workspace.id));
         }

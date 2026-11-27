@@ -642,12 +642,18 @@ void ChatController::setError(const QString &message)
     if (!message.isEmpty()) qCWarning(chatLog).noquote() << message;
     emit errorChanged();
 }
+bool ChatController::saveNow(QString *error)
+{
+    m_saveTimer.stop();
+    if (!m_storageWritable) { *error = QStringLiteral("项目目录只读。"); return false; }
+    return m_repository.save(m_projects.catalog, m_sessions, error);
+}
 void ChatController::flush()
 {
     m_saveTimer.stop();
     if (!m_storageWritable) return;
     QString error;
-    if (!m_repository.save(m_projects.catalog, m_sessions, &error)) setError(error);
+    if (!saveNow(&error)) setError(error);
 }
 
 } // namespace exagent

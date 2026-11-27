@@ -44,6 +44,7 @@ public:
     bool workspaceWrite() const;
     bool busy() const;
     bool activeSession(const QString &id) const { return m_active.contains(id); }
+    QVariantMap executionInfo(const QString &session, const QString &run) const;
     std::function<bool(const ChatSession &)> workspaceAvailable;
     bool stopping() const {
         const auto run = m_active.constFind(m_selected);
@@ -56,6 +57,7 @@ public:
     bool authenticating() const { return m_login.state() != QProcess::NotRunning; }
     bool submit(const QString &text, const QString &cwd, const QVariantMap &reviewNote = {});
     QString submitWorker(const QString &session, const QString &text);
+    QString submitIndependent(const QString &session, const QString &text);
     Q_PROPERTY(QVariantList supervisedTasks READ supervisedTasks NOTIFY supervisionChanged)
     QVariantList supervisedTasks() const;
     Q_PROPERTY(QString workerHost READ workerHost CONSTANT)
