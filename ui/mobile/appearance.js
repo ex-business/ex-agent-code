@@ -1,5 +1,7 @@
 'use strict';
 const english = {
+ '连接已重新同步，可加载更早消息':'Connection resynchronized. Earlier messages are available.',
+ '共享内容需要重新同步':'Shared content needs resynchronization',
  '申请控制权':'Request control','交还控制权':'Return control','你正在控制 · 桌面可随时收回':'You have control · desktop can reclaim',
  '共享观看 · 发送需桌面交接':'Shared view · desktop must hand over control','已交还桌面控制':'Control returned to desktop','已申请，请桌面确认':'Requested · waiting for desktop approval',
  '移动会话':'Mobile chat','连接桌面的会话':'Connect to a desktop chat','断开':'Disconnect','连接桌面会话':'Connect to a desktop chat',

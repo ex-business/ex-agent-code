@@ -263,6 +263,8 @@ Response Service::serve(const Request &r) {
         } else if (r.path == "/client.js") {
             resource = ":/mobile/client.js";
             type = "text/javascript; charset=utf-8";
+        } else if (r.path == "/feed.js") {
+            resource=":/mobile/feed.js";type="text/javascript; charset=utf-8";
         } else if (r.path == "/appearance.js") {
             resource = ":/mobile/appearance.js";
             type = "text/javascript; charset=utf-8";
@@ -329,6 +331,14 @@ Response Service::serve(const Request &r) {
         }
     if (device.isEmpty() || (device["sharing"].toInt()==1 && device["expires"].toDouble()<=QDateTime::currentSecsSinceEpoch()))
         return failure(QStringLiteral("设备授权已失效。"), 401);
+    if(r.path=="/api/changes") {
+        for(auto it=p.begin();it!=p.end();++it)if(it.key()!="epoch" && it.key()!="after")return failure(QStringLiteral("共享内容游标参数无效。"));
+        auto params=p;params.insert("session",device["session"]);
+        auto result=m_host.invoke("sharing.changes",params,&error);if(!error.isEmpty())return failure(error);
+        result.insert("scope",device["scope"]);result.insert("appearance",m_appearance);
+        if(device["sharing"].toInt()==1){const auto access=m_host.invoke("sharing.access",{{"session",device["session"]},{"device",device["id"]}},&error);if(!error.isEmpty())return failure(error);result.insert("sharing",access);}
+        return json({{"ok",true},{"result",result}});
+    }
     if (r.path == "/api/snapshot") {
         if (p.size() > 1 || (!p.isEmpty() && !p["before"].isString()))
             return failure(QStringLiteral("历史参数无效。"));

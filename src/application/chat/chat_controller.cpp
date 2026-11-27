@@ -19,11 +19,19 @@
 #include <QFutureWatcher>
 #include <QJsonDocument>
 #include <QSaveFile>
+#include <QScopedValueRollback>
 #include <QtConcurrentRun>
 
 Q_LOGGING_CATEGORY(chatLog, "exagent.chat")
 
 namespace exagent {
+namespace {
+QJsonObject sharedRow(const ChatMessage &m,int position) {
+    return {{"id",m.id},{"role",int(m.role)},{"status",int(m.status)},
+        {"text",m.content.left(16384)},{"truncated",m.content.size()>16384?1:0},
+        {"time",m.timestamp().left(128)},{"position",position}};
+}
+}
 
 ChatController::ChatController(QObject *parent)
     : QObject(parent), m_messages(this), m_sessionModel(this),
@@ -40,6 +48,7 @@ ChatController::ChatController(QObject *parent)
     });
     connect(&m_agent,&AgentController::rowChanged,this,[this](const QString &session,const ChatMessage &row) {
         if (!m_preview && currentSessionId() == session) {
+            QScopedValueRollback<bool> publishing(m_projectingRows,true);
             m_messages.upsertServiceMessage(row);
             if (row.status != MessageStatus::Running
                 && row.activity.value("blockKind").toInt() == int(content::BlockKind::Diff))
@@ -47,6 +56,7 @@ ChatController::ChatController(QObject *parent)
         }
         // 事件按会话写入；后台输出同样需要在空闲时保存。
         m_saveTimer.start();
+        emit conversationRowChanged(session,row.id);
     });
     m_exporter.setMaxThreadCount(1);
     connect(this, &ChatController::sessionChanged, this, &ChatController::workspaceChanged);
@@ -77,6 +87,7 @@ ChatController::ChatController(QObject *parent)
     connect(&m_internalTask, &InternalContentTask::failure, this, &ChatController::setError);
     connect(&m_transfer, &ConversationTransfer::failure, this, &ChatController::setError);
     connect(&m_transfer, &ConversationTransfer::published, this, [this](const QString &selected) {
+        emit conversationProjectionReset(selected);
         if (!m_preview) selectSession(selected);
         else {
             // 异步复制期间用户已进入只读历史。新会话插入首位后重新定位后台会话下标。
@@ -142,7 +153,10 @@ ChatController::ChatController(QObject *parent)
     connect(&m_saveTimer, &QTimer::timeout, this, &ChatController::flush);
     connect(&m_messages, &MessageListModel::pageFailure, this, &ChatController::setError);
     connect(&m_messages, &MessageListModel::contentUpdated, this, &ChatController::persistCurrent);
-    connect(&m_messages, &MessageListModel::presentationChanged, this, &ChatController::persistCurrent);
+    connect(&m_messages, &MessageListModel::presentationChanged, this, [this] {
+        // 展开、选区等纯显示状态不改变共享消息投影，不能让远端无故丢弃阅读位置。
+        QScopedValueRollback<bool> publishing(m_projectingRows,true);persistCurrent();
+    });
     const auto previousResource = m_projects.catalog.selectedResource;
     const bool firstOpen = m_sessions.isEmpty();
     if (firstOpen) newSession();
@@ -172,8 +186,7 @@ QJsonObject ChatController::conversationSnapshot(const QString &id, const QStrin
         // 快照只读取授权会话，不切换桌面当前聊天；每页同时限制条数及编码后的体积。
         for (qsizetype i = end; i > 0 && rows.size() < 30; --i) {
             const auto &m = session.messages[i - 1];
-            QJsonObject row{{"id",m.id},{"role",int(m.role)},{"status",int(m.status)},
-                {"text",m.content.left(16384)},{"truncated",m.content.size()>16384?1:0},{"time",m.timestamp()}};
+            const auto row=sharedRow(m,int(i-1));
             const auto size = QJsonDocument(row).toJson(QJsonDocument::Compact).size();
             if (!rows.isEmpty() && bytes + size > 200 * 1024) break;
             rows.prepend(row); bytes += size; first = i - 1;
@@ -182,6 +195,24 @@ QJsonObject ChatController::conversationSnapshot(const QString &id, const QStrin
             {"running",m_agent.activeSession(id)?1:0}};
     }
     *error = QStringLiteral("会话不存在。"); return {};
+}
+QJsonObject ChatController::conversationInfo(const QString &id,QString *error) const {
+    for(const auto &session:m_sessions)if(session.id==id)return {{"session",id},{"title",session.title.left(512)},
+        {"running",m_agent.activeSession(id)?1:0},{"count",int(session.messages.size())}};
+    *error=QStringLiteral("会话不存在。");return {};
+}
+QJsonArray ChatController::conversationRows(const QString &id,const QSet<QString> &messages,QString *error) const {
+    for(const auto &session:m_sessions)if(session.id==id){
+        QJsonArray rows;
+        // 一帧内的多个更新共用一次顺序扫描，避免逐条查找放大长历史的遍历成本。
+        for(qsizetype i=0;i<session.messages.size();++i){
+            if(messages.contains(session.messages[i].id))rows.append(sharedRow(session.messages[i],int(i)));
+            if(rows.size()==messages.size())return rows;
+        }
+        if(rows.size()!=messages.size())*error=QStringLiteral("消息位置已变化。");
+        return rows;
+    }
+    *error=QStringLiteral("会话不存在。");return {};
 }
 void ChatController::setMobile(QObject *value)
 {
@@ -559,6 +590,7 @@ void ChatController::attachImage(const QUrl &file)
             image.expanded = true;
             image.attachments = {imported.attachment};
             session.messages.append(image);
+            emit conversationProjectionReset(id);
             session.updatedAt = QDateTime::currentDateTimeUtc();
             if (!m_preview && currentSessionId() == id) m_messages.append(image);
             refreshSessions();
@@ -666,8 +698,9 @@ void ChatController::applyServiceBlock(const QString &id)
     if (found == session.messages.cend()) { message.expanded = true; session.messages.append(message); }
     else session.messages[std::distance(session.messages.cbegin(), found)] = message;
     session.updatedAt = QDateTime::currentDateTimeUtc();
-    if (!m_preview && m_current == sessionIndex) m_messages.upsertServiceMessage(message);
+    if (!m_preview && m_current == sessionIndex) { QScopedValueRollback<bool> publishing(m_projectingRows,true); m_messages.upsertServiceMessage(message); }
     else { refreshSessions(); m_saveTimer.start(); }
+    emit conversationRowChanged(session.id,message.id);
     emit backgroundTaskChanged();
 }
 
@@ -684,6 +717,7 @@ void ChatController::persistCurrent()
     if (m_preview || m_current < 0) return;
     auto &session = m_sessions[m_current];
     session.messages = m_messages.messages();
+    if(!m_projectingRows)emit conversationProjectionReset(session.id);
     session.updatedAt = QDateTime::currentDateTimeUtc();
     refreshSessions();
     m_saveTimer.start();

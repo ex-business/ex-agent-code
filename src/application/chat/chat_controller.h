@@ -1,5 +1,7 @@
 #pragma once
 #include <QImage>
+#include <QJsonArray>
+#include <QSet>
 
 #include "infrastructure/storage/project_repository.h"
 #include "application/project/project_navigator.h"
@@ -69,6 +71,8 @@ public:
     QObject *bots() const { return m_bots.data(); }
     void setBots(QObject *value);
     QJsonObject conversationSnapshot(const QString &session, const QString &before, QString *error) const;
+    QJsonObject conversationInfo(const QString &session, QString *error) const;
+    QJsonArray conversationRows(const QString &session, const QSet<QString> &messages, QString *error) const;
     QObject *ssh() const { return m_ssh.data(); }
     void setSsh(QObject *value);
     QObject *mobile() const { return m_mobile.data(); }
@@ -133,6 +137,8 @@ public:
     Q_INVOKABLE void saveMedia(const QVariantMap &block, const QString &resourceId, const QUrl &attachment, const QUrl &target);
     Q_INVOKABLE QUrl mediaSource(const QVariantMap &block, const QString &resourceId) const;
 signals:
+    void conversationRowChanged(QString session, QString message);
+    void conversationProjectionReset(QString session);
     void mediaSaved(QString path);
     void blockExportRequested(QVariantMap block);
     void blockExported(QString path);
@@ -159,6 +165,7 @@ private:
     void refreshSessions();
     void setError(const QString &message);
     QString createId() const;
+    bool m_projectingRows = false;
     MessageListModel m_messages;
     SessionListModel m_sessionModel;
     ProjectNavigator m_projects;

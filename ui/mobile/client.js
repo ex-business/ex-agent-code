@@ -1,5 +1,7 @@
 'use strict';
 import {t,syncAppearance,applyAppearance} from './appearance.js';
+import {projectFeed} from './feed.js';
+let feedCursor=null, feedRequest=null, feedMore=false;
 const $ = id => document.getElementById(id);
 let token = localStorage.getItem('exMobileToken') || '', older = '', running = 0, scope = 1, timer, backoff = 2000, pending = null;
 let deviceId=localStorage.getItem('exMobileDevice')||'', boundSession=localStorage.getItem('exMobileSession')||'';
@@ -8,7 +10,7 @@ const draftKey=()=> 'exMobileDraft:'+boundSession;
 function activateSession(id) {
  if(boundSession!==id) {
   if(boundSession)localStorage.setItem(draftKey(),$('draft').value);
-  boundSession=id;localStorage.setItem('exMobileSession',id);
+  feedCursor=null;boundSession=id;localStorage.setItem('exMobileSession',id);
   $('draft').value=localStorage.getItem(draftKey())||'';messages.clear();older='';windowEpoch++;
  }
 }
@@ -33,7 +35,7 @@ async function api(path, body, authenticated = true) {
   if (!value.ok) { if (response.status === 401 && authenticated) logout(); const error=new Error(value.error || t('请求未成功'));error.code=value.code;throw error; }
   return value;
 }
-function logout() { authEpoch++; windowEpoch++; browsing=false; older=""; clearTimeout(timer); token = ''; messages.clear(); $('messages').replaceChildren(); localStorage.removeItem('exMobileToken'); connected(false); status(t('连接已失效，请在桌面重新配对')); }
+function logout() { feedCursor=null; authEpoch++; windowEpoch++; browsing=false; older=""; clearTimeout(timer); token = ''; messages.clear(); $('messages').replaceChildren(); localStorage.removeItem('exMobileToken'); connected(false); status(t('连接已失效，请在桌面重新配对')); }
 function controls() { $('control').hidden=!sharing || scope!==2; $('control').textContent=t(sharing?.canSend===1?'交还控制权':'申请控制权'); $('draft').readOnly = !!pending || sending || (scope !== 2 || (sharing && sharing.canSend !== 1)); $('send').disabled = sending || scope !== 2 || (!pending && ((sharing && sharing.canSend !== 1) || running === 1 || !$('draft').value.trim())); $('send').textContent = pending ? t('核对发送') : t('发送'); $('latest').hidden=!browsing; $('scope').textContent = scope === 2 ? (running === 1 ? t('桌面正在运行') : t('允许发送 · 沿用桌面权限')) : t('只读访问'); if(sharing && scope===2)$('scope').textContent=t(sharing.canSend===1?'你正在控制 · 桌面可随时收回':'共享观看 · 发送需桌面交接'); }
 function content(article, text) {
   const parts = text.split(/```[^\n]*\n/);
@@ -67,7 +69,31 @@ function render() {
   if (atBottom) window.scrollTo(0,document.documentElement.scrollHeight);
   else if (anchor) {const node=[...list.children].find(x=>x.dataset.id===anchor.id);if(node)window.scrollBy(0,node.getBoundingClientRect().top-anchor.top);}
 }
+async function syncChanges() {
+  const auth=authEpoch, generation=windowEpoch;
+  if(feedRequest && feedRequest.auth===auth && feedRequest.generation===generation)return feedRequest.promise;
+  const request={auth,generation,promise:null};
+  request.promise=(async()=>{
+    const sent=feedCursor;
+    const value=(await api('changes',sent||{})).result;
+    if(auth!==authEpoch || generation!==windowEpoch || sent!==feedCursor)return;
+    const language=document.documentElement.lang;
+    activateSession(value.session);
+    const update=projectFeed(messages,sent,value);
+    messages=update.rows;feedCursor=update.cursor;feedMore=value.more===1;
+    if(update.older!==undefined)older=update.older;
+    if(value.appearance)applyAppearance(value.appearance);
+    sharing=value.sharing||null;running=value.running;scope=value.scope;
+    $('title').textContent=value.title||t('移动会话');$('older').hidden=!older;
+    $('hint').textContent=value.mode===1 && sent?t('连接已重新同步，可加载更早消息'):messages.size?'':t('还没有消息');
+    connected(true);if(update.changed || language!==document.documentElement.lang)render();controls();
+  })();
+  feedRequest=request;
+  try{return await request.promise;}catch(e){if(e.resetFeed){feedCursor=null;e.message=t(e.message);}throw e;}
+  finally{if(feedRequest===request)feedRequest=null;}
+}
 async function snapshot(before = '') {
+  if(!before && !browsing)return syncChanges();
   const epoch=windowEpoch;
   const value = (await api('snapshot', before ? {before} : {})).result;
   if(epoch!==windowEpoch)return;
@@ -75,6 +101,7 @@ async function snapshot(before = '') {
   sharing=value.sharing||null;
   activateSession(value.session);
   $('title').textContent = value.title || t('移动会话'); running = value.running; scope = value.scope;
+  if(!before && browsing){controls();return;}
   if (before) {
     messages=new Map([...value.items.map(x=>[x.id,x]),...messages]);older=value.older||'';
     if(messages.size>200)messages=new Map([...messages].slice(0,200));
@@ -92,16 +119,16 @@ async function snapshot(before = '') {
 async function poll() {
   if (!token || browsing || pairingOffer || document.hidden) return;
   const epoch=authEpoch;
-  try { await snapshot(); backoff = 2000; status(t('已连接桌面')); } catch (e) { if(epoch!==authEpoch)return;status(e.message + ' · '+t('正在重连')); backoff=Math.min(backoff*2,30000); }
+  try { await snapshot(); if(epoch!==authEpoch || pairingOffer)return; backoff = feedMore ? 50 : running===1 ? 250 : 2000; status(t('已连接桌面')); } catch (e) { if(epoch!==authEpoch)return;status(e.message + ' · '+t('正在重连')); backoff=Math.min(backoff*2,30000); }
   if (token && epoch===authEpoch && !browsing && !document.hidden) {clearTimeout(timer);timer=setTimeout(poll,backoff);}
 }
 $('pair').onclick = async () => {
   const epoch=authEpoch; $('pair').disabled=true;
-  try { const value=await api('pair',{code:$('code').value.trim(),name:$('name').value.trim()},false); if(epoch!==authEpoch)return; authEpoch++;clearTimeout(timer);deviceId=value.device.id;localStorage.setItem('exMobileDevice',deviceId);activateSession(value.device.session);token=value.token;localStorage.setItem('exMobileToken',token);pending=null;pairingOffer=false;browsing=false;windowEpoch++;messages.clear();older='';$('code').value='';await poll(); }
+  try { const value=await api('pair',{code:$('code').value.trim(),name:$('name').value.trim()},false); if(epoch!==authEpoch)return; authEpoch++;clearTimeout(timer);deviceId=value.device.id;localStorage.setItem('exMobileDevice',deviceId);activateSession(value.device.session);token=value.token;localStorage.setItem('exMobileToken',token);pending=null;feedCursor=null;pairingOffer=false;browsing=false;windowEpoch++;messages.clear();older='';$('code').value='';await poll(); }
   catch(e) {status(e.message);} finally {$('pair').disabled=false;}
 };
 $('older').onclick = async () => { browsing=true;windowEpoch++;controls();$('older').disabled=true;try {await snapshot(older);}catch(e){status(e.message);}finally{$('older').disabled=false;} };
-$('latest').onclick = () => {windowEpoch++;browsing=false;messages.clear();older='';clearTimeout(timer);poll();};
+$('latest').onclick = () => {feedCursor=null;windowEpoch++;browsing=false;messages.clear();older='';clearTimeout(timer);poll();};
 $('draft').oninput = () => {localStorage.setItem(draftKey(),$('draft').value);controls();};
 $('send').onclick = async () => {
   if(sending)return; sending=true; const epoch=authEpoch;

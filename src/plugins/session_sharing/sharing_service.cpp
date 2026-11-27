@@ -8,7 +8,7 @@
 Q_LOGGING_CATEGORY(sharingLog, "exagent.sharing")
 namespace exagent::sharing {
 Service::Service(control::Host &host)
-    : QObject(&host), m_host(host),
+    : QObject(&host), m_host(host), m_feed(host.chat,this),
       m_epoch(QUuid::createUuid().toString(QUuid::WithoutBraces)) {
   if (auto *gateway = qobject_cast<mobile::Service *>(host.chat.mobile())) {
     QPointer<Service> guard(this);
@@ -32,6 +32,7 @@ Service::Service(control::Host &host)
   });
   expiry->start();
   const QList<QPair<QString, QSet<QString>>> methods{
+      {"changes", {"session","epoch","after"}},
       {"offer", {"session", "scope"}},
       {"status", {"session"}},
       {"invites", {"session"}},
@@ -119,6 +120,14 @@ QJsonObject Service::execute(const QString &a, const QJsonObject &p,
     if (e->isEmpty())
       *e = QStringLiteral("共享会话不存在。");
     return {};
+  }
+  if(a=="changes") {
+    const auto epoch=p["epoch"].toString();const auto after=p["after"].isUndefined()?QJsonValue(0):p["after"];
+    if((!p["epoch"].isUndefined() && !p["epoch"].isString()) || (!epoch.isEmpty() && QUuid(epoch).isNull()) ||
+       !ipc::integer(after,0,1000000000) || (epoch.isEmpty() && after.toInt()!=0)){
+      *e=QStringLiteral("共享内容游标无效。");return {};
+    }
+    return m_feed.pull(session,epoch,after.toInt(),e);
   }
   if (a == "offer")
     return m_host.invoke(
