@@ -3,6 +3,7 @@
 #include "infrastructure/storage/project_repository.h"
 #include "agent/codex/model_catalog.h"
 #include <QtQml/qqmlregistration.h>
+#include <QUrl>
 
 namespace exagent {
 class AgentController final : public QObject {
@@ -55,6 +56,17 @@ public:
     bool authenticating() const { return m_login.state() != QProcess::NotRunning; }
     bool submit(const QString &text, const QString &cwd, const QVariantMap &reviewNote = {});
     QString submitWorker(const QString &session, const QString &text);
+    Q_PROPERTY(QVariantList supervisedTasks READ supervisedTasks NOTIFY supervisionChanged)
+    QVariantList supervisedTasks() const;
+    Q_PROPERTY(QString workerHost READ workerHost CONSTANT)
+    QString workerHost() const;
+    Q_INVOKABLE bool exportSupervisedTask(const QString &task, const QString &host, const QUrl &directory);
+    Q_INVOKABLE bool importSupervisedExchange(const QUrl &file, const QString &worker);
+
+    Q_INVOKABLE bool createSupervisedTask(const QString &target, const QString &text, bool decisionRequired);
+    Q_INVOKABLE bool dispatchSupervisedTask(const QString &task);
+    Q_INVOKABLE bool resolveSupervisedTask(const QString &task, bool allow);
+
 
     Q_INVOKABLE void configure(int account, const QString &model, bool write, bool fullAccess = false);
     Q_INVOKABLE void login(QString key);
@@ -67,6 +79,7 @@ signals:
     void runEnded(QString session, QString run, int state, QString title);
     void changed();
     void mailChanged();
+    void supervisionChanged();
     void failure(QString reason);
     void accountUpdated(bool loggedIn);
     void rowChanged(QString session, exagent::ChatMessage message);
@@ -84,6 +97,9 @@ private:
     void deliverMail(const QString &session);
     void settleMail(const QString &session, const QString &run, const QString &id, int state);
     void recoverMail(ChatSession &session);
+    void finishSupervised(const QString &worker, const QString &run, int state);
+    void deliverSupervisedResults();
+    QTimer m_supervisionPump;
     QHash<QString, QString> m_mailRequests;
     bool consume(const QString &method, const QJsonObject &frame, QString *error);
     void end(const QString &session, int state, const QString &detail);
@@ -100,6 +116,7 @@ private:
     ProjectCatalog &m_catalog;
     ProjectRepository &m_repository;
     QString m_selected;
+    QString m_workerHost;
     bool m_writable = false;
     QHash<QString, Active> m_active;
     QHash<QString, qsizetype> m_latestMarker;

@@ -2,12 +2,14 @@
 #include "plugins/design_mode/design_selection.h"
 #include "history_context.h"
 #include "plugins/session_mail/mail.h"
+#include "plugins/supervision/task_state.h"
 #include "agent/codex/codex_account.h"
 #include "agent/codex/thread_input.h"
 #include <QDir>
 #include <QJsonArray>
 #include <QFileInfo>
 #include <QUuid>
+#include <QSettings>
 #include <algorithm>
 namespace exagent {
 using State = content::TaskState;
@@ -40,6 +42,14 @@ AgentController::AgentController(
                    { "system.ping", "stream.resume", "agent.start", "agent.stop", "agent.approve", "agent.steer" } },
           this)
 {
+    QSettings settings;
+    m_workerHost = settings.value("supervision/hostId").toString();
+    if (QUuid(m_workerHost).isNull()) {
+        m_workerHost = QUuid::createUuid().toString(QUuid::WithoutBraces);
+        settings.setValue("supervision/hostId", m_workerHost);
+    }
+    m_supervisionPump.setSingleShot(true);
+    connect(&m_supervisionPump, &QTimer::timeout, this, &AgentController::deliverSupervisedResults);
     m_worker.setEventSink(
         [this](const auto &method, const auto &frame, QString *error) { return consume(method, frame, error); });
     connect(&m_worker, &LocalServiceProcess::ready, this, &AgentController::dispatch);
@@ -108,7 +118,7 @@ void AgentController::select(const QString &session, bool writable)
     const bool mailboxChanged = m_selected != session || m_writable != writable;
     m_selected = session;
     m_writable = writable;
-    if (mailboxChanged) emit mailChanged();
+    if (mailboxChanged) { emit mailChanged(); emit supervisionChanged(); }
     emit changed();
 }
 ChatSession *AgentController::find(const QString &id) const
@@ -518,12 +528,33 @@ void AgentController::end(const QString &session, int state, const QString &deta
         emit rowChanged(session, m);
     save();
     emit changed();
+    finishSupervised(session, a.id, state);
     emit runEnded(session, a.id, state, s->title);
 }
 void AgentController::restore()
 {
     // 宿主重启无法持有旧连接。保留线程与回合供后续恢复，不重放已发送的提示词。
-    for (auto &s : m_sessions) recoverMail(s);
+    for (auto &s : m_sessions) {
+        recoverMail(s);
+        auto tasks = s.history.value("supervisedTasks").toList();
+        for (auto &value : tasks) {
+            auto row = value.toMap();
+            // 重启后没有原连接，保留派发标识与输出，不自动重放执行。
+            if (row.value("state").toInt() == supervision::Working) {
+                row.insert("state", supervision::Uncertain);
+                auto attempts = row.value("attempts").toList();
+                if (!attempts.isEmpty()) {
+                    auto attempt = attempts.last().toMap();
+                    attempt.insert("state", supervision::Uncertain);
+                    attempts.last() = attempt;
+                    row.insert("attempts", attempts);
+                }
+                value = row;
+            }
+        }
+        if (!tasks.isEmpty()) s.history.insert("supervisedTasks", tasks);
+    }
+    m_supervisionPump.start(1000);
     for (auto &s : m_sessions)
         for (auto &m : s.messages)
             if (m.activity.value("serviceId") == "codex-agent" && m.status == MessageStatus::Running) {

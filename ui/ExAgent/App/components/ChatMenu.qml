@@ -10,6 +10,8 @@ Design.ContextMenu {
     signal imageSequenceRequested()
     signal consoleRequested()
     Design.ContextMenuItem { text: Design.UiText.get("Agent 历史与终端…"); iconName: "terminal"; onTriggered: root.consoleRequested() }
+    signal supervisionRequested()
+    Design.ContextMenuItem { text: Design.UiText.get("监督任务"); iconName: "activity"; enabled: root.controller.projects.writable && !root.controller.previewMode; onTriggered: root.supervisionRequested() }
     signal mailRequested()
     Design.ContextMenuItem { text: Design.UiText.get("会话通信"); iconName: "chat"; enabled: root.controller.projects.writable && !root.controller.previewMode; onTriggered: root.mailRequested() }
     signal organizeRequested()
