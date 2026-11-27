@@ -24,7 +24,7 @@ target_link_libraries(ex_agent_ipc PUBLIC Qt6::Core Qt6::Network)
 target_compile_options(ex_agent_ipc PRIVATE -Wall -Wextra -Wpedantic)
 
 qt_add_library(ex_agent_worker STATIC services/local/service_worker.h services/local/service_worker.cpp)
-target_link_libraries(ex_agent_worker PUBLIC ex_agent_ipc ex_agent_codex)
+target_link_libraries(ex_agent_worker PUBLIC ex_agent_ipc ex_agent_runtime)
 
 qt_add_library(ex_agent_chat STATIC)
 qt_add_resources(ex_agent_chat mobile_client PREFIX "/mobile" BASE "${CMAKE_SOURCE_DIR}/ui/mobile" FILES "${CMAKE_SOURCE_DIR}/ui/mobile/index.html" "${CMAKE_SOURCE_DIR}/ui/mobile/client.js" "${CMAKE_SOURCE_DIR}/ui/mobile/style.css" "${CMAKE_SOURCE_DIR}/ui/mobile/appearance.js" "${CMAKE_SOURCE_DIR}/ui/mobile/feed.js" "${CMAKE_SOURCE_DIR}/ui/mobile/content.js")

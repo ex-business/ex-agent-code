@@ -72,7 +72,7 @@ ColumnLayout {
                     function clearSelection() { deselect() }
                     onActiveFocusChanged: if (activeFocus) SelectionCoordinator.activate(null)
                     objectName: "chatComposer"
-                    placeholderText: "向 Codex 发送消息"
+                    placeholderText: root.controller.agent.account === 3 ? "向 OpenAI API Agent 发送消息" : "向 Codex 发送消息"
                     placeholderTextColor: Design.Theme.dark ? Design.Theme.muted : "#c4c4c4"
                     text: root.controller.draft
                     color: Design.Theme.text

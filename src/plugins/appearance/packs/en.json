@@ -398,6 +398,12 @@
     "替代任务来源仓库": "Replacement task source repository",
     "成员将转为独立项目，已有会话与工作树保持原归属。": "The member becomes an independent project. Chats and worktrees keep their ownership.",
     "没有可替代的仓库。可先取消，再删除项目组并保留全部工作区。": "No replacement repository is available. Cancel and delete the group to keep all workspaces.",
-    "仅删除分组关系。成员转为独立项目；组内工作区和会话保留为独立项目。仓库文件、分支和附件不会删除。": "Only the grouping is deleted. Members become independent projects; group workspaces and chats are kept in an independent project. Repository files, branches and attachments are kept."
+    "仅删除分组关系。成员转为独立项目；组内工作区和会话保留为独立项目。仓库文件、分支和附件不会删除。": "Only the grouping is deleted. Members become independent projects; group workspaces and chats are kept in an independent project. Repository files, branches and attachments are kept.",
+    "OpenAI API Agent": "OpenAI API Agent",
+    "API 凭据文件": "API credential file",
+    "私有 env 文件绝对路径；留空使用启动环境": "Absolute private env-file path; leave empty to use the launch environment",
+    "使用 Responses API；文件读写逐项审批，不提供终端执行。请填写模型 ID。": "Uses the Responses API. Each file operation requires approval. Terminal execution is unavailable. Enter a model ID.",
+    "文件工具每次都需审批；仅允许当前工作区，不支持命令执行。": "Each file operation requires approval and is limited to the current workspace. Commands are unavailable.",
+    "OpenAI API 模型 ID": "OpenAI API model ID"
   }
 }

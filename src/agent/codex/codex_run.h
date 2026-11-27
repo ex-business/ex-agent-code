@@ -1,9 +1,10 @@
 #pragma once
 #include "codex_connection.h"
 #include "thread_input.h"
+#include "agent/runtime_run.h"
 namespace exagent::codex {
 // 每次派发拥有独立连接。账号目录与线程用于跨回合恢复，运行事件按 runId 路由。
-class Run final : public QObject {
+class Run final : public agent::RuntimeRun {
     Q_OBJECT
 public:
     explicit Run(QJsonObject spec, QObject *parent);
@@ -12,9 +13,6 @@ public:
     void interrupt();
     bool steer(const QString &id, const QString &turn, const QString &text);
     bool decide(const QString &token, bool allow);
-signals:
-    void produced(QJsonObject payload);
-    void ended();
 
 private:
     void request(const QString &method, const QJsonObject &params);

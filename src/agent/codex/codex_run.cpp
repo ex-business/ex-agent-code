@@ -12,7 +12,7 @@
 namespace exagent::codex {
 using State = content::TaskState;
 Run::Run(QJsonObject spec, QObject *parent)
-    : QObject(parent)
+    : RuntimeRun(parent)
     , m_spec(std::move(spec))
 {
     m_deadline.setSingleShot(true);

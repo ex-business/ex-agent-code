@@ -15,27 +15,32 @@ WorkbenchDialog {
     modal: true
     anchors.centerIn: Overlay.overlay
     sizeClass: WorkbenchDialog.Compact
-    standardButtons: Dialog.Ok | Dialog.Cancel
+    standardButtons: Dialog.NoButton
+    footer: WorkbenchDialogActions {
+        primaryEnabled: !root.agent.authenticating && (mode.currentIndex !== 3 || modelName.text.trim().length > 0) && (!attachHistory.visible || !attachHistory.checked || !!root.contextPreview.text)
+        onPrimaryRequested: root.applySettings()
+        onCancelled: root.reject()
+    }
     onOpened: {
         turns = controller.transfer.turns(controller.currentSessionId)
         attachHistory.checked = false
         contextPreview = ({})
         mode.currentIndex = agent.account
         modelName.text = agent.model
+        credentialPath.text = agent.credentialFile
         access.currentIndex = agent.fullAccess ? 2 : agent.workspaceWrite ? 1 : 0
         feedback.text = ""
     }
-    onAccepted: {
-        agent.configure(mode.currentIndex, modelName.text, access.currentIndex === 2 ? agent.workspaceWrite : access.currentIndex === 1, access.currentIndex === 2)
+    function applySettings() {
+        if(mode.currentIndex === 3) {
+            if(!agent.configureApi(modelName.text, credentialPath.text, access.currentIndex === 1)) return
+        } else agent.configure(mode.currentIndex, modelName.text, access.currentIndex === 2 ? agent.workspaceWrite : access.currentIndex === 1, access.currentIndex === 2)
         if (attachHistory.checked && mode.currentIndex > 0 && contextPreview.text)
             agent.includeHistory(first.currentIndex,last.currentIndex)
         else agent.includeHistory(-1,-1)
+        accept()
     }
     onClosed: secret.clear()
-    Binding {
-        target: root.standardButton(Dialog.Ok); property: "enabled"
-        value: !root.agent.authenticating && (!attachHistory.visible || !attachHistory.checked || !!root.contextPreview.text)
-    }
     Connections {
         target: root.agent
         function onAccountUpdated(loggedIn: bool) { feedback.text = loggedIn ? Design.UiText.get("专用账号登录成功") : Design.UiText.get("专用账号已退出") }
@@ -53,7 +58,7 @@ WorkbenchDialog {
         width: body.availableWidth
         spacing: 9
         Label { text: Design.UiText.get("运行账号") }
-        DialogSelect { id: mode; Layout.fillWidth: true; translateOptions: true; model: ["仅本地聊天", "本机 Codex 账号", "EX 专用 OpenAI API Key"] }
+        DialogSelect { id: mode; Layout.fillWidth: true; translateOptions: true; model: ["仅本地聊天", "本机 Codex 账号", "EX 专用 OpenAI API Key", "OpenAI API Agent"] }
         RowLayout {
             visible: mode.currentIndex === 2
             DialogInput {
@@ -70,30 +75,39 @@ WorkbenchDialog {
             visible: mode.currentIndex === 2; enabled: !root.agent.authenticating
             text: Design.UiText.get("退出 EX 专用账号"); onClicked: root.agent.logout()
         }
+        DialogInput {
+            id: credentialPath; visible: mode.currentIndex === 3; Layout.fillWidth: true
+            Accessible.name: Design.UiText.get("API 凭据文件")
+            placeholderText: Design.UiText.get("私有 env 文件绝对路径；留空使用启动环境")
+        }
+        Label { visible: mode.currentIndex === 3; Layout.fillWidth: true; wrapMode: Text.Wrap
+            color: Design.Theme.tokens.panelPlaceholderText; font.pixelSize: 12
+            text: Design.UiText.get("使用 Responses API；文件读写逐项审批，不提供终端执行。请填写模型 ID。")
+        }
         Label { id: feedback; visible: text.length > 0; Layout.fillWidth: true; wrapMode: Text.Wrap }
         Label { visible: mode.currentIndex > 0; text: Design.UiText.get("模型"); Layout.topMargin: 4 }
         RowLayout {
             visible: mode.currentIndex > 0; Layout.fillWidth: true
             DialogInput {
                 id: modelName; Layout.fillWidth: true
-                Accessible.name: Design.UiText.get("模型 ID"); placeholderText: Design.UiText.get("Codex 默认模型"); maximumLength: 128
+                Accessible.name: Design.UiText.get("模型 ID"); placeholderText: mode.currentIndex === 3 ? Design.UiText.get("OpenAI API 模型 ID") : Design.UiText.get("Codex 默认模型"); maximumLength: 128
             }
-            DialogAction { text: Design.UiText.get("查询模型"); onClicked: root.agent.listModels(mode.currentIndex) }
+            DialogAction { visible: mode.currentIndex !== 3; text: Design.UiText.get("查询模型"); onClicked: root.agent.listModels(mode.currentIndex) }
         }
         DialogSelect {
-            visible: mode.currentIndex > 0 && count > 0; Layout.fillWidth: true
+            visible: mode.currentIndex > 0 && mode.currentIndex !== 3 && count > 0; Layout.fillWidth: true
             model: root.agent.models; displayText: Design.UiText.get("选择已查询的模型")
             onActivated: modelName.text = currentText
         }
         Label { visible: mode.currentIndex > 0; text: Design.UiText.get("执行权限"); Layout.topMargin: 4 }
         DialogSelect {
             id: access; visible: mode.currentIndex > 0; Layout.fillWidth: true
-            translateOptions: true; model: ["只读", "工作区写入", "完全访问"]
+            translateOptions: true; model: mode.currentIndex === 3 ? ["只读", "工作区写入"] : ["只读", "工作区写入", "完全访问"]
         }
         Label {
             visible: mode.currentIndex > 0; Layout.fillWidth: true; wrapMode: Text.Wrap
             color: Design.Theme.tokens.panelPlaceholderText; font.pixelSize: 12
-            text: access.currentIndex === 2 ? Design.UiText.get("可访问文件和网络，执行时无需审批。")
+            text: mode.currentIndex === 3 ? Design.UiText.get("文件工具每次都需审批；仅允许当前工作区，不支持命令执行。") : access.currentIndex === 2 ? Design.UiText.get("可访问文件和网络，执行时无需审批。")
                 : access.currentIndex === 1 ? Design.UiText.get("允许修改当前工作区中的文件。") : Design.UiText.get("允许读取文件。")
         }
         Label {

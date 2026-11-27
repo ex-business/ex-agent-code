@@ -79,6 +79,9 @@ public:
 
 
     Q_INVOKABLE void configure(int account, const QString &model, bool write, bool fullAccess = false);
+    Q_PROPERTY(QString credentialFile READ credentialFile NOTIFY changed)
+    QString credentialFile() const { return config().value("credentialFile").toString(); }
+    Q_INVOKABLE bool configureApi(const QString &model, const QString &file, bool write);
     Q_INVOKABLE void login(QString key);
     Q_INVOKABLE void logout();
     Q_INVOKABLE void stop();

@@ -45,7 +45,7 @@ RowLayout {
         background: Rectangle { radius: 7; color: engineButton.hovered ? Design.Theme.hover : "transparent" }
         contentItem: RowLayout {
             spacing: 5
-            Text { text: root.agent.account ? (root.agent.model || "Codex") : "本地聊天"; color: Design.Theme.text; font.pixelSize: 12 }
+            Text { text: root.agent.account ? (root.agent.model || (root.agent.account === 3 ? "OpenAI API" : "Codex")) : "本地聊天"; color: Design.Theme.text; font.pixelSize: 12 }
 
             Design.Icon { name: "down"; implicitWidth: 12; implicitHeight: 12 }
         }

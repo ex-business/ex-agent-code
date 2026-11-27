@@ -87,6 +87,16 @@ QJsonObject paginate(const QJsonArray &items, const QJsonObject &params, QString
 void registerCore(Host &host)
 {
     auto &chat = host.chat;
+    host.add("agents.configure-api", {"model", "credentialFile", "write"}, [&chat](const QJsonObject &p, QString *error) {
+        if(!p["model"].isString() || !p["credentialFile"].isString() || !p["write"].isBool()) {
+            *error=QStringLiteral("API 配置参数无效。"); return QJsonObject{};
+        }
+        const auto connection=QObject::connect(chat.agent(),&AgentController::failure,&chat,[error](const QString &reason){*error=reason;},Qt::DirectConnection);
+        const auto ok=chat.agent()->configureApi(p["model"].toString(),p["credentialFile"].toString(),p["write"].toBool());
+        QObject::disconnect(connection);
+        if(!ok && error->isEmpty())*error=QStringLiteral("当前会话不能修改 API 配置。");
+        return QJsonObject{{"configured",ok}};
+    });
     for (const auto &[method, kind, key] : QList<std::tuple<QString, int, QString>>{
              {"projects.list", ProjectNavigator::ProjectRow, "project"},
              {"workspaces.list", ProjectNavigator::WorkspaceRow, "workspace"},

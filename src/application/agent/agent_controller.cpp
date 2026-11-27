@@ -1,6 +1,8 @@
 #include "agent_controller.h"
 #include "plugins/design_mode/design_selection.h"
 #include "history_context.h"
+#include "agent/openai/credentials.h"
+#include "agent/runtime_run.h"
 #include "plugins/session_mail/mail.h"
 #include "plugins/supervision/task_state.h"
 #include "agent/codex/codex_account.h"
@@ -165,6 +167,20 @@ bool AgentController::save()
     }
     return true;
 }
+bool AgentController::configureApi(const QString &model, const QString &file, bool write)
+{
+    auto *s=find(m_selected);
+    if(!s || !m_writable || busy() || authenticating() || model.trimmed().isEmpty() || model.size()>128 || !codex::threadAvailable(s->agent.value("threadId").toString())) return false;
+    QString error;auto key=openai::credential(file,&error);const bool valid=!key.isEmpty();key.fill(0);
+    if(!valid){emit failure(error);return false;}
+    const auto before=s->agent;
+    // 自有账号类型3为Responses适配器；切换不覆盖Codex的线程标识。
+    s->agent.insert("account",agent::OpenAIResponses);s->agent.insert("model",model.trimmed());s->agent.insert("credentialFile",file);
+    s->agent.insert("write",write);s->agent.insert("fullAccess",false);
+    if(before.value("credentialFile").toString()!=file)s->agent.remove("responseId");
+    if(!save()){s->agent=before;return false;}
+    emit changed();return true;
+}
 void AgentController::configure(int account, const QString &model, bool write, bool fullAccess)
 {
     auto *s = find(m_selected);
@@ -280,7 +296,7 @@ QVariantMap AgentController::terminalBinding(const QString& workspace) const
 {
     auto binding = config();
     auto* s = find(m_selected);
-    if (!s || !m_writable || busy() || authenticating() || !account()
+    if (!s || !m_writable || busy() || authenticating() || account() == agent::OpenAIResponses || !account()
         || binding.value("boundAccount").toInt() != account() || binding.value("identity").toString().isEmpty()
         || QUuid(binding.value("threadId").toString()).isNull()) return {};
     if (workspaceAvailable && !workspaceAvailable(*s)) return {};
@@ -434,6 +450,10 @@ bool AgentController::submitTo(const QString &session, const QString &text, cons
     if (s->agent.value("boundAccount").toInt() == s->agent.value("account").toInt() && s->agent.value("boundCwd").toString() == directory)
         spec.insert("threadId", s->agent.value("threadId").toString());
     spec.insert("identity", s->agent.value("identity").toString());
+    if(s->agent.value("account").toInt()==agent::OpenAIResponses) {
+        spec.remove("threadId");spec.insert("credentialFile",s->agent.value("credentialFile").toString());
+        if(s->agent.value("apiCwd").toString()==directory)spec.insert("responseId",s->agent.value("responseId").toString());
+    }
     // 批注是独立输入；普通草稿选中的历史和图片只随该草稿派发。
     const auto ctx = !worker && reviewNote.isEmpty() ? m_contexts.value(s->id) : QVariantMap{};
     if (!ctx.isEmpty()) {
@@ -460,11 +480,14 @@ bool AgentController::submitTo(const QString &session, const QString &text, cons
             spec.insert("designElement", QJsonObject::fromVariantMap(user.activity.value("designElement").toMap()));
         }
     }
+    if(s->agent.value("account").toInt()==agent::OpenAIResponses && !spec.value("images").toArray().isEmpty()) {
+        emit failure(QStringLiteral("此 API 适配器暂不发送图片，请移除附件后重试。")); return false;
+    }
     ChatMessage marker;
     marker.id = run;
     marker.role = MessageRole::Notice;
     marker.status = MessageStatus::Running;
-    marker.content = QStringLiteral("Codex 正在准备执行");
+    marker.content = s->agent.value("account").toInt()==agent::OpenAIResponses ? QStringLiteral("OpenAI API 正在准备执行") : QStringLiteral("Codex 正在准备执行");
     marker.activity = { { "serviceId", "codex-agent" }, { "taskState", int(State::Created) }, { "cwd", directory },
         { "account", s->agent.value("account").toInt() }, { "requestedModel", s->agent.value("model").toString() } };
     // 用户输入与派发意图必须一起写入。失败时保留草稿，不能让 worker 收到半次派发。
@@ -522,6 +545,7 @@ void AgentController::reconcile()
     auto *s = find(m_selected);
     if (!s || !m_writable || busy())
         return;
+    if(s->agent.value("account").toInt()==agent::OpenAIResponses) {emit failure(QStringLiteral("API 中断后可发送新消息续接最近完成的响应；不会重放待审批工具。"));return;}
     for (auto it = s->messages.crbegin(); it != s->messages.crend(); ++it) {
         const auto &m = *it;
         if (m.role != MessageRole::Notice || m.activity.value("serviceId") != "codex-agent")
@@ -641,6 +665,13 @@ bool AgentController::consume(const QString &, const QJsonObject &e, QString *er
     if (!s || it == m_active.end() || it->id != e["runId"].toString())
         return true;
     const auto kind = e["kind"].toString();
+    if(kind=="checkpoint") {
+        if(s->agent.value("account").toInt()!=3 || e["responseId"].toString().isEmpty()){*error=QStringLiteral("API恢复检查点无效。");return false;}
+        s->agent.insert("responseId",e["responseId"].toString());
+        const auto marker=m_latestMarker.value(session,-1);
+        if(marker>=0 && marker<s->messages.size()){s->agent.insert("apiCwd",s->messages[marker].activity.value("cwd"));s->messages[marker].activity.insert("usage",e["usage"].toObject().toVariantMap());}
+        save();return true;
+    }
     if (kind == "end") {
         end(session, e["state"].toInt(int(State::Interrupted)), e["detail"].toString());
         return true;
@@ -682,7 +713,7 @@ bool AgentController::consume(const QString &, const QJsonObject &e, QString *er
         it->turn = e["turnId"].toString();
         msg.activity.insert("turnId", it->turn);
         msg.activity.insert("taskState", int(State::Running));
-        msg.content = QStringLiteral("Codex 正在执行");
+        msg.content = s->agent.value("account").toInt()==agent::OpenAIResponses ? QStringLiteral("OpenAI API 正在执行") : QStringLiteral("Codex 正在执行");
     } else if (kind == "reasoningPhase") {
         const auto phase = e["state"].toInt(-1);
         if (phase != int(State::Running) && phase != int(State::Complete)) {

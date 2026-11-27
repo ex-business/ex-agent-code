@@ -8,12 +8,13 @@ Q_LOGGING_CATEGORY(workerLog, "exagent.ipc.worker")
 
 namespace exagent {
 using namespace ipc;
-ServiceWorker::ServiceWorker(QString socketName, QString token, bool agentMode, QObject *parent)
+ServiceWorker::ServiceWorker(QString socketName, QString token, bool agentMode, QObject *parent, agent::Worker *runtime)
     : QObject(parent), m_socketName(std::move(socketName)), m_token(std::move(token)), m_epoch(newId())
 {
     if (agentMode) {
-        m_agent = new codex::Worker(this);
-        connect(m_agent,&codex::Worker::available,this,&ServiceWorker::drainAgent);
+        m_agent = runtime ? runtime : new agent::Worker(this);
+        m_agent->setParent(this);
+        connect(m_agent,&agent::Worker::available,this,&ServiceWorker::drainAgent);
     }
     m_retry.setSingleShot(true);
     connect(&m_retry, &QTimer::timeout, this, &ServiceWorker::connectSocket);
