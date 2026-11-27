@@ -1,5 +1,6 @@
 #include "control_host.h"
 #include "automation_service.h"
+#include "plugins/ssh_workspace/ssh_service.h"
 #include "plugins/local_bots/bot_service.h"
 #include "plugins/plugin_lifecycle/plugin_manager.h"
 #include "infrastructure/ipc/rpc_channel.h"
@@ -36,6 +37,7 @@ Host::Host(ChatController &controller, QObject *parent) : QObject(parent), chat(
         return QJsonObject{{"version", 1}, {"methods", QJsonArray::fromStringList(methods)}, {"schemas", schemas}};
     });
     new bots::Service(*this);
+    new ssh::Service(*this);
     new plugins::Manager(*this);
     m_server.setSocketOptions(QLocalServer::UserAccessOption);
     connect(&m_server, &QLocalServer::newConnection, this, [this] {

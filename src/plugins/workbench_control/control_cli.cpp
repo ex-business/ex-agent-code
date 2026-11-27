@@ -26,6 +26,8 @@ int runCli(QStringList args)
                   "  sessions.list | sessions.create | sessions.select | sessions.show | sessions.send | runs.show\n"
                   "  automations.list | automations.get | automations.create | automations.set | automations.run | automations.runs\n"
                   "  skills.list | skills.get | skills.run\n"
+                  "  ssh.hosts | ssh.add | ssh.probe | ssh.bind | ssh.check | ssh.worktree | ssh.workspaces\n"
+                  "  ssh.run | ssh.read | ssh.runs | ssh.request | ssh.disconnect\n"
                   "  bots.list | bots.create | bots.get | bots.prepare | bots.update | bots.set | bots.open | bots.new-chat | bots.send\n"
                   "  plugins.list | plugins.inspect | plugins.install | plugins.upgrade | plugins.get\n"
                   "  plugins.approve | plugins.enable | plugins.rollback | plugins.invoke | plugins.panels | plugins.panel\n"

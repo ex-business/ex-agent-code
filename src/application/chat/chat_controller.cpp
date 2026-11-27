@@ -156,6 +156,13 @@ ChatController::ChatController(QObject *parent)
     }
 }
 
+void ChatController::setSsh(QObject *value)
+{
+    m_ssh = value;
+    if (value) connect(value, &QObject::destroyed, this, [this] { if (!m_ssh) emit sshChanged(); });
+    emit sshChanged();
+}
+
 void ChatController::setBots(QObject *value)
 {
     m_bots = value;
