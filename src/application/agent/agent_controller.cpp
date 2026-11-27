@@ -283,20 +283,35 @@ QVariantMap AgentController::terminalBinding(const QString& workspace) const
 }
 bool AgentController::submit(const QString &text, const QString &cwd, const QVariantMap &reviewNote)
 {
-    auto *s = find(m_selected);
-    if (!s || !m_writable || !account() || text.trimmed().isEmpty())
+    return submitTo(m_selected, text, cwd, reviewNote, false);
+}
+QString AgentController::submitWorker(const QString &session, const QString &text)
+{
+    // 监督派发沿用目标会话的权限和目录，独立输入不消费目标草稿、历史选择或附件。
+    const auto *target = find(session);
+    const auto *source = find(m_selected);
+    if (!source || !target || source->projectId != target->projectId || session == m_selected) return {};
+    const auto *workspace = m_catalog.workspace(target->projectId, target->workspaceId);
+    if (!submitTo(session, text, workspace ? workspace->path : QString{}, {}, true)) return {};
+    return m_active.value(session).id;
+}
+bool AgentController::submitTo(const QString &session, const QString &text, const QString &cwd,
+    const QVariantMap &reviewNote, bool worker)
+{
+    auto *s = find(session);
+    if (!s || !m_writable || !s->agent.value("account").toInt() || text.trimmed().isEmpty())
         return false;
     if (!codex::threadAvailable(s->agent.value("threadId").toString())) {
         emit failure(QStringLiteral("会话正在另一入口中使用。请先在交互终端退出 Codex，再继续聊天。"));
         return false;
     }
-    if (busy() || authenticating()) {
+    if (m_active.contains(session) || authenticating()) {
         emit failure(QStringLiteral("请等待当前运行或账号登录结束。"));
         return false;
     }
     QString directory;
     if (cwd.isEmpty()) {
-        if (workspaceWrite()) {
+        if (s->agent.value("write").toBool()) {
             emit failure(QStringLiteral("写入文件需要绑定工作区。只想聊天时，可在会话执行设置中关闭工作区写入。"));
             return false;
         }
@@ -323,12 +338,12 @@ bool AgentController::submit(const QString &text, const QString &cwd, const QVar
     }
     const auto run = newId();
     QJsonObject spec { { "conversationId", s->id }, { "runId", run }, { "prompt", text }, { "cwd", directory },
-        { "model", model() }, { "write", workspaceWrite() }, { "fullAccess", fullAccess() }, { "account", account() } };
-    if (s->agent.value("boundAccount").toInt() == account() && s->agent.value("boundCwd").toString() == directory)
+        { "model", s->agent.value("model").toString() }, { "write", s->agent.value("write").toBool() }, { "fullAccess", s->agent.value("fullAccess").toBool() }, { "account", s->agent.value("account").toInt() } };
+    if (s->agent.value("boundAccount").toInt() == s->agent.value("account").toInt() && s->agent.value("boundCwd").toString() == directory)
         spec.insert("threadId", s->agent.value("threadId").toString());
     spec.insert("identity", s->agent.value("identity").toString());
     // 批注是独立输入；普通草稿选中的历史和图片只随该草稿派发。
-    const auto ctx = reviewNote.isEmpty() ? m_contexts.value(s->id) : QVariantMap{};
+    const auto ctx = !worker && reviewNote.isEmpty() ? m_contexts.value(s->id) : QVariantMap{};
     if (!ctx.isEmpty()) {
         const auto current = previewHistory(ctx.value("first").toInt(), ctx.value("last").toInt());
         if (current != ctx) {
@@ -342,7 +357,7 @@ bool AgentController::submit(const QString &text, const QString &cwd, const QVar
     user.id = newId();
     user.content = text;
     // 页面附件只随普通草稿发送，与批注和手动选择的历史保持各自归属。
-    if (reviewNote.isEmpty()) {
+    if (!worker && reviewNote.isEmpty()) {
         QString path;
         const auto error = design::apply(design::pending(*s), m_repository.sessionDirectory(s->projectId,s->id), user, path);
         if (!error.isEmpty()) { emit failure(error); return false; }
@@ -359,7 +374,7 @@ bool AgentController::submit(const QString &text, const QString &cwd, const QVar
     marker.status = MessageStatus::Running;
     marker.content = QStringLiteral("Codex 正在准备执行");
     marker.activity = { { "serviceId", "codex-agent" }, { "taskState", int(State::Created) }, { "cwd", directory },
-        { "account", account() }, { "requestedModel", model() } };
+        { "account", s->agent.value("account").toInt() }, { "requestedModel", s->agent.value("model").toString() } };
     // 用户输入与派发意图必须一起写入。失败时保留草稿，不能让 worker 收到半次派发。
     const auto before = *s;
     if (s->messages.isEmpty())
@@ -367,10 +382,10 @@ bool AgentController::submit(const QString &text, const QString &cwd, const QVar
     if (!reviewNote.isEmpty()) user.activity = {{"reviewNote", reviewNote}, {"reviewRunId", run}};
     s->messages.append(user);
     s->messages.append(marker);
-    if (reviewNote.isEmpty()) {
+    if (!worker && reviewNote.isEmpty()) {
         design::setPending(*s, {});
         s->draft.clear();
-    } else {
+    } else if (!reviewNote.isEmpty()) {
         // 与发送消息一起落盘，失败时整次回滚，同时保留输入框原有草稿。
         auto notes = s->history.value("reviewNotes").toList();
         if (!notes.removeOne(reviewNote)) { *s = before; return false; }
@@ -381,9 +396,9 @@ bool AgentController::submit(const QString &text, const QString &cwd, const QVar
         *s = before;
         return false;
     }
-    if (reviewNote.isEmpty()) m_contexts.remove(s->id);
+    if (!worker && reviewNote.isEmpty()) m_contexts.remove(s->id);
     m_latestMarker.insert(s->id, s->messages.size() - 1);
-    m_active.insert(s->id, { run, spec, {}, false });
+    m_active.insert(s->id, { run, spec, {}, false, {}, {}, false });
     emit rowChanged(s->id, user);
     emit rowChanged(s->id, marker);
     emit saved();

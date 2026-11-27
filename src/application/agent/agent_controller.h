@@ -52,6 +52,8 @@ public:
     Q_INVOKABLE bool requestPending(const QString &session, const QString &run, const QString &token) const;
     bool authenticating() const { return m_login.state() != QProcess::NotRunning; }
     bool submit(const QString &text, const QString &cwd, const QVariantMap &reviewNote = {});
+    QString submitWorker(const QString &session, const QString &text);
+
     Q_INVOKABLE void configure(int account, const QString &model, bool write, bool fullAccess = false);
     Q_INVOKABLE void login(QString key);
     Q_INVOKABLE void logout();
@@ -69,6 +71,8 @@ signals:
     void saved();
 
 private:
+    bool submitTo(const QString &session, const QString &text, const QString &cwd,
+        const QVariantMap &reviewNote, bool worker);
     ChatSession *find(const QString &id) const;
     QVariantMap config() const;
     bool save();
