@@ -42,6 +42,7 @@ qt_add_qml_module(ex_agent_chat
         plugins/diff_review/session_review.cpp
         plugins/session_mail/session_mail.cpp
         plugins/workbench_control/control_host.h plugins/workbench_control/control_host.cpp
+        plugins/project_groups/group_service.cpp plugins/project_groups/group_service.h plugins/project_groups/group_scan.cpp plugins/project_groups/group_scan.h
         plugins/session_sharing/conversation_feed.cpp plugins/session_sharing/conversation_feed.h
         plugins/session_sharing/audit_store.cpp plugins/session_sharing/audit_store.h
         plugins/session_sharing/sharing_service.h plugins/session_sharing/sharing_service.cpp

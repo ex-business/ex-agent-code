@@ -52,7 +52,8 @@ QList<ChatSession> ProjectRepository::load(ProjectCatalog &catalog, QString *err
         if (!file.open(QIODevice::ReadOnly)) return invalid();
         m_savedIndex = file.readAll();
         const auto root = QJsonDocument::fromJson(m_savedIndex).object();
-        if (root["version"].toInt() != 1 || !root["projects"].isArray() || !root["sessions"].isArray()) return invalid();
+        const auto version=root["version"].toInt(-1);
+        if ((version!=1 && version!=2) || !root["projects"].isArray() || !root["sessions"].isArray()) return invalid();
         ProjectCatalog restored;
         restored.projects.clear();
         QSet<QString> workspaceIds;
@@ -75,9 +76,11 @@ QList<ChatSession> ProjectRepository::load(ProjectCatalog &catalog, QString *err
                 workspaceIds.insert(workspace.id);
                 project.workspaces.append(workspace);
             }
+            project.organization=row.value("organization").toObject().toVariantMap();
+            if(row.contains("organization") && (version!=2 || !row["organization"].isObject()))return invalid();
             restored.projects.append(project);
         }
-        if (!restored.find(ProjectCatalog::inboxId())) return invalid();
+        if (!restored.find(ProjectCatalog::inboxId()) || !validOrganization(restored)) return invalid();
         for (const auto &entry : root["sessions"].toArray()) {
             const auto row = entry.toObject();
             const auto id = row["id"].toString();
@@ -108,7 +111,9 @@ QList<ChatSession> ProjectRepository::load(ProjectCatalog &catalog, QString *err
 bool ProjectRepository::save(const ProjectCatalog &catalog, const QList<ChatSession> &sessions, QString *error)
 {
     if (!m_lock.isLocked()) { *error = QStringLiteral("项目目录未获得写入权。"); return false; }
+    if(!validOrganization(catalog)){*error=QStringLiteral("项目组归属无效，已保留原索引。");return false;}
     QJsonArray projects, entries;
+    int version=1;
     for (const auto &project : catalog.projects) {
         QJsonArray workspaces;
         for (const auto &workspace : project.workspaces) {
@@ -120,7 +125,9 @@ bool ProjectRepository::save(const ProjectCatalog &catalog, const QList<ChatSess
             item.insert("checkpoint", QJsonObject::fromVariantMap(workspace.checkpoint));
             workspaces.append(item);
         }
-        projects.append(QJsonObject{{"id", project.id}, {"name", project.name}, {"workspaces", workspaces}});
+        QJsonObject row{{"id",project.id},{"name",project.name},{"workspaces",workspaces}};
+        if(!project.organization.isEmpty()){row.insert("organization",QJsonObject::fromVariantMap(project.organization));version=2;}
+        projects.append(row);
     }
     auto generations = m_generations;
     auto saved = m_saved;
@@ -142,7 +149,7 @@ bool ProjectRepository::save(const ProjectCatalog &catalog, const QList<ChatSess
         entries.append(entry);
     }
     // 先完整写入会话，再发布索引。迁移中断后仍可从旧 sessions.json 重试。
-    const auto bytes = QJsonDocument(QJsonObject{{"version", 1}, {"projects", projects}, {"sessions", entries},
+    const auto bytes = QJsonDocument(QJsonObject{{"version", version}, {"projects", projects}, {"sessions", entries},
         {"selectedSession", catalog.selectedSession}, {"selectedResource", catalog.selectedResource}}).toJson(QJsonDocument::Compact);
     if (m_savedIndex == bytes) return true;
     QSaveFile index(filePath());

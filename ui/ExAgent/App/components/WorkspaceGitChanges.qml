@@ -10,6 +10,8 @@ FocusScope {
     required property ChatController chat
     property bool writable: false
     required property string folder
+    readonly property string gitFolder: chat.previewMode ? folder : chat.repositoryPath
+    function treePath(path) { return gitFolder !== folder && gitFolder.startsWith(folder + "/") ? gitFolder.slice(folder.length + 1) + "/" + path : path }
     signal revealRequested(string path)
     signal openRequested(string path)
     readonly property string selectedPath: git.selection.slice(git.selection.indexOf(":") + 1)
@@ -20,6 +22,7 @@ FocusScope {
             if (/^@{2,} -/.test(lines[i])) rows.push(i)
         return rows
     }
+    property string pathMessage: ""
     property var origin: ({})
     function updateOrigin() {
         origin = visible && git.fileEvidence.signature ? chat.reviewOrigin(git.fileEvidence) : ({})
@@ -31,7 +34,11 @@ FocusScope {
     }
     property int hunk: -1
     function showPath(path: string) {
-        git.selectFile(path)
+        // 文件树以父目录为根，差异列表以任务仓库为根；双向转换避免选错同名文件。
+        const prefix = gitFolder !== folder && gitFolder.startsWith(folder + "/") ? gitFolder.slice(folder.length + 1) + "/" : ""
+        if (prefix && !path.startsWith(prefix)) { pathMessage = Design.UiText.get("此文件不属于当前任务来源仓库"); return }
+        pathMessage = ""
+        git.selectFile(prefix ? path.slice(prefix.length) : path)
         patch.forceActiveFocus()
     }
     function jump(direction: int) {
@@ -48,7 +55,7 @@ FocusScope {
     Design.DiffReviewDialog { id: review; chat: root.chat }
     GitChanges {
         id: git
-        folder: root.visible ? root.folder : ""
+        folder: root.visible ? root.gitFolder : ""
         onLinesChanged: root.updateOrigin()
     }
     function translatedMessage(message: string): string {
@@ -73,12 +80,12 @@ FocusScope {
             Layout.margins: 8
             Label {
                 Layout.fillWidth: true
-                text: Design.UiText.get("工作区变更") + "  ·  " + git.entries.length
+                text: Design.UiText.get("工作区变更") + "  ·  " + git.entries.length + (root.gitFolder !== root.folder ? " · " + root.gitFolder.split("/").pop() : "")
                 font.bold: true
                 color: Design.Theme.text
             }
             Design.DialogAction {
-                visible: root.chat.reviewNotes.length > 0 && root.chat.workspacePath === root.folder
+                visible: root.chat.reviewNotes.length > 0 && root.chat.workspacePath === root.gitFolder
                 text: Design.UiText.get("待发送批注") + " (" + root.chat.reviewNotes.length + ")"
                 onClicked: review.begin(false)
             }
@@ -87,7 +94,7 @@ FocusScope {
         Design.DiffScopeBar {
             Layout.fillWidth: true
             Layout.leftMargin: 8; Layout.rightMargin: 8
-            folder: root.folder
+            folder: root.gitFolder
             changes: git
         }
         Label {
@@ -95,8 +102,8 @@ FocusScope {
             Layout.fillWidth: true
             Layout.leftMargin: 10
             Layout.rightMargin: 10
-            text: git.message ? root.translatedMessage(git.message)
-                              : git.entries.length === 0 ? Design.UiText.get("工作区没有变更") : ""
+            text: root.pathMessage || (git.message ? root.translatedMessage(git.message)
+                              : git.entries.length === 0 ? Design.UiText.get("工作区没有变更") : "")
             textFormat: Text.PlainText
             wrapMode: Text.WrapAnywhere
             color: Design.Theme.secondary
@@ -168,8 +175,8 @@ FocusScope {
             }
             Design.IconButton { iconName: "back"; tooltip: Design.UiText.get("上一处差异") + " (Shift+F7)"; enabled: root.hunks.length > 0; onClicked: root.jump(-1) }
             Design.IconButton { iconName: "back"; rotation: 180; tooltip: Design.UiText.get("下一处差异") + " (F7)"; enabled: root.hunks.length > 0; onClicked: root.jump(1) }
-            Design.IconButton { iconName: "folder"; tooltip: Design.UiText.get("在文件树中定位"); onClicked: root.revealRequested(root.selectedPath) }
-            Design.IconButton { iconName: "file"; tooltip: Design.UiText.get("打开工作区文件"); onClicked: root.openRequested(root.selectedPath) }
+            Design.IconButton { iconName: "folder"; tooltip: Design.UiText.get("在文件树中定位"); onClicked: root.revealRequested(root.treePath(root.selectedPath)) }
+            Design.IconButton { iconName: "file"; tooltip: Design.UiText.get("打开工作区文件"); onClicked: root.openRequested(root.treePath(root.selectedPath)) }
         }
         ListView {
             id: patch
@@ -186,7 +193,7 @@ FocusScope {
                 width: patch.width
                 id: diffLine
                 readonly property var anchor: git.fileEvidence.snapshot ? git.anchorAt(index) : ({})
-                readonly property bool annotatable: root.writable && root.chat.workspacePath === root.folder && !!anchor.snapshot
+                readonly property bool annotatable: root.writable && root.chat.workspacePath === root.gitFolder && !!anchor.snapshot
                 readonly property bool matched: !!root.origin.messageId && annotatable && (!anchor.oldLine || !anchor.newLine)
                 leftPadding: annotatable ? 30 : 10
                 Design.IconButton {
@@ -219,7 +226,7 @@ FocusScope {
             id: actionBar
             Layout.fillWidth: true
             visible: root.writable && git.scope === GitChanges.Local
-            folder: visible ? root.folder : ""
+            folder: visible ? root.gitFolder : ""
             changes: git
         }
     }

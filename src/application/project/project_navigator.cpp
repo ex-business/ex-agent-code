@@ -167,23 +167,32 @@ void ProjectNavigator::refresh(const QList<ChatSession> &sessions)
         groups[key].append(row(SessionRow, session.title, session.projectId, session.workspaceId, session.id));
     }
     QVariantList next;
-    for (const auto &project : catalog.projects) {
-        next.append(row(ProjectRow, project.name, project.id));
-        next.append(groups.value("p/" + project.id));
-        for (const auto &workspace : project.workspaces) {
-            auto title = QFileInfo(workspace.path).fileName();
-            if (workspace.state == WorkspaceState::Archived) title += QStringLiteral("（已归档）");
-            if (workspace.state == WorkspaceState::Cleaned) title += QStringLiteral("（已清理）");
-            auto entry = row(WorkspaceRow, title.isEmpty() ? workspace.path : title, project.id, workspace.id);
-            entry.insert("state", int(workspace.state));
-            entry.insert("path", workspace.path);
-            entry.insert("taskLinks", workspace.taskLinks);
-            entry.insert("projectTitle", project.name);
-            entry.insert("launch", workspace.launch);
-            entry.insert("checkpoint", workspace.checkpoint);
+    const auto appendProject=[&](const Project &project,int depth) {
+        const bool organized=!project.organization.isEmpty();
+        const auto decorate=[&](QVariantMap item,int level) {
+            if(organized){item.insert("depth",level);item.insert("parentGroup",project.groupId());item.insert("organizationKind",int(project.kind()));}
+            return item;
+        };
+        auto header=decorate(row(ProjectRow,project.name,project.id),depth);
+        header.insert("groupRoot",project.kind()==ProjectKind::Group?project.rootPath():QString());next.append(header);
+        for(const auto &v:groups.value("p/"+project.id))next.append(decorate(v.toMap(),depth+1));
+        for(const auto &workspace:project.workspaces) {
+            const bool folder=workspace.launch.value("provider").toString()=="folder.workspace";
+            auto title=folder?workspace.launch.value("name").toString():QFileInfo(workspace.path).fileName();
+            if(workspace.state==WorkspaceState::Archived)title+=QStringLiteral("（已归档）");
+            if(workspace.state==WorkspaceState::Cleaned)title+=QStringLiteral("（已清理）");
+            auto entry=decorate(row(WorkspaceRow,title.isEmpty()?workspace.path:title,project.id,workspace.id),depth+1);
+            entry.insert("state",int(workspace.state));entry.insert("path",workspace.path);entry.insert("taskLinks",workspace.taskLinks);
+            entry.insert("projectTitle",project.name);entry.insert("launch",workspace.launch);entry.insert("checkpoint",workspace.checkpoint);
+            if(folder){const auto *source=catalog.find(workspace.launch.value("taskSource").toString());entry.insert("taskSourceTitle",source?source->name:QString());}
             next.append(entry);
-            next.append(groups.value("w/" + workspace.id));
+            for(const auto &v:groups.value("w/"+workspace.id))next.append(decorate(v.toMap(),depth+2));
         }
+    };
+    for(const auto &project:catalog.projects) {
+        if(!project.groupId().isEmpty())continue;
+        appendProject(project,0);
+        if(project.kind()==ProjectKind::Group)for(const auto &member:catalog.projects)if(member.groupId()==project.id)appendProject(member,1);
     }
     if (m_rows == next) return;
     m_rows = std::move(next);

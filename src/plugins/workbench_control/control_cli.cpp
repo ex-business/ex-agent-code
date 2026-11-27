@@ -22,6 +22,7 @@ int runCli(QStringList args)
     if (method == "help" || method == "--help") {
         std::puts("ex-agent-code control <method> [JSON | --stdin] [--json]\n"
                   "  capabilities | projects.list | projects.create\n"
+                  "  groups.scan | groups.scan-result | groups.cancel-scan | groups.import | groups.list | groups.create-folder | groups.archive | groups.restore\n"
                   "  workspaces.list | workspaces.bind | workspaces.checkpoint\n"
                   "  sessions.list | sessions.create | sessions.select | sessions.show | sessions.send | runs.show\n"
                   "  automations.list | automations.get | automations.create | automations.set | automations.run | automations.runs\n"

@@ -29,6 +29,7 @@ Rectangle {
         if (query) for (const item of all) {
             if (item.title.toLocaleLowerCase().includes(query)) {
                 matches.add(item.project)
+                if (item.parentGroup) matches.add(item.parentGroup)
                 if (item.workspace) matches.add(item.workspace)
             }
         }
@@ -36,6 +37,7 @@ Rectangle {
             if (query) return item.title.toLocaleLowerCase().includes(query)
                 || (item.kind === ProjectNavigator.ProjectRow && matches.has(item.project))
                 || (item.kind === ProjectNavigator.WorkspaceRow && matches.has(item.workspace))
+            if (item.parentGroup && folded[item.parentGroup]) return false
             if (archived.has(item.workspace) && item.workspace !== controller.currentWorkspaceId) return false
             if (item.kind !== ProjectNavigator.ProjectRow && folded[item.project]) return false
             return item.kind !== ProjectNavigator.SessionRow || !item.workspace || !folded[item.workspace]
@@ -48,6 +50,8 @@ Rectangle {
     }
     function showSearch() { searchInput.visible = true; searchInput.forceActiveFocus() }
     color: Design.Theme.sidebar
+    Design.ProjectGroupDialog { id: importGroup; chat: root.controller }
+    Design.FolderWorkspaceDialog { id: groupFolders; chat: root.controller }
     Design.WorkspaceTasksDialog { id: taskLinks; chat: root.controller }
     Design.WorktreeResourcesDialog {
         id: resourcesDialog
@@ -93,7 +97,13 @@ Rectangle {
             Layout.fillWidth: true
             Text { text: Design.UiText.get("项目"); font.pixelSize: 17; font.weight: Font.DemiBold; color: Design.Theme.text; Layout.fillWidth: true }
             Design.IconButton { iconName: "branch"; tooltip: Design.UiText.get("关联任务"); onClicked: taskLinks.present() }
-            Design.IconButton { iconName: "plus"; tooltip: Design.UiText.get("新建项目"); enabled: root.controller.projects.writable; onClicked: createDialog.open() }
+            Design.IconButton { iconName: "plus"; tooltip: Design.UiText.get("新建项目"); enabled: root.controller.projects.writable; onClicked: projectMenu.popup()
+                Design.ContextMenu {
+                    id: projectMenu
+                    Design.ContextMenuItem { text: "新建项目"; onTriggered: createDialog.open() }
+                    Design.ContextMenuItem { text: "导入多仓库项目组"; enabled: !!root.controller.projectGroups; onTriggered: importGroup.open() }
+                }
+            }
             Design.IconButton { iconName: "new"; tooltip: Design.UiText.get("新聊天"); enabled: root.controller.projects.writable; onClicked: root.controller.newSession() }
             Design.IconButton { iconName: "search"; tooltip: "搜索项目与聊天"; onClicked: root.showSearch() }
         }
@@ -130,12 +140,13 @@ Rectangle {
                     if (entry.resource) root.controller.loadResourceConversation(entry.resource)
                     else if (library) root.toggle(key)
                     else if (entry.session) root.controller.selectSession(entry.session)
+                    else if (entry.organizationKind === 2 && entry.kind === ProjectNavigator.ProjectRow) groupFolders.present(entry.project)
                     else {
                         if (collapsed) root.toggle(key)
                         root.controller.openGroup(entry.project, entry.workspace)
                     }
                 }
-                onNewChat: { if (collapsed) root.toggle(key); root.controller.newGroupSession(entry.project, entry.workspace) }
+                onNewChat: { if (entry.organizationKind === 2 && entry.kind === ProjectNavigator.ProjectRow) { groupFolders.present(entry.project); return }; if (collapsed) root.toggle(key); root.controller.newGroupSession(entry.project, entry.workspace) }
                 providers: root.controller.projects.taskProviders
                 onResourceRequested: provider => resourcesDialog.showProject(provider, entry.project, entry.workspace)
                 onTaskRequested: (provider, title) => {
@@ -145,6 +156,7 @@ Rectangle {
                     taskDialog.initialWorkspace = entry.workspace
                     taskDialog.open()
                 }
+                onFolderWorkspace: groupFolders.present(entry.project)
                 onBindFolder: { if (collapsed) root.toggle(key); folder.project = entry.project; folder.open() }
                 onMoveHere: { if (collapsed) root.toggle(key); root.controller.moveToGroup(entry.project, entry.workspace) }
             }

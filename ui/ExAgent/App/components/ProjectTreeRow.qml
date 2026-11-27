@@ -15,6 +15,9 @@ Rectangle {
     signal toggled()
     signal newChat()
     signal bindFolder()
+    signal folderWorkspace()
+    readonly property bool projectGroup: entry.organizationKind === 2 && project
+    readonly property bool folderWorkspaceRow: entry.launch?.provider === "folder.workspace"
     required property var providers
     signal resourceRequested(string provider)
     signal taskRequested(string provider, string title)
@@ -27,7 +30,7 @@ Rectangle {
     HoverHandler { id: hover }
     RowLayout {
         anchors.fill: parent
-        anchors.leftMargin: root.project ? 2 : root.entry.workspace ? 17 : 10
+        anchors.leftMargin: root.entry.depth !== undefined ? 2 + root.entry.depth * 14 : root.project ? 2 : root.entry.workspace ? 17 : 10
         anchors.rightMargin: 4
         spacing: 1
         Design.IconButton {
@@ -74,9 +77,10 @@ Rectangle {
             Design.ContextMenu {
                 id: menu
                 Design.ContextMenuItem { text: "在此新建聊天"; iconName: "new"; onTriggered: root.newChat() }
-                Design.ContextMenuItem { visible: root.project; height: visible ? implicitHeight : 0; text: "添加工作区…"; iconName: "folder"; onTriggered: root.bindFolder() }
+                Design.ContextMenuItem { visible: root.project && !root.projectGroup; height: visible ? implicitHeight : 0; text: "添加工作区…"; iconName: "folder"; onTriggered: root.bindFolder() }
+                Design.ContextMenuItem { visible: root.projectGroup; height: visible ? implicitHeight : 0; text: "文件夹工作区…"; iconName: "folder"; onTriggered: root.folderWorkspace() }
                 Instantiator {
-                    model: root.group ? root.providers : []
+                    model: root.group && !root.projectGroup && !root.folderWorkspaceRow ? root.providers : []
                     delegate: Design.ContextMenuItem {
                         required property var modelData
                         text: modelData.title + "…"
@@ -86,7 +90,7 @@ Rectangle {
                     onObjectRemoved: (index, object) => menu.removeItem(object)
                 }
                 Instantiator {
-                    model: root.group ? root.providers.filter(p => p.resources) : []
+                    model: root.group && !root.projectGroup && !root.folderWorkspaceRow ? root.providers.filter(p => p.resources) : []
                     delegate: Design.ContextMenuItem {
                         required property var modelData
                         text: "工作树资源管理器…"

@@ -1,4 +1,5 @@
 #include "control_host.h"
+#include "plugins/project_groups/group_service.h"
 #include "automation_service.h"
 #include "plugins/mobile_gateway/mobile_service.h"
 #include "plugins/session_sharing/sharing_service.h"
@@ -40,6 +41,7 @@ Host::Host(ChatController &controller, QObject *parent) : QObject(parent), chat(
     });
     new bots::Service(*this);
     new ssh::Service(*this);
+    new groups::Service(*this);
     new mobile::Service(*this);
     new sharing::Service(*this);
     new plugins::Manager(*this);

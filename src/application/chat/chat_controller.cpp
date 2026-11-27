@@ -214,6 +214,18 @@ QJsonArray ChatController::conversationRows(const QString &id,const QSet<QString
     }
     *error=QStringLiteral("会话不存在。");return {};
 }
+void ChatController::setProjectGroups(QObject *value) {
+    m_projectGroups=value;if(value)connect(value,&QObject::destroyed,this,[this]{if(!m_projectGroups)emit projectGroupsChanged();});emit projectGroupsChanged();
+}
+QString ChatController::repositoryPath() const {
+    const auto *w=m_projects.catalog.workspace(currentProjectId(),currentWorkspaceId());
+    if(!w || w->launch.value("provider").toString()!="folder.workspace")return workspacePath();
+    const auto *source=m_projects.catalog.find(w->launch.value("taskSource").toString());
+    if(!source || source->groupId()!=currentProjectId())return {};
+    // 文件和执行根仍为父目录；Git操作只定位到创建时确认的任务来源仓库。
+    const auto canonical = QFileInfo(source->rootPath()).canonicalFilePath();
+    return canonical == source->rootPath() ? canonical : QString();
+}
 void ChatController::setMobile(QObject *value)
 {
     m_mobile = value;

@@ -369,6 +369,23 @@
     "停止共享": "Stop sharing",
     "审计存储不可用或已满：新增授权将被阻止，仍可撤销共享。": "Audit storage is unavailable or full. New access is blocked; revocation remains available.",
     "将撤销此会话的全部共享设备和待配对邀请，普通移动授权及其他会话不受影响。": "Revoke shared devices and pending invitations for this chat. Other chats and regular mobile access remain unchanged.",
-    "停止共享未完成，请刷新状态后核对。": "Sharing could not be stopped. Refresh and check its current state."
+    "停止共享未完成，请刷新状态后核对。": "Sharing could not be stopped. Refresh and check its current state.",
+    "导入多仓库项目组": "Import repository group",
+    "选择包含多个 Git 仓库的父目录。仅登记直接子仓库，不复制文件或执行初始化脚本。": "Choose a parent folder containing Git repositories. Direct child repositories are registered without copying files or running setup hooks.",
+    "父目录绝对路径": "Absolute parent folder path",
+    "选择目录": "Choose folder",
+    "取消扫描": "Cancel scan",
+    "扫描仓库": "Scan repositories",
+    "扫描已取消": "Scan cancelled",
+    "项目组名称": "Project group name",
+    "导入项目组": "Import group",
+    "文件夹工作区": "Folder workspaces",
+    "Agent 与文件树使用父目录，Git 操作使用任务来源仓库。多个文件夹工作区共享实际文件；需要独立分支时，请在子仓库创建任务工作树。": "The agent and file tree use the parent folder. Git operations use the task source repository. Folder workspaces share actual files; create a task worktree in a child repository for an isolated branch.",
+    "任务来源仓库": "Task source repository",
+    "工作区名称": "Workspace name",
+    "关联任务链接（可选）": "Task link (optional)",
+    "创建工作区": "Create workspace",
+    "文件夹工作区…": "Folder workspaces…",
+    "此文件不属于当前任务来源仓库": "This file is outside the task source repository"
   }
 }

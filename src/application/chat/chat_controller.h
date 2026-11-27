@@ -32,6 +32,8 @@ class ChatController final : public QObject {
     Q_PROPERTY(QObject *bots READ bots NOTIFY botsChanged)
     Q_PROPERTY(QObject *ssh READ ssh NOTIFY sshChanged)
     Q_PROPERTY(QObject *mobile READ mobile NOTIFY mobileChanged)
+    Q_PROPERTY(QObject *projectGroups READ projectGroups NOTIFY projectGroupsChanged)
+    Q_PROPERTY(QString repositoryPath READ repositoryPath NOTIFY workspaceChanged)
     Q_PROPERTY(exagent::ConversationTransfer *transfer READ transfer CONSTANT)
     Q_PROPERTY(exagent::ProjectNavigator *projects READ projects CONSTANT)
     Q_PROPERTY(QString projectName READ projectName NOTIFY workspaceChanged)
@@ -75,6 +77,9 @@ public:
     QJsonArray conversationRows(const QString &session, const QSet<QString> &messages, QString *error) const;
     QObject *ssh() const { return m_ssh.data(); }
     void setSsh(QObject *value);
+    QObject *projectGroups() const { return m_projectGroups.data(); }
+    void setProjectGroups(QObject *value);
+    QString repositoryPath() const;
     QObject *mobile() const { return m_mobile.data(); }
     void setMobile(QObject *value);
     ConversationTransfer *transfer() { return &m_transfer; }
@@ -149,6 +154,7 @@ signals:
     void botsChanged();
     void sshChanged();
     void mobileChanged();
+    void projectGroupsChanged();
     void workspaceChanged();
     void draftChanged();
     void designSelectionChanged();
@@ -176,6 +182,7 @@ private:
     QPointer<QObject> m_bots;
     QPointer<QObject> m_ssh;
     QPointer<QObject> m_mobile;
+    QPointer<QObject> m_projectGroups;
     AgentController m_agent{m_sessions, m_projects.catalog, m_repository};
     ConversationTransfer m_transfer{m_sessions, m_projects.catalog, m_repository};
     int m_current = -1;
