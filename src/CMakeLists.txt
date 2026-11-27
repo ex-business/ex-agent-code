@@ -27,6 +27,7 @@ qt_add_library(ex_agent_worker STATIC services/local/service_worker.h services/l
 target_link_libraries(ex_agent_worker PUBLIC ex_agent_ipc ex_agent_codex)
 
 qt_add_library(ex_agent_chat STATIC)
+qt_add_resources(ex_agent_chat mobile_client PREFIX "/mobile" BASE "${CMAKE_SOURCE_DIR}/ui/mobile" FILES "${CMAKE_SOURCE_DIR}/ui/mobile/index.html" "${CMAKE_SOURCE_DIR}/ui/mobile/client.js" "${CMAKE_SOURCE_DIR}/ui/mobile/style.css" "${CMAKE_SOURCE_DIR}/ui/mobile/appearance.js")
 qt_add_resources(ex_agent_chat ssh_bridge PREFIX "/ssh-workspace" BASE plugins/ssh_workspace FILES plugins/ssh_workspace/bridge.py)
 qt_add_resources(ex_agent_chat "terminal_hibernation" PREFIX "/terminal-hibernation"
     BASE "plugins/session_history" FILES plugins/session_history/pi_activity.mjs plugins/session_history/pi_hibernation.mjs)
@@ -41,6 +42,7 @@ qt_add_qml_module(ex_agent_chat
         plugins/diff_review/session_review.cpp
         plugins/session_mail/session_mail.cpp
         plugins/workbench_control/control_host.h plugins/workbench_control/control_host.cpp
+        plugins/mobile_gateway/http_server.h plugins/mobile_gateway/http_server.cpp plugins/mobile_gateway/mobile_service.h plugins/mobile_gateway/mobile_service.cpp
         plugins/ssh_workspace/ssh_service.h plugins/ssh_workspace/ssh_service.cpp
         plugins/local_bots/bot_service.h plugins/local_bots/bot_service.cpp
         plugins/plugin_lifecycle/manifest.cpp plugins/plugin_lifecycle/plugin_manager.h plugins/plugin_lifecycle/plugin_manager.cpp

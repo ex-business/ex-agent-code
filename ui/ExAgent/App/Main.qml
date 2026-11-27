@@ -59,12 +59,13 @@ Design.WorkbenchWindow {
             window.requestActivate()
         }
     }
+    Design.MobileAccessDialog { id: mobileDialog; controller: window.controller }
     Design.SshWorkspaceDialog { id: sshDialog; controller: window.controller }
     Design.BotManagerDialog { id: botDialog; controller: window.controller }
     Design.PluginManagerDialog { id: pluginDialog; controller: window.controller }
     Design.SupervisionDialog { id: supervisionDialog; controller: window.controller }
     Design.SessionMailDialog { id: mailDialog; controller: window.controller }
-    Design.ChatMenu { id: chatMenu; onSshRequested: sshDialog.begin(); onBotsRequested: botDialog.begin(); onPluginsRequested: pluginDialog.begin(); onSupervisionRequested: supervisionDialog.begin(); onMailRequested: mailDialog.begin(); onConsoleRequested: consoleWindow.showConsole(); onOrganizeRequested: transferDialog.begin(); onAttachRequested: imageAttachment.open(); controller: window.controller; onImageSequenceRequested: imageFolder.open() }
+    Design.ChatMenu { id: chatMenu; onMobileRequested: mobileDialog.begin(); onSshRequested: sshDialog.begin(); onBotsRequested: botDialog.begin(); onPluginsRequested: pluginDialog.begin(); onSupervisionRequested: supervisionDialog.begin(); onMailRequested: mailDialog.begin(); onConsoleRequested: consoleWindow.showConsole(); onOrganizeRequested: transferDialog.begin(); onAttachRequested: imageAttachment.open(); controller: window.controller; onImageSequenceRequested: imageFolder.open() }
     Design.BlockWindowManager { controller: window.controller; hostWindow: window }
     FileDialog {
         id: imageAttachment; title: "将图片加入会话"

@@ -1,3 +1,5 @@
+#include <QJsonArray>
+#include <QJsonDocument>
 #include "chat_controller.h"
 #include "plugins/session_history/terminal_backend.h"
 #include <QSettings>
@@ -154,6 +156,38 @@ ChatController::ChatController(QObject *parent)
         for (const auto &entry : resourceConversations())
             if (entry.toMap().value("id") == "webchat-go") { loadResourceConversation("webchat-go"); break; }
     }
+}
+
+QJsonObject ChatController::conversationSnapshot(const QString &id, const QString &before, QString *error) const
+{
+    for (const auto &session : m_sessions) {
+        if (session.id != id) continue;
+        qsizetype end = session.messages.size();
+        if (!before.isEmpty()) {
+            end = 0;
+            while (end < session.messages.size() && session.messages[end].id != before) ++end;
+            if (end == session.messages.size()) { *error = QStringLiteral("历史位置已变化，请重新加载。"); return {}; }
+        }
+        QJsonArray rows; qsizetype bytes = 0, first = end;
+        // 快照只读取授权会话，不切换桌面当前聊天；每页同时限制条数及编码后的体积。
+        for (qsizetype i = end; i > 0 && rows.size() < 30; --i) {
+            const auto &m = session.messages[i - 1];
+            QJsonObject row{{"id",m.id},{"role",int(m.role)},{"status",int(m.status)},
+                {"text",m.content.left(16384)},{"truncated",m.content.size()>16384?1:0},{"time",m.timestamp()}};
+            const auto size = QJsonDocument(row).toJson(QJsonDocument::Compact).size();
+            if (!rows.isEmpty() && bytes + size > 200 * 1024) break;
+            rows.prepend(row); bytes += size; first = i - 1;
+        }
+        return {{"session",id},{"title",session.title},{"items",rows},{"older",first>0?QJsonValue(rows.first().toObject()["id"]):QJsonValue()},
+            {"running",m_agent.activeSession(id)?1:0}};
+    }
+    *error = QStringLiteral("会话不存在。"); return {};
+}
+void ChatController::setMobile(QObject *value)
+{
+    m_mobile = value;
+    if (value) connect(value, &QObject::destroyed, this, [this] { if (!m_mobile) emit mobileChanged(); });
+    emit mobileChanged();
 }
 
 void ChatController::setSsh(QObject *value)

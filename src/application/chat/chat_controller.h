@@ -29,6 +29,7 @@ class ChatController final : public QObject {
     Q_PROPERTY(QObject *plugins READ plugins NOTIFY pluginsChanged)
     Q_PROPERTY(QObject *bots READ bots NOTIFY botsChanged)
     Q_PROPERTY(QObject *ssh READ ssh NOTIFY sshChanged)
+    Q_PROPERTY(QObject *mobile READ mobile NOTIFY mobileChanged)
     Q_PROPERTY(exagent::ConversationTransfer *transfer READ transfer CONSTANT)
     Q_PROPERTY(exagent::ProjectNavigator *projects READ projects CONSTANT)
     Q_PROPERTY(QString projectName READ projectName NOTIFY workspaceChanged)
@@ -67,8 +68,11 @@ public:
     void setPlugins(QObject *value);
     QObject *bots() const { return m_bots.data(); }
     void setBots(QObject *value);
+    QJsonObject conversationSnapshot(const QString &session, const QString &before, QString *error) const;
     QObject *ssh() const { return m_ssh.data(); }
     void setSsh(QObject *value);
+    QObject *mobile() const { return m_mobile.data(); }
+    void setMobile(QObject *value);
     ConversationTransfer *transfer() { return &m_transfer; }
     ProjectNavigator *projects() { return &m_projects; }
     QString projectName() const;
@@ -138,6 +142,7 @@ signals:
     void pluginsChanged();
     void botsChanged();
     void sshChanged();
+    void mobileChanged();
     void workspaceChanged();
     void draftChanged();
     void designSelectionChanged();
@@ -163,6 +168,7 @@ private:
     QPointer<QObject> m_plugins;
     QPointer<QObject> m_bots;
     QPointer<QObject> m_ssh;
+    QPointer<QObject> m_mobile;
     AgentController m_agent{m_sessions, m_projects.catalog, m_repository};
     ConversationTransfer m_transfer{m_sessions, m_projects.catalog, m_repository};
     int m_current = -1;
