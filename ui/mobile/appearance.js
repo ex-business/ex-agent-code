@@ -1,5 +1,6 @@
 'use strict';
 const english = {
+ '图片准备超时，请重试':'Image preparation timed out. Retry.', '加载更多正文':'Load more text','下载完整文本':'Download full text','更长正文请下载':'Download to read further','查看图片':'View image','收起图片':'Collapse image','图片附件':'Image attachment','正在加载图片':'Loading image','正文分段校验失败':'Text chunk validation failed','图片分段校验失败':'Image chunk validation failed','正文超过下载容量，请在桌面导出':'Text exceeds download capacity. Export on desktop.',
  '连接已重新同步，可加载更早消息':'Connection resynchronized. Earlier messages are available.',
  '共享内容需要重新同步':'Shared content needs resynchronization',
  '申请控制权':'Request control','交还控制权':'Return control','你正在控制 · 桌面可随时收回':'You have control · desktop can reclaim',

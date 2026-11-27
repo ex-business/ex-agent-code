@@ -1,4 +1,5 @@
 #include "mobile_service.h"
+#include "plugins/session_sharing/shared_content.h"
 #include "plugins/session_sharing/sharing_events.h"
 #include <QLoggingCategory>
 Q_LOGGING_CATEGORY(sharedAuditLog,"exagent.sharing.audit")
@@ -32,7 +33,7 @@ Response json(QJsonObject value, int status = 200) {
 Response failure(const QString &e, int status = 400) { return json({{"ok", false}, {"error", e}}, status); }
 
 } // namespace
-Service::Service(control::Host &h) : QObject(&h), m_host(h), m_server(this) {
+Service::Service(control::Host &h) : QObject(&h), m_host(h), m_server(this), m_content(h.chat) {
     m_file = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation) + "/mobile/registry.json";
     m_data = {{"version", 1}, {"devices", QJsonArray{}}, {"sends", QJsonArray{}}};
     QFile file(m_file);
@@ -263,6 +264,8 @@ Response Service::serve(const Request &r) {
         } else if (r.path == "/client.js") {
             resource = ":/mobile/client.js";
             type = "text/javascript; charset=utf-8";
+        } else if (r.path == "/content.js") {
+            resource=":/mobile/content.js";type="text/javascript; charset=utf-8";
         } else if (r.path == "/feed.js") {
             resource=":/mobile/feed.js";type="text/javascript; charset=utf-8";
         } else if (r.path == "/appearance.js") {
@@ -331,6 +334,12 @@ Response Service::serve(const Request &r) {
         }
     if (device.isEmpty() || (device["sharing"].toInt()==1 && device["expires"].toDouble()<=QDateTime::currentSecsSinceEpoch()))
         return failure(QStringLiteral("设备授权已失效。"), 401);
+    if(r.path=="/api/message" || r.path=="/api/image") {
+        // 会话身份仅来自已验证设备，忽略任何客户端跨会话定位尝试。
+        const auto result=r.path=="/api/message" ? m_content.text(device["session"].toString(),p,&error)
+            : m_content.image(device["session"].toString(),p,&error);
+        return error.isEmpty()?json({{"ok",true},{"result",result}}):failure(error,409);
+    }
     if(r.path=="/api/changes") {
         for(auto it=p.begin();it!=p.end();++it)if(it.key()!="epoch" && it.key()!="after")return failure(QStringLiteral("共享内容游标参数无效。"));
         auto params=p;params.insert("session",device["session"]);

@@ -1,6 +1,7 @@
 'use strict';
 import {t,syncAppearance,applyAppearance} from './appearance.js';
 import {projectFeed} from './feed.js';
+import {extraContent,clearContent} from './content.js';
 let feedCursor=null, feedRequest=null, feedMore=false;
 const $ = id => document.getElementById(id);
 let token = localStorage.getItem('exMobileToken') || '', older = '', running = 0, scope = 1, timer, backoff = 2000, pending = null;
@@ -10,7 +11,7 @@ const draftKey=()=> 'exMobileDraft:'+boundSession;
 function activateSession(id) {
  if(boundSession!==id) {
   if(boundSession)localStorage.setItem(draftKey(),$('draft').value);
-  feedCursor=null;boundSession=id;localStorage.setItem('exMobileSession',id);
+  clearContent();feedCursor=null;boundSession=id;localStorage.setItem('exMobileSession',id);
   $('draft').value=localStorage.getItem(draftKey())||'';messages.clear();older='';windowEpoch++;
  }
 }
@@ -21,21 +22,21 @@ $('draft').value = localStorage.getItem(draftKey()) || '';
 function receiveOffer() {
  if(location.hash.length<=1)return false;
  pairingOffer=true; $('code').value=location.hash.slice(1);history.replaceState(null,'','/');
- authEpoch++;windowEpoch++;clearTimeout(timer);connected(false);return true;
+ clearContent();authEpoch++;windowEpoch++;clearTimeout(timer);connected(false);return true;
 }
 const offered=receiveOffer();
 addEventListener('hashchange',()=>receiveOffer());
 function status(text) { $('status').textContent = text; }
 function connected(value) { $('pairing').hidden = value; $('conversation').hidden = !value; $('composer').hidden = !value; $('disconnect').hidden = !value; }
-async function api(path, body, authenticated = true) {
+async function api(path, body, authenticated = true, timeout = 10000) {
   const epoch = authEpoch;
-  const response = await fetch('/api/' + path, {method:'POST', cache:'no-store', credentials:'omit', headers:{'Content-Type':'application/json', ...(authenticated ? {Authorization:'Bearer ' + token} : {})}, body:JSON.stringify(body), signal:AbortSignal.timeout(10000)});
+  const response = await fetch('/api/' + path, {method:'POST', cache:'no-store', credentials:'omit', headers:{'Content-Type':'application/json', ...(authenticated ? {Authorization:'Bearer ' + token} : {})}, body:JSON.stringify(body), signal:AbortSignal.timeout(timeout)});
   const value = await response.json();
   if (authenticated && epoch !== authEpoch) throw new Error(t('连接已变化'));
   if (!value.ok) { if (response.status === 401 && authenticated) logout(); const error=new Error(value.error || t('请求未成功'));error.code=value.code;throw error; }
   return value;
 }
-function logout() { feedCursor=null; authEpoch++; windowEpoch++; browsing=false; older=""; clearTimeout(timer); token = ''; messages.clear(); $('messages').replaceChildren(); localStorage.removeItem('exMobileToken'); connected(false); status(t('连接已失效，请在桌面重新配对')); }
+function logout() { clearContent();feedCursor=null; authEpoch++; windowEpoch++; browsing=false; older=""; clearTimeout(timer); token = ''; messages.clear(); $('messages').replaceChildren(); localStorage.removeItem('exMobileToken'); connected(false); status(t('连接已失效，请在桌面重新配对')); }
 function controls() { $('control').hidden=!sharing || scope!==2; $('control').textContent=t(sharing?.canSend===1?'交还控制权':'申请控制权'); $('draft').readOnly = !!pending || sending || (scope !== 2 || (sharing && sharing.canSend !== 1)); $('send').disabled = sending || scope !== 2 || (!pending && ((sharing && sharing.canSend !== 1) || running === 1 || !$('draft').value.trim())); $('send').textContent = pending ? t('核对发送') : t('发送'); $('latest').hidden=!browsing; $('scope').textContent = scope === 2 ? (running === 1 ? t('桌面正在运行') : t('允许发送 · 沿用桌面权限')) : t('只读访问'); if(sharing && scope===2)$('scope').textContent=t(sharing.canSend===1?'你正在控制 · 桌面可随时收回':'共享观看 · 发送需桌面交接'); }
 function content(article, text) {
   const parts = text.split(/```[^\n]*\n/);
@@ -59,8 +60,7 @@ function render() {
     if (!article) {article=document.createElement('article');article.dataset.id=message.id;}
     if (article.dataset.signature!==signature) {
       article.dataset.signature=signature;article.className=message.role===1?'user':'assistant';article.replaceChildren();
-      const meta=document.createElement('div');meta.className='meta';meta.textContent=['','你','助手','工具','执行记录'].map(t)[message.role]+(message.status===1?' · '+t('进行中'):message.status===2?' · '+t('失败'):'');article.append(meta);content(article,message.text);
-      if (message.truncated===1) {const hint=document.createElement('small');hint.textContent=t('长消息显示前16K字符，完整内容请在桌面查看。');article.append(hint);}
+      const meta=document.createElement('div');meta.className='meta';meta.textContent=['','你','助手','工具','执行记录'].map(t)[message.role]+(message.status===1?' · '+t('进行中'):message.status===2?' · '+t('失败'):'');article.append(meta);const body=document.createElement('div');body.className='message-body';article.append(body);content(body,message.text);extraContent(article,message,api,content);
     }
     if (list.children[index]!==article) list.insertBefore(article,list.children[index]||null);
     existing.delete(message.id);index++;

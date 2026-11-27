@@ -1,5 +1,6 @@
 #pragma once
 #include "http_server.h"
+#include "plugins/session_sharing/shared_content.h"
 #include "plugins/workbench_control/control_host.h"
 namespace exagent::mobile {
 class Service final : public QObject {
@@ -18,6 +19,7 @@ class Service final : public QObject {
     bool save(const QJsonObject &, QString *);
     control::Host &m_host;
     HttpServer m_server;
+    sharing::SharedContent m_content;
     QString m_file;
     QJsonObject m_data;
     QJsonObject m_appearance;

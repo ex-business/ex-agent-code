@@ -5,6 +5,8 @@ function validRow(row) {
  return row && typeof row.id==='string' && row.id.length>0 && row.id.length<=4096 &&
   Number.isInteger(row.position) && row.position>=0 && Number.isInteger(row.role) && row.role>=1 && row.role<=4 &&
   Number.isInteger(row.status) && row.status>=0 && row.status<=3 && typeof row.text==='string' && row.text.length<=16384 &&
+  typeof row.revision==='string' && /^[a-f0-9]{64}$/.test(row.revision) && Number.isInteger(row.length) && row.length>=row.text.length &&
+  Array.isArray(row.attachments) && row.attachments.length<=16 && row.attachments.every(a=>Number.isInteger(a.index)&&a.index>=0&&a.index<16&&typeof a.name==='string'&&a.name.length<=160) &&
   typeof row.time==='string' && row.time.length<=128 && (row.truncated===0 || row.truncated===1);
 }
 export function projectFeed(previous,cursor,frame) {

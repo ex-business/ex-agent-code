@@ -23,7 +23,7 @@ void reply(QTcpSocket *socket, const Response &r) {
         "HTTP/1.1 " + QByteArray::number(r.status) +
         " Response\r\nConnection: close\r\nCache-Control: no-store\r\nX-Content-Type-Options: "
         "nosniff\r\nReferrer-Policy: no-referrer\r\nContent-Security-Policy: default-src 'self'; "
-        "frame-ancestors 'none'; base-uri 'none'; form-action 'self'; object-src 'none'\r\nContent-Type: " +
+        "img-src 'self' blob:; frame-ancestors 'none'; base-uri 'none'; form-action 'self'; object-src 'none'\r\nContent-Type: " +
         r.type + "\r\nContent-Length: " + QByteArray::number(r.body.size()) + "\r\n\r\n" + r.body;
     socket->write(data);
     socket->disconnectFromHost();

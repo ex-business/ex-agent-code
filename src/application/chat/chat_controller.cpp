@@ -1,6 +1,7 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include "chat_controller.h"
+#include "plugins/session_sharing/shared_content.h"
 #include "plugins/session_history/terminal_backend.h"
 #include <QSettings>
 #include "plugins/design_mode/design_selection.h"
@@ -27,9 +28,12 @@ Q_LOGGING_CATEGORY(chatLog, "exagent.chat")
 namespace exagent {
 namespace {
 QJsonObject sharedRow(const ChatMessage &m,int position) {
+    auto preview=m.content.left(16384);
+    if(preview.size()<m.content.size() && !preview.isEmpty() && preview.back().isHighSurrogate() && m.content[preview.size()].isLowSurrogate())preview.chop(1);
     return {{"id",m.id},{"role",int(m.role)},{"status",int(m.status)},
-        {"text",m.content.left(16384)},{"truncated",m.content.size()>16384?1:0},
-        {"time",m.timestamp().left(128)},{"position",position}};
+        {"text",preview},{"truncated",m.content.size()>preview.size()?1:0},
+        {"time",m.timestamp().left(128)},{"position",position},
+        {"revision",sharing::contentRevision(m)},{"length",m.content.size()},{"attachments",sharing::attachmentSummary(m)}};
 }
 }
 
@@ -172,6 +176,17 @@ ChatController::ChatController(QObject *parent)
     }
 }
 
+const ChatMessage *ChatController::conversationMessage(const QString &session,const QString &message,QString *error) const {
+    for(const auto &s:m_sessions)if(s.id==session) {
+        for(const auto &m:s.messages)if(m.id==message)return &m;
+        break;
+    }
+    *error=QStringLiteral("授权会话内没有此消息。");return nullptr;
+}
+QString ChatController::conversationDirectory(const QString &session) const {
+    for(const auto &s:m_sessions)if(s.id==session)return m_repository.sessionDirectory(s.projectId,s.id);
+    return {};
+}
 QJsonObject ChatController::conversationSnapshot(const QString &id, const QString &before, QString *error) const
 {
     for (const auto &session : m_sessions) {

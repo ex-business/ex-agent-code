@@ -72,6 +72,8 @@ public:
     void setPlugins(QObject *value);
     QObject *bots() const { return m_bots.data(); }
     void setBots(QObject *value);
+    const ChatMessage *conversationMessage(const QString &session, const QString &message, QString *error) const;
+    QString conversationDirectory(const QString &session) const;
     QJsonObject conversationSnapshot(const QString &session, const QString &before, QString *error) const;
     QJsonObject conversationInfo(const QString &session, QString *error) const;
     QJsonArray conversationRows(const QString &session, const QSet<QString> &messages, QString *error) const;
