@@ -34,6 +34,9 @@ FocusScope {
     signal linkActivated(string link)
     signal tapped()
     function clearSelection() { editor.deselect() }
+    // 查询位置只用于工作区滚动映射，不改变选择或焦点。
+    function ensureTextLayout() { editor.ensurePolished() }
+    function positionAt(x, y) { return editor.positionAt(x,y) }
     function positionToRectangle(position) {
         // 显式依赖排版尺寸，分栏变宽或字体变化后重新计算表格装饰线的位置。
         if (editor.width <= 0 || editor.implicitHeight <= 0) return Qt.rect(0, 0, 0, 0)

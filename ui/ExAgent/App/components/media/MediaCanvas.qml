@@ -10,7 +10,9 @@ Item {
     property bool interactive: false
     property color surfaceColor: Design.Theme.dark ? "#141414" : "#f4f4f5"
     property real decodedScale: 1
-    readonly property real desiredDecodeScale: Math.min(1, actualScale * Screen.devicePixelRatio)
+    // 矢量资源按显示倍率重新栅格化；普通图片与序列仍沿用原有解码预算。
+    readonly property bool vectorImage: !!session.attachment.vector
+    readonly property real desiredDecodeScale: Math.min(vectorImage ? 8 : 1, actualScale * Screen.devicePixelRatio)
     onDesiredDecodeScaleChanged: decodeDelay.restart()
     Timer { id: decodeDelay; interval: 120; onTriggered: canvas.decodedScale = canvas.desiredDecodeScale }
     Component.onCompleted: decodedScale = desiredDecodeScale
@@ -21,7 +23,7 @@ Item {
         const w = Math.max(1, Number(frame.width) || naturalWidth)
         const h = Math.max(1, Number(frame.height) || naturalHeight)
         // 当前帧按显示倍率升级，下一帧只预取低分辨率；单帧不超过32Mi像素，原始资源仍遵循登记预算。
-        const scale = Math.min(1, Math.sqrt(32 * 1024 * 1024 / (w * h)), 16384 / Math.max(w, h),
+        const scale = Math.min(vectorImage ? 8 : 1, Math.sqrt(32 * 1024 * 1024 / (w * h)), 16384 / Math.max(w, h),
                                interactive ? (index === session.frameIndex ? decodedScale : 2048 / Math.max(w, h)) : 960 / Math.max(w, h))
         return Qt.size(Math.max(1, Math.ceil(w * scale)), Math.max(1, Math.ceil(h * scale)))
     }

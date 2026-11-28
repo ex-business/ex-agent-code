@@ -20,6 +20,9 @@ Item {
     readonly property var activePresentation: suppliedPresentation || preparation?.value || ({})
     readonly property bool layoutReady: !!suppliedPresentation || preparation?.state === RichTextPreparation.Ready || preparation?.state === RichTextPreparation.Failed
     signal linkActivated(string link)
+    function prepareSourceLayout() { prose.ensureTextLayout() }
+    function textPositionAt(x, y) { return prose.positionAt(x,y) }
+    function textRectangle(position) { return prose.positionToRectangle(position) }
     readonly property string layoutKey: root.messageId + ':' + (root.block.blockId || root.blockIndex)
     readonly property real rememberedHeight: root.renderPolicy ? root.renderPolicy.heightFor(layoutKey, width) : 0
     readonly property bool hasPresentation: !!activePresentation.html && (!!suppliedPresentation || preparation.state !== RichTextPreparation.Failed)

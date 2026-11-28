@@ -61,8 +61,8 @@ class EditorDocument final : public QObject {
     EditorPage *page();
     int characterCount()const{return qMax(0,m_document.characterCount()-1);}
     int lineCount()const{return m_document.blockCount();}
-    int lineOffset(int line)const;
-    int lineAt(int offset)const;
+    Q_INVOKABLE int lineOffset(int line)const;
+    Q_INVOKABLE int lineAt(int offset)const;
     bool lowSurrogateAt(int offset)const;
     QString rangeText(int start,int end)const;
     bool replaceWindow(int start,const QString &before,const QString &after);

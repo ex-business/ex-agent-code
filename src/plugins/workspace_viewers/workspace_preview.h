@@ -2,6 +2,7 @@
 #include <QFutureWatcher>
 #include <QQuickImageProvider>
 #include <QTimer>
+#include <QFileSystemWatcher>
 #include <QtQml/qqmlregistration.h>
 
 class QQmlEngine;
@@ -51,6 +52,8 @@ class WorkspaceMarkdownModel : public QObject {
     QList<QUrl> m_images;
     QHash<QString, QVariantMap> m_cachedImages;
     QTimer m_delay;
+    QFileSystemWatcher m_imageWatch;
+    bool m_imagesDirty=false;
     QFutureWatcher<QVariantList> m_job;
     quint64 m_generation = 0, m_running = 0;
     int m_state = Idle;

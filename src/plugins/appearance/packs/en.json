@@ -506,6 +506,9 @@
     "请选择有效的语言服务器绝对路径。": "Select a valid absolute language server executable path.",
     "没有找到工作区内的定义。": "No definition found inside the workspace.",
     "重命名预览已过期。": "The rename preview has expired.",
-    "正文尚未成功同步，未发送语言功能请求。": "The document is not synchronized; the language request was not sent."
+    "正文尚未成功同步，未发送语言功能请求。": "The document is not synchronized; the language request was not sent.",
+    "未找到同页锚点": "Same-page anchor not found",
+    "SVG 含不支持的元素或外部引用。": "SVG contains unsupported elements or external references.",
+    "图片不在当前工作区中。": "The image is outside the current workspace."
   }
 }

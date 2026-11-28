@@ -65,6 +65,9 @@ qt_add_qml_module(ex_agent_chat
         plugins/git_changes/git_actions.h plugins/git_changes/git_actions.cpp
         plugins/git_changes/untracked_preview.cpp plugins/git_changes/git_read.cpp plugins/git_changes/revision_range.cpp
         plugins/workspace_viewers/workspace_preview.h plugins/workspace_viewers/workspace_preview.cpp
+        plugins/workspace_viewers/markdown_positions.h plugins/workspace_viewers/markdown_positions.cpp
+        plugins/workspace_viewers/image_codec.h plugins/workspace_viewers/image_codec.cpp
+        plugins/workspace_viewers/image_monitor.h plugins/workspace_viewers/image_monitor.cpp
         plugins/workspace_viewers/viewer_registry.h plugins/workspace_viewers/viewer_registry.cpp
         plugins/workspace_viewers/viewer_data.h plugins/workspace_viewers/viewer_data.cpp
         plugins/workspace_viewers/html/plugin.cpp plugins/workspace_viewers/html/safe_web_profile.h plugins/workspace_viewers/html/safe_web_profile.cpp
@@ -151,7 +154,7 @@ if(EX_AGENT_KDE_HIGHLIGHTING)
 endif()
 find_package(yaml-cpp CONFIG REQUIRED)
 target_link_libraries(ex_agent_chat PRIVATE yaml-cpp::yaml-cpp)
-target_link_libraries(ex_agent_chat PUBLIC ex_agent_domain ex_agent_ipc ex_agent_codex ex_agent_openai ex_agent_cli Qt6::Gui Qt6::Qml Qt6::Quick Qt6::Concurrent Qt6::WebEngineQuick Qt6::Pdf)
+target_link_libraries(ex_agent_chat PUBLIC ex_agent_domain ex_agent_ipc ex_agent_codex ex_agent_openai ex_agent_cli Qt6::Gui Qt6::Qml Qt6::Quick Qt6::Concurrent Qt6::WebEngineQuick Qt6::Pdf Qt6::Svg)
 target_include_directories(ex_agent_chat PRIVATE plugins/global_navigation plugins/workspace_browser plugins/design_mode)
 target_include_directories(ex_agent_chat PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}"
     PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/plugins/git_changes" "${CMAKE_CURRENT_SOURCE_DIR}/plugins/workspace_viewers" "${CMAKE_CURRENT_SOURCE_DIR}/plugins/workspace_editor" "${CMAKE_CURRENT_SOURCE_DIR}/plugins/terminal_settings" "${CMAKE_CURRENT_SOURCE_DIR}/plugins/appearance" "${CMAKE_CURRENT_SOURCE_DIR}/plugins/interactive_terminal" "${CMAKE_CURRENT_SOURCE_DIR}/plugins/session_history" "${CMAKE_CURRENT_SOURCE_DIR}/application/agent" "${CMAKE_CURRENT_SOURCE_DIR}/application/chat" "${CMAKE_CURRENT_SOURCE_DIR}/presentation/chat" "${CMAKE_CURRENT_SOURCE_DIR}/presentation/code")
@@ -172,7 +175,7 @@ if(APPLE)
     target_sources(ex_agent_chat PRIVATE platform/macos/word_boundaries.cpp platform/macos/activity_notifications.mm)
     set_source_files_properties(platform/macos/activity_notifications.mm PROPERTIES COMPILE_OPTIONS "-fobjc-arc")
     target_link_libraries(ex_agent_chat PRIVATE "-framework UserNotifications" "-framework AppKit")
-    target_link_libraries(ex_agent_chat PRIVATE "-framework CoreFoundation")
+    target_link_libraries(ex_agent_chat PRIVATE "-framework CoreFoundation" "-framework ImageIO" "-framework CoreGraphics")
     target_sources(ex-agent-code PRIVATE platform/macos/window_chrome.mm platform/macos/inactive_hover.mm platform/macos/drawable_timing.mm)
     target_link_libraries(ex-agent-code PRIVATE "-framework AppKit" "-framework QuartzCore")
 endif()

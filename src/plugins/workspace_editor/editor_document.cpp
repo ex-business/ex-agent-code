@@ -123,8 +123,8 @@ EditorDocument::EditorDocument(QString path, QByteArray bytes, bool readOnly, QO
         m_document.setPlainText(source);
     else {
         m_readOnlySource = source;
-        // 只读大文件也要有完整的分页数据，禁用撤销与写入即可，不能显示空页。
-        if(m_large){m_document.setPlainText(source);m_document.setUndoRedoEnabled(false);}
+        // 只读源码与联动定位也使用同一文档，禁用撤销与写入即可，不能显示空页。
+        m_document.setPlainText(source);m_document.setUndoRedoEnabled(false);
     }
     m_document.setModified(false);
     QFile draft(draftPath());
@@ -309,8 +309,8 @@ bool EditorDocument::reload() {
         m_document.setPlainText(source);
     else {
         m_readOnlySource = source;
-        // 只读大文件也要有完整的分页数据，禁用撤销与写入即可，不能显示空页。
-        if(m_large){m_document.setPlainText(source);m_document.setUndoRedoEnabled(false);}
+        // 只读源码与联动定位也使用同一文档，禁用撤销与写入即可，不能显示空页。
+        m_document.setPlainText(source);m_document.setUndoRedoEnabled(false);
     }
     m_loading = false;
     m_expected = digest(bytes);

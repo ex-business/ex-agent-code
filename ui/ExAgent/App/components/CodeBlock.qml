@@ -56,6 +56,15 @@ Rectangle {
     property int maximumCodeHeight: detached && Window.window
         ? Math.max(lineHeight, Window.window.height - 32 - 35 - codeHeader.height)
         : Geometry.inlineCodeLimit
+    // 工作区源码联动只调用此适配层，聊天代码块的虚拟行与滚动机制保持原样。
+    signal sourceViewportChanged()
+    function sourceRowAt(y) { return Math.max(0,Math.min(lines.lineCount-1,Math.floor((y-codeHeader.height+codeView.contentY)/lineHeight))) }
+    function sourceRowY(row) {
+        const y=row*lineHeight
+        if(y<codeView.contentY || y>codeView.contentY+codeView.height-lineHeight)codeView.contentY=Math.max(0,Math.min(codeView.contentHeight-codeView.height,y))
+        return codeHeader.height+y-codeView.contentY
+    }
+    Connections { target: codeView; function onContentYChanged() { root.sourceViewportChanged() } }
     property int knownLineCount: -1
     readonly property int layoutLineCount: knownLineCount >= 0 ? knownLineCount : lines.lineCount
     readonly property int lineHeight: Geometry.codeLineHeight

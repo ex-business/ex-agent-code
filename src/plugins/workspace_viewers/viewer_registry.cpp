@@ -20,7 +20,7 @@ private: ViewerDescriptor m_value;
 WorkspaceViewerRegistry::WorkspaceViewerRegistry() {
     m_plugins.push_back(makeHtmlViewer()); m_plugins.push_back(makeMermaidViewer());
     m_plugins.push_back(makePdfViewer()); m_plugins.push_back(makeTableViewer()); m_plugins.push_back(makeNotebookViewer());
-    m_plugins.push_back(std::make_unique<Builtin>(ViewerDescriptor{"image","图片","WorkspaceImagePlugin.qml",{"png","jpg","jpeg","webp","bmp","gif"},ViewerDescriptor::Image,32*1024*1024}));
+    m_plugins.push_back(std::make_unique<Builtin>(ViewerDescriptor{"image","图片","WorkspaceImagePlugin.qml",{"png","jpg","jpeg","webp","bmp","gif","svg","heic","heif"},ViewerDescriptor::Image,32*1024*1024}));
     m_plugins.push_back(std::make_unique<Builtin>(ViewerDescriptor{"markdown","Markdown","WorkspaceMarkdownView.qml",{"md","markdown","mdown"}}));
 }
 WorkspaceViewerRegistry &WorkspaceViewerRegistry::instance() { static WorkspaceViewerRegistry registry; return registry; }

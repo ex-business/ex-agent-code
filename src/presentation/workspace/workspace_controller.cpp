@@ -39,7 +39,12 @@ WorkspaceController::~WorkspaceController() {
 bool WorkspaceController::imageAvailable(const QUrl &url) const { return WorkspaceImageProvider::contains(url); }
 void WorkspaceController::openLink(const QString &link,const QString &baseFile) {
     const auto url=QUrl::fromLocalFile(baseFile).resolved(QUrl(link));
-    if (url.isLocalFile()) open(url.toLocalFile());
+    if (url.isLocalFile()) {
+        const auto target=resolve(url.toLocalFile());
+        if(target.isEmpty()){fail(QStringLiteral("只能预览当前工作区内的文件。"));return;}
+        open(target);
+        if(!url.fragment().isEmpty() && document() && document()->path()==target)emit anchorRequested(url.fragment());
+    }
     else if (url.scheme()=="https" || url.scheme()=="http") QDesktopServices::openUrl(url);
     else fail(QStringLiteral("此链接类型不允许打开。"));
 }

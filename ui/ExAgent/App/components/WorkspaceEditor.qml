@@ -9,6 +9,28 @@ ColumnLayout {
     id: root
     required property EditorDocument document
     signal previewRequested()
+    signal sourceViewportChanged(int line, real fraction)
+    property bool syncingViewport: false
+    property bool sourceLayoutDirty: true
+    onWidthChanged: sourceLayoutDirty=true
+    function prepareSourceLayout() { if(sourceLayoutDirty){editor.ensurePolished();sourceLayoutDirty=false} }
+    function sourceLocation() {
+        if (!document || document.largeFile) return ({line:1,fraction:0})
+        const view=scroll.contentItem
+        const position=editor.positionAt(editor.padding,view.contentY+editor.padding)
+        const rect=editor.positionToRectangle(position)
+        return ({line:document.lineAt(position)+1,fraction:Math.max(0,Math.min(1,(view.contentY+editor.padding-rect.y)/Math.max(1,rect.height)))})
+    }
+    function scrollToSourceLine(line, fraction) {
+        if (!document || !ready) return
+        if (document.largeFile) { if(largeLoader.item)document.page.goToLine(line);return }
+        syncingViewport=true
+        prepareSourceLayout()
+        const rect=editor.positionToRectangle(document.lineOffset(Math.max(0,line-1)))
+        const view=scroll.contentItem
+        view.contentY=Math.max(0,Math.min(Math.max(0,view.contentHeight-view.height),rect.y-editor.padding+fraction*rect.height))
+        Qt.callLater(()=>{root.syncingViewport=false})
+    }
     property bool ready: false
     property bool locatingCursor: false
     property var boundDocument: null
@@ -29,10 +51,14 @@ ColumnLayout {
         view.contentX=Math.max(0,Math.min(view.contentWidth-view.width,rect.x-view.width/4))
         locatingCursor=false
     }
-    Connections { target: root.document; function onCursorRequested() { root.locateCursor(); root.focusEditor() } }
+    Connections { target: root.document; function onContentChanged() { root.sourceLayoutDirty=true } function onCursorRequested() { root.locateCursor(); root.focusEditor() } }
     function focusEditor() { if(largeLoader.item)largeLoader.item.focusEditor();else editor.forceActiveFocus() }
     Component.onCompleted: { ready=true; attachDocument() }
-    onDocumentChanged: attachDocument()
+    onDocumentChanged: { sourceLayoutDirty=true; attachDocument() }
+    Connections {
+        target: scroll.contentItem
+        function onContentYChanged() { if(root.ready && root.visible && !root.syncingViewport && root.document && !root.document.largeFile){const at=root.sourceLocation();root.sourceViewportChanged(at.line,at.fraction)} }
+    }
     Connections { target: Design.Theme; function onDarkChanged() { root.attachDocument() } }
     Shortcut { sequences: [StandardKey.Save]; enabled: (editor.activeFocus || (largeLoader.item && largeLoader.item.editingFocus)) && !!root.document; onActivated: root.document.save() }
     Shortcut { sequence: Qt.platform.os === "osx" ? "Ctrl+Return" : "Ctrl+Space"; enabled: editor.activeFocus && !!languageTools.service; onActivated: languageTools.completion() }

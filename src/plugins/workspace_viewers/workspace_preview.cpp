@@ -1,4 +1,6 @@
 #include "workspace_preview.h"
+#include "image_codec.h"
+#include "markdown_positions.h"
 #include "viewer_data.h"
 #include "presentation/text/markdown_formatter.h"
 #include <QDir>
@@ -23,8 +25,8 @@ struct ImageFile {
 QMutex imageMutex;
 QHash<QString, ImageFile> imageFiles;
 QString key(const QUrl &url) { return url.path().mid(1).section('?', 0, 0); }
-// SVG 等可含外部引用的格式不进入本机栅格查看通路。
-bool inspect(QFile &file, const ImageFile &entry, QImageReader &reader, QString *error) {
+// 所有图片路径先受根目录与容量约束，再交给格式专用解码器。
+bool inspect(QFile &file, const ImageFile &entry, workspace_image::Metadata *metadata, QString *error) {
     const auto canonical = QFileInfo(entry.path).canonicalFilePath();
     if (entry.root.isEmpty() || QFileInfo(entry.root).canonicalFilePath() != entry.root ||
         canonical.isEmpty() ||
@@ -34,18 +36,7 @@ bool inspect(QFile &file, const ImageFile &entry, QImageReader &reader, QString 
         *error = QStringLiteral("图片不可读取、超出工作区或超过 32 MiB 限制。");
         return false;
     }
-    reader.setDevice(&file);
-    reader.setAutoTransform(true);
-    const auto format = reader.format().toLower();
-    if (!QList<QByteArray>{"png", "jpeg", "jpg", "webp", "bmp", "gif"}.contains(format)) {
-        *error = QStringLiteral("图片格式不受支持。");
-        return false;
-    }
-    const auto size = reader.size();
-    if (!size.isValid() || qint64(size.width()) * size.height() > 32 * 1024 * 1024) {
-        *error = QStringLiteral("图片格式不受支持或超过 32 Mi 像素限制。");
-        return false;
-    }
+    if (!workspace_image::inspect(file, metadata, error)) return false;
     return true;
 }
 } // namespace
@@ -54,12 +45,10 @@ WorkspaceImageProvider::WorkspaceImageProvider()
 QVariantMap WorkspaceImageProvider::registerFile(const QString &path, const QString &root, QString *error) {
     ImageFile entry{path, root};
     QFile file(path);
-    QImageReader reader;
-    if (!inspect(file, entry, reader, error))
+    workspace_image::Metadata metadata;
+    if (!inspect(file, entry, &metadata, error))
         return {};
-    auto dimensions = reader.size();
-    if (int(reader.transformation()) & 4)
-        dimensions.transpose();
+    const auto dimensions = metadata.size;
     const auto id = QUuid::createUuid().toString(QUuid::WithoutBraces);
     {
         QMutexLocker lock(&imageMutex);
@@ -70,6 +59,8 @@ QVariantMap WorkspaceImageProvider::registerFile(const QString &path, const QStr
             {"height", dimensions.height()},
             {"name", QFileInfo(path).fileName()},
             {"path", path},
+            {"root", root},
+            {"vector", metadata.codec==2},
             {"bytes", file.size()},
             {"modified", QFileInfo(path).lastModified().toMSecsSinceEpoch()}};
 }
@@ -95,22 +86,11 @@ QImage WorkspaceImageProvider::requestImage(const QString &id, QSize *size, cons
         entry = imageFiles.value(id.section('?', 0, 0));
     }
     QFile file(entry.path);
-    QImageReader reader;
+    workspace_image::Metadata metadata;
     QString error;
-    if (entry.root.isEmpty() || !inspect(file, entry, reader, &error))
+    if (entry.root.isEmpty() || !inspect(file, entry, &metadata, &error))
         return {};
-    const auto natural = reader.size();
-    // 富文本取图没有请求尺寸，按内嵌 480×360 的两倍像素准备，避免多图保留大位图。
-    auto target = requestedSize.isValid() ? requestedSize : QSize(960, 720);
-    if (int(reader.transformation()) & 4)
-        target.transpose();
-    const double scale =
-        std::min({1.0, double(target.width()) / natural.width(), double(target.height()) / natural.height(),
-                  8192.0 / std::max(natural.width(), natural.height()),
-                  std::sqrt(8.0 * 1024 * 1024 / (qint64(natural.width()) * natural.height()))});
-    reader.setScaledSize(
-        QSize(std::max(1, int(natural.width() * scale)), std::max(1, int(natural.height() * scale))));
-    auto image = reader.read();
+    auto image = workspace_image::decode(file, requestedSize);
     if (size)
         *size = image.size();
     return image;
@@ -134,6 +114,9 @@ void installWorkspaceViewers(QQmlEngine &engine) {
         qWarning().noquote() << "工作区图片读取器初始化失败：" << component.errorString();
 }
 WorkspaceMarkdownModel::WorkspaceMarkdownModel(QObject *parent) : QObject(parent) {
+    auto imageChanged=[this]{m_imagesDirty=true;++m_generation;if(m_active)m_delay.start();};
+    connect(&m_imageWatch,&QFileSystemWatcher::fileChanged,this,imageChanged);
+    connect(&m_imageWatch,&QFileSystemWatcher::directoryChanged,this,imageChanged);
     m_delay.setSingleShot(true);
     m_delay.setInterval(120);
     connect(this, &WorkspaceMarkdownModel::inputChanged, this, [this] {
@@ -144,6 +127,7 @@ WorkspaceMarkdownModel::WorkspaceMarkdownModel(QObject *parent) : QObject(parent
             m_shownRoot = m_root;
             releaseImages();
             m_blocks.clear();
+            m_state=Idle;
             emit changed();
         }
         if (m_active)
@@ -162,6 +146,7 @@ WorkspaceMarkdownModel::WorkspaceMarkdownModel(QObject *parent) : QObject(parent
         auto blocks = m_job.result();
         QHash<QString, QVariantMap> nextImages;
         QList<QUrl> imageUrls;
+        QSet<QString> watchedFiles,watchedDirs;
         // 只在宿主登记工作区内的本机图片；外部地址及越界引用不自动加载。
         const QRegularExpression imageTag("<img\\b[^>]*>", QRegularExpression::CaseInsensitiveOption);
         const QRegularExpression source("\\bsrc=\"([^\"]*)\"", QRegularExpression::CaseInsensitiveOption);
@@ -180,10 +165,12 @@ WorkspaceMarkdownModel::WorkspaceMarkdownModel(QObject *parent) : QObject(parent
                 QVariantMap info;
                 if (url.isLocalFile()) {
                     const auto path = QDir::cleanPath(url.toLocalFile());
+                    const auto parent=QFileInfo(path).absolutePath();
+                    if(!m_root.isEmpty() && QFileInfo(m_root).canonicalFilePath()==m_root && watchedFiles.size()<32 && path.startsWith(m_root+'/') && (parent==m_root || parent.startsWith(m_root+'/')) && QFileInfo(parent).canonicalFilePath()==parent){watchedFiles.insert(path);watchedDirs.insert(parent);}
                     // 新登记和缓存复用共用单次预览的资源上限。
                     if (nextImages.contains(path) || nextImages.size() < 32) {
                         const QFileInfo file(path);
-                        info = nextImages.value(path, m_cachedImages.value(path));
+                        info = nextImages.value(path, m_imagesDirty ? QVariantMap{} : m_cachedImages.value(path));
                         if (info.value("bytes").toLongLong() != file.size() ||
                             info.value("modified").toLongLong() != file.lastModified().toMSecsSinceEpoch() ||
                             !WorkspaceImageProvider::contains(info.value("url").toUrl()))
@@ -240,6 +227,11 @@ WorkspaceMarkdownModel::WorkspaceMarkdownModel(QObject *parent) : QObject(parent
         for (const auto &url : m_images)
             if (!imageUrls.contains(url))
                 WorkspaceImageProvider::release(url);
+        if(!m_imageWatch.files().isEmpty())m_imageWatch.removePaths(m_imageWatch.files());
+        if(!m_imageWatch.directories().isEmpty())m_imageWatch.removePaths(m_imageWatch.directories());
+        for(const auto &path:watchedFiles)if(QFileInfo::exists(path))m_imageWatch.addPath(path);
+        for(const auto &path:watchedDirs)m_imageWatch.addPath(path);
+        m_imagesDirty=false;
         m_images = imageUrls;
         m_cachedImages = nextImages;
         m_blocks = blocks;
@@ -251,6 +243,8 @@ WorkspaceMarkdownModel::~WorkspaceMarkdownModel() { releaseImages(); }
 void WorkspaceMarkdownModel::releaseImages() {
     for (const auto &url : m_images)
         WorkspaceImageProvider::release(url);
+    if(!m_imageWatch.files().isEmpty())m_imageWatch.removePaths(m_imageWatch.files());
+    if(!m_imageWatch.directories().isEmpty())m_imageWatch.removePaths(m_imageWatch.directories());
     m_images.clear();
     m_cachedImages.clear();
 }
@@ -272,8 +266,7 @@ void WorkspaceMarkdownModel::prepare() {
     const auto text = m_source;
     const auto dark = m_dark;
     m_job.setFuture(QtConcurrent::run([text, dark] {
-        MarkdownFormatter formatter;
-        return formatter.format(text, dark);
+        return prepareWorkspaceMarkdown(text, dark);
     }));
 }
 } // namespace exagent

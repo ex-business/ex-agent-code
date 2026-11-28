@@ -55,6 +55,7 @@ public:
     Q_INVOKABLE void selectTab(int index);
     Q_INVOKABLE void closeTab(int index, bool discard=false);
 signals:
+    void anchorRequested(const QString &name);
     void fileActivated();
     void exitRequested();
     void closeRequested(int index);
