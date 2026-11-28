@@ -20,6 +20,7 @@ ColumnLayout {
         controller.draft = prompt
         editor.forceActiveFocus()
     }
+    Design.AccountProfilesDialog { id: profileSettings; controller: root.controller }
     Design.AgentSettings { id: agentSettings; controller: root.controller }
     Connections {
         target: root.controller
@@ -129,6 +130,7 @@ ColumnLayout {
                 agent: root.controller.agent
                 configurable: root.controller.projects.writable && !root.controller.previewMode
                 onSettingsRequested: agentSettings.open()
+                onProfilesRequested: profileSettings.open()
                 Layout.fillWidth: true
                 hasText: editor.text.trim().length > 0 && !root.controller.designCaptureBusy
                 canPaste: editor.canPaste

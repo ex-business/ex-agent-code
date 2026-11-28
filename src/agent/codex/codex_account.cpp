@@ -51,7 +51,7 @@ QStringList accountArguments(Account account)
         ? QStringList { "-c", "cli_auth_credentials_store=\"keyring\"", "-c", "model_provider=\"openai\"" }
         : QStringList {};
 }
-bool prepare(QProcess &process, Account account, QString *error)
+bool prepare(QProcess &process, Account account, QString *error, const QString &profileHome)
 {
     const auto path = executable();
     if (path.isEmpty()) {
@@ -59,6 +59,21 @@ bool prepare(QProcess &process, Account account, QString *error)
         return false;
     }
     auto env = QProcessEnvironment::systemEnvironment();
+    if(!profileHome.isEmpty()) {
+        const auto prefix=QStandardPaths::writableLocation(QStandardPaths::AppDataLocation)+"/account-profiles/";
+        const auto relative=profileHome.mid(prefix.size());
+        if(account!=System || !profileHome.startsWith(prefix) || relative.split('/').size()!=2 || relative.section('/',1)!="codex" || QUuid(relative.section('/',0,0)).isNull()) {
+            *error=QStringLiteral("独立账号目录无效。");return false;
+        }
+        // 独立账号不继承其他账号的环境凭据；目录身份固定在应用私有根下。
+        QString path=QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
+        for(const auto &part:QString("account-profiles/"+relative).split('/')) {
+            path=QDir(path).filePath(part);
+            if(QFileInfo(path).isSymLink() || !QDir().mkpath(path) || !QFile::setPermissions(path,QFileDevice::ReadOwner|QFileDevice::WriteOwner|QFileDevice::ExeOwner)) {*error=QStringLiteral("无法准备独立账号私有目录。");return false;}
+        }
+        for(const auto &key:env.keys())if(key.startsWith("OPENAI_")||key.startsWith("CODEX_"))env.remove(key);
+        env.insert("CODEX_HOME",profileHome);
+    }
     if (account == Dedicated) {
         // 专用登录和运行共享同一私有目录；Finder 与终端启动均不继承其他 OpenAI 凭据。
         const auto home

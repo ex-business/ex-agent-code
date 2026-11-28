@@ -39,6 +39,8 @@ qt_add_qml_module(ex_agent_chat
     VERSION 1.0
     DEPENDENCIES QtWebEngine
     SOURCES
+        plugins/account_profiles/account_profiles.cpp plugins/account_profiles/account_profiles.h
+        plugins/account_profiles/session_accounts.cpp plugins/account_profiles/account_commands.cpp plugins/account_profiles/account_commands.h
         plugins/diff_review/session_review.cpp
         plugins/session_mail/session_mail.cpp
         plugins/workbench_control/control_host.h plugins/workbench_control/control_host.cpp
@@ -139,7 +141,7 @@ if(EX_AGENT_KDE_HIGHLIGHTING)
 endif()
 find_package(yaml-cpp CONFIG REQUIRED)
 target_link_libraries(ex_agent_chat PRIVATE yaml-cpp::yaml-cpp)
-target_link_libraries(ex_agent_chat PUBLIC ex_agent_domain ex_agent_ipc ex_agent_codex Qt6::Gui Qt6::Qml Qt6::Quick Qt6::Concurrent Qt6::WebEngineQuick Qt6::Pdf)
+target_link_libraries(ex_agent_chat PUBLIC ex_agent_domain ex_agent_ipc ex_agent_codex ex_agent_openai Qt6::Gui Qt6::Qml Qt6::Quick Qt6::Concurrent Qt6::WebEngineQuick Qt6::Pdf)
 target_include_directories(ex_agent_chat PRIVATE plugins/global_navigation plugins/workspace_browser plugins/design_mode)
 target_include_directories(ex_agent_chat PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}"
     PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/plugins/git_changes" "${CMAKE_CURRENT_SOURCE_DIR}/plugins/workspace_viewers" "${CMAKE_CURRENT_SOURCE_DIR}/plugins/workspace_editor" "${CMAKE_CURRENT_SOURCE_DIR}/plugins/terminal_settings" "${CMAKE_CURRENT_SOURCE_DIR}/plugins/appearance" "${CMAKE_CURRENT_SOURCE_DIR}/plugins/interactive_terminal" "${CMAKE_CURRENT_SOURCE_DIR}/plugins/session_history" "${CMAKE_CURRENT_SOURCE_DIR}/application/agent" "${CMAKE_CURRENT_SOURCE_DIR}/application/chat" "${CMAKE_CURRENT_SOURCE_DIR}/presentation/chat" "${CMAKE_CURRENT_SOURCE_DIR}/presentation/code")

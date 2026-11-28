@@ -9,7 +9,7 @@ class Connection final : public QObject {
 public:
     explicit Connection(QObject *parent = nullptr);
     ~Connection() override;
-    void start(Account account, const QString &cwd);
+    void start(Account account, const QString &cwd, const QString &home = {});
     bool send(const QJsonObject &frame);
 signals:
     void ready();

@@ -10,6 +10,7 @@ RowLayout {
     required property AgentController agent
     property bool configurable
     signal settingsRequested()
+    signal profilesRequested()
     property bool hasText: false
     property bool canPaste: false
     signal sendRequested()
@@ -27,6 +28,7 @@ RowLayout {
         Design.ContextMenu {
             id: moreMenu
             Design.ContextMenuItem { text: "粘贴"; iconName: "copy"; shortcutLabel: Qt.platform.os === "osx" ? "⌘V" : ""; enabled: root.canPaste; onTriggered: root.pasteRequested() }
+            Design.ContextMenuItem { text: Design.UiText.get("账号与用量"); iconName: "activity"; enabled: root.configurable; onTriggered: root.profilesRequested() }
             Design.ContextMenuItem { text: Design.UiText.get("新聊天"); iconName: "new"; shortcutLabel: Qt.platform.os === "osx" ? "⌘N" : ""; onTriggered: root.newChatRequested() }
         }
     }

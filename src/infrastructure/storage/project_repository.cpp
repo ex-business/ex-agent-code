@@ -53,7 +53,7 @@ QList<ChatSession> ProjectRepository::load(ProjectCatalog &catalog, QString *err
         m_savedIndex = file.readAll();
         const auto root = QJsonDocument::fromJson(m_savedIndex).object();
         const auto version=root["version"].toInt(-1);
-        if ((version!=1 && version!=2 && version!=3) || !root["projects"].isArray() || !root["sessions"].isArray()) return invalid();
+        if ((version!=1 && version!=2 && version!=3 && version!=4) || !root["projects"].isArray() || !root["sessions"].isArray()) return invalid();
         ProjectCatalog restored;
         restored.projects.clear();
         QSet<QString> workspaceIds;
@@ -70,7 +70,7 @@ QList<ChatSession> ProjectRepository::load(ProjectCatalog &catalog, QString *err
                 const int state = data.contains("state") ? data.value("state").toInt(-1) : 0;
                 if (state < 0 || state > int(WorkspaceState::Cleaned)) return invalid();
                 workspace.launch = data["launch"].toObject().toVariantMap();
-                if(workspace.launch.value("provider")=="folder.detached" && version!=3)return invalid();
+                if(workspace.launch.value("provider")=="folder.detached" && version<3)return invalid();
                 workspace.state = WorkspaceState(state);
                 workspace.branch = data.value("branch").toString();
                 workspace.checkpoint = data.value("checkpoint").toObject().toVariantMap();
@@ -96,6 +96,7 @@ QList<ChatSession> ProjectRepository::load(ProjectCatalog &catalog, QString *err
             if (!error->isEmpty()) return {};
             if (loaded.size() != 1 || loaded.first().id != id) return invalid();
             auto session = loaded.takeFirst();
+            if(version<4 && (!session.agent.value("accountProfile").toString().isEmpty() || !session.agent.value("profileBindings").toMap().isEmpty() || session.agent.value("autoAccountSwitch").toInt()==1))return invalid();
             session.projectId = project;
             session.workspaceId = workspace;
             sessions.append(session);
@@ -135,6 +136,8 @@ bool ProjectRepository::save(const ProjectCatalog &catalog, const QList<ChatSess
     auto saved = m_saved;
     QSet<QString> ids;
     for (const auto &session : sessions) {
+        // 旧程序不了解账号目录与绑定，必须拒绝新版索引，避免回退后用错凭据运行。
+        if(!session.agent.value("accountProfile").toString().isEmpty() || !session.agent.value("profileBindings").toMap().isEmpty() || session.agent.value("autoAccountSwitch").toInt()==1)version=4;
         if (ids.contains(session.id)) { *error = QStringLiteral("会话标识重复，已保留原索引。"); return false; }
         ids.insert(session.id);
         const auto cached = m_saved.constFind(session.id);

@@ -4,6 +4,7 @@
 #include "agent/codex/model_catalog.h"
 #include <QtQml/qqmlregistration.h>
 #include <QUrl>
+#include "plugins/account_profiles/account_profiles.h"
 
 namespace exagent {
 class AgentController final : public QObject {
@@ -22,6 +23,16 @@ class AgentController final : public QObject {
     Q_PROPERTY(QString contextLabel READ contextLabel NOTIFY changed)
     Q_PROPERTY(bool authenticating READ authenticating NOTIFY changed)
 public:
+    Q_PROPERTY(QObject *accounts READ accountProfiles CONSTANT)
+    QObject *accountProfiles(){return &m_profiles;}
+    Q_PROPERTY(QString selectedProfile READ selectedProfile NOTIFY changed)
+    QString selectedProfile()const{return accounts::reference(config());}
+    Q_PROPERTY(QString runningProfile READ runningProfile NOTIFY changed)
+    QString runningProfile()const{return m_active.value(m_selected).snapshot.value("profileId").toString();}
+    Q_PROPERTY(bool autoAccountSwitch READ autoAccountSwitch NOTIFY changed)
+    bool autoAccountSwitch()const{return config().value("autoAccountSwitch").toInt()==1;}
+    Q_INVOKABLE bool useProfile(const QString &id,const QString &model,bool automatic);
+    Q_INVOKABLE void loginProfile(const QString &id);
     AgentController(QList<ChatSession> &sessions, ProjectCatalog &catalog, ProjectRepository &repository);
     ~AgentController() override;
     void select(const QString &session, bool writable);
@@ -46,6 +57,7 @@ public:
     bool activeSession(const QString &id) const { return m_active.contains(id); }
     QVariantMap executionInfo(const QString &session, const QString &run) const;
     std::function<bool(const ChatSession &)> workspaceAvailable;
+    std::function<bool()> accountStorageWritable;
     bool stopping() const {
         const auto run = m_active.constFind(m_selected);
         return run != m_active.cend() && run->stopping;
@@ -112,6 +124,8 @@ private:
     void recoverMail(ChatSession &session);
     void finishSupervised(const QString &worker, const QString &run, int state);
     void deliverSupervisedResults();
+    void updateProfileBinding(ChatSession &session,const QString &id,const QVariantMap &binding);
+    QString m_loginProfile;
     QTimer m_supervisionPump;
     QHash<QString, QString> m_mailRequests;
     bool consume(const QString &method, const QJsonObject &frame, QString *error);
@@ -124,12 +138,15 @@ private:
         bool stopping = false;
         QString turn, mail;
         bool reconciliation = false;
+        QJsonObject snapshot;
+        QJsonObject usage = {};
     };
     struct Policy { QPointer<QObject> owner; InputPolicy apply; bool global = false; };
     QHash<QString, Policy> m_inputPolicies;
     QList<ChatSession> &m_sessions;
     ProjectCatalog &m_catalog;
     ProjectRepository &m_repository;
+    accounts::Profiles m_profiles;
     QString m_selected;
     QString m_workerHost;
     bool m_writable = false;

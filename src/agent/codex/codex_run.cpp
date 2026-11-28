@@ -7,7 +7,9 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QUuid>
+#include <algorithm>
 #include "domain/content/content_block.h"
+#include "domain/agent/account_status.h"
 
 namespace exagent::codex {
 using State = content::TaskState;
@@ -43,7 +45,7 @@ void Run::start()
 {
     m_deadline.start();
     report(activity::Working);
-    m_connection.start(Account(m_spec["account"].toInt()), m_spec["cwd"].toString());
+    m_connection.start(Account(m_spec["account"].toInt()), m_spec["cwd"].toString(),m_spec["accountHome"].toString());
 }
 void Run::emitEvent(QJsonObject data)
 {
@@ -55,7 +57,7 @@ void Run::request(const QString &method, const QJsonObject &params)
 {
     const int id = ++m_id;
     m_pending.insert(id, method);
-    m_deadline.start();
+    if(method!="account/rateLimits/read")m_deadline.start();
     if (!m_connection.send({ { "id", id }, { "method", method }, { "params", params } }))
         finish(int(State::Interrupted), QStringLiteral("无法向 Codex 写入请求。"));
 }
@@ -125,9 +127,10 @@ void Run::receive(const QJsonObject &frame)
     const auto pending = m_pending.take(frame["id"].toInt(-1));
     if (pending.isEmpty())
         return;
-    if (m_pending.isEmpty())
+    if (std::all_of(m_pending.cbegin(),m_pending.cend(),[](const QString &method){return method=="account/rateLimits/read";}))
         m_deadline.stop();
     if (frame.contains("error")) {
+        if(pending=="account/rateLimits/read")return;
         finish(int(State::Failed),
             QStringLiteral("Codex 拒绝 %1（错误码 %2）。")
                 .arg(pending)
@@ -138,16 +141,21 @@ void Run::receive(const QJsonObject &frame)
 }
 void Run::result(const QString &method, const QJsonObject &value)
 {
-    if (method == "initialize") {
+    if(method=="account/rateLimits/read") {
+        const auto limits=value["rateLimits"].toObject();
+        if(!limits.isEmpty())emitEvent({{"kind","accountLimits"},{"limits",limits}});
+    } else if (method == "initialize") {
         m_connection.send({ { "method", "initialized" } });
         request("account/read", { { "refreshToken", false } });
     } else if (method == "account/read") {
         const auto account = value["account"].toObject();
         if ((account.isEmpty() && value["requiresOpenaiAuth"].toBool(true))
             || (m_spec["account"].toInt() == Dedicated && account["type"] != "apiKey")) {
+            emitEvent({{"kind","accountUnavailable"},{"status",accounts::NeedsLogin}});
             finish(int(State::Failed), QStringLiteral("所选账号未登录，请先配置 Codex 凭据。"));
             return;
         }
+        emitEvent({{"kind","accountInfo"},{"owner",account["email"]},{"plan",account["planType"]}});
         const auto owner = identity(Account(m_spec["account"].toInt()), account);
         const auto previous = m_spec["identity"].toString();
         if (!m_spec["threadId"].toString().isEmpty() && (owner.isEmpty() || owner != previous)) {
@@ -167,6 +175,7 @@ void Run::result(const QString &method, const QJsonObject &value)
             request("thread/read", { { "threadId", m_thread }, { "includeTurns", true } });
             return;
         }
+        request("account/rateLimits/read",{});
         // 完全访问仅对当前会话明确启用，恢复线程时也校验引擎实际采用的权限。
         QJsonObject options { { "cwd", m_spec["cwd"] }, { "approvalPolicy", m_spec["fullAccess"].toBool() ? "never" : "on-request" },
             { "approvalsReviewer", "user" },
@@ -323,6 +332,7 @@ void Run::notification(const QString &method, const QJsonObject &params)
 {
     if (method == "account/rateLimits/updated" && m_dispatched) {
         const auto limits = params["rateLimits"].toObject();
+        emitEvent({{"kind","accountLimits"},{"limits",limits}});
         for (const auto& entry : {QStringLiteral("primary"), QStringLiteral("secondary")}) {
             const auto window = limits[entry].toObject();
             const auto percent = window["usedPercent"].toInt(-1);
@@ -362,6 +372,9 @@ void Run::notification(const QString &method, const QJsonObject &params)
             request("turn/interrupt", { { "threadId", m_thread }, { "turnId", id } });
     }
     if (method == "thread/tokenUsage/updated") {
+        const auto last=params["tokenUsage"].toObject()["last"].toObject();
+        QJsonObject usage;for(const auto &pair:QList<QPair<QString,QString>>{{"inputTokens","input_tokens"},{"outputTokens","output_tokens"},{"totalTokens","total_tokens"}})if(last.contains(pair.first))usage.insert(pair.second,last[pair.first]);
+        emitEvent({{"kind","usage"},{"usage",usage}});
         const auto count = params["tokenUsage"].toObject()["last"].toObject()["totalTokens"].toInteger(-1);
         if (count >= 0) m_activity.insert("tokens",count);
         else m_activity.remove("tokens");

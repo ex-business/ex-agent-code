@@ -1,9 +1,11 @@
 #include "responses_run.h"
 #include "credentials.h"
+#include "domain/agent/account_status.h"
 #include "domain/content/content_block.h"
 #include "file_tools.h"
 #include <QJsonDocument>
 #include <QUuid>
+#include <QDateTime>
 namespace exagent::openai {
 using State = content::TaskState;
 ResponsesRun::ResponsesRun(QJsonObject spec, QObject *parent,
@@ -106,6 +108,11 @@ void ResponsesRun::send(QJsonArray input) {
     reply->deleteLater();
     m_deadline.stop();
     if (code != 200 || reply->error() != QNetworkReply::NoError) {
+      if(code==401)publish({{"kind","accountUnavailable"},{"status",accounts::NeedsLogin}});
+      if(code==429) {
+        bool ok=false;const auto seconds=reply->rawHeader("retry-after").toLongLong(&ok);
+        publish({{"kind","accountUnavailable"},{"status",accounts::Limited},{"resetAt",ok&&seconds>0&&seconds<=604800?QDateTime::currentSecsSinceEpoch()+seconds:qint64(-1)}});
+      }
       finish(int(State::Failed),
              QStringLiteral("OpenAI API 请求失败（HTTP "
                             "%1），请检查额度、模型权限和网络；未自动重试。")
@@ -123,7 +130,10 @@ void ResponsesRun::send(QJsonArray input) {
 void ResponsesRun::receive() {
   if (m_done || !m_reply)
     return;
-  m_buffer += m_reply->readAll();
+  const auto bytes=m_reply->readAll();
+  // 错误HTTP响应不是模型正文，不把错误页或伪SSE内容显示成助手输出。
+  if(m_reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt()!=200)return;
+  m_buffer += bytes;
   if (m_buffer.size() > 2 * 1024 * 1024) {
     finish(int(State::Failed), QStringLiteral("API 事件缓冲超过上限。"));
     return;
@@ -191,6 +201,7 @@ void ResponsesRun::flush() {
   m_order.clear();
 }
 void ResponsesRun::complete() {
+  publish({{"kind","accountInfo"}});
   flush();
   m_calls = {};
   m_results = {};
@@ -237,6 +248,7 @@ void ResponsesRun::complete() {
   for (const auto &key : {"input_tokens", "output_tokens", "total_tokens"})
     m_usage.insert(key, m_usage[key].toInteger() +
                             m_response["usage"].toObject()[key].toInteger());
+  publish({{"kind","usage"},{"usage",m_usage}});
   m_previous = m_response["id"].toString();
   if (m_calls.isEmpty()) {
     // 只持久化无待执行工具的完成响应；重启和停止绝不重放有副作用的调用。

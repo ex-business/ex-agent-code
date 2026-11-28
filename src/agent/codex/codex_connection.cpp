@@ -24,15 +24,16 @@ Connection::~Connection()
         m_process.waitForFinished(1000);
     }
 }
-void Connection::start(Account account, const QString &cwd)
+void Connection::start(Account account, const QString &cwd, const QString &home)
 {
     QString error;
-    if (!prepare(m_process, account, &error)) {
+    if (!prepare(m_process, account, &error, home)) {
         emit failure(error);
         return;
     }
     m_process.setWorkingDirectory(cwd);
     m_process.setArguments(accountArguments(account) + QStringList { "app-server", "--listen", "stdio://" });
+    if(!home.isEmpty())m_process.setArguments(QStringList{"-c",R"(cli_auth_credentials_store="file")"}+m_process.arguments());
     m_process.start();
 }
 bool Connection::send(const QJsonObject &frame)

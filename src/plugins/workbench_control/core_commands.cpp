@@ -1,4 +1,5 @@
 #include "control_host.h"
+#include "plugins/account_profiles/account_commands.h"
 #include <QDateTime>
 #include <QDir>
 #include <QFileInfo>
@@ -14,7 +15,9 @@ QVariantMap AgentController::executionInfo(const QString &session, const QString
         const auto &message = *it;
         if ((run.isEmpty() || message.id == run) && message.role == MessageRole::Notice && message.activity.value("serviceId") == "codex-agent")
             return {{"id", message.id}, {"session", session}, {"state", message.activity.value("taskState")},
-                {"detail", message.content}, {"createdAt", message.timestamp()}, {"finishedAt", message.activity.value("finishedAt")}};
+                {"detail", message.content}, {"createdAt", message.timestamp()}, {"finishedAt", message.activity.value("finishedAt")},
+                {"profileId",message.activity.value("profileId").toString()},{"account",message.activity.value("account")},
+                {"model",message.activity.value("model",message.activity.value("requestedModel"))},{"usage",message.activity.value("usage").toMap()}};
     }
     return {};
 }
@@ -87,6 +90,7 @@ QJsonObject paginate(const QJsonArray &items, const QJsonObject &params, QString
 void registerCore(Host &host)
 {
     auto &chat = host.chat;
+    accounts::registerCommands(host);
     host.add("agents.configure-api", {"model", "credentialFile", "write"}, [&chat](const QJsonObject &p, QString *error) {
         if(!p["model"].isString() || !p["credentialFile"].isString() || !p["write"].isBool()) {
             *error=QStringLiteral("API 配置参数无效。"); return QJsonObject{};

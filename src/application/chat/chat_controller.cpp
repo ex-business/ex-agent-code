@@ -105,6 +105,7 @@ ChatController::ChatController(QObject *parent)
     m_agent.indexWorkspaceActivity();
     m_storageWritable = error.isEmpty();
     m_projects.setWritable(m_storageWritable);
+    m_agent.accountStorageWritable=[this]{return m_storageWritable;};
     m_agent.workspaceAvailable = [this](const ChatSession &s) { return m_projects.available(s.projectId,s.workspaceId); };
     m_projects.runningTasks = [this](const QString &path) {
         QStringList active;
