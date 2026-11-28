@@ -1,4 +1,5 @@
 #include "editor_document.h"
+#include "editor_page.h"
 #include "presentation/code/syntax_highlighter.h"
 #include <QCoreApplication>
 #include <QCryptographicHash>
@@ -14,6 +15,8 @@
 #include <QStringDecoder>
 #include <QSyntaxHighlighter>
 #include <QTextBlock>
+#include <QTextCursor>
+#include "plugins/language_services/language_document.h"
 #ifdef EX_AGENT_KDE_HIGHLIGHTING
 #include <KSyntaxHighlighting/Definition>
 #include <KSyntaxHighlighting/Repository>
@@ -88,6 +91,8 @@ EditorDocument::EditorDocument(QString path, QByteArray bytes, bool readOnly, QO
     QStringDecoder decoder(QStringDecoder::Utf8);
     QString source = decoder.decode(bytes);
     const bool mixed = mixedEndings(bytes);
+    // 大文件保留编辑/撤销/保存保护，但不进行逐块语法解析或LSP同步。
+    m_large=bytes.size()>512*1024;
     m_expected = initialHash;
     if (bytes.contains("\r\n"))
         m_newline = "\r\n";
@@ -97,8 +102,8 @@ EditorDocument::EditorDocument(QString path, QByteArray bytes, bool readOnly, QO
         m_reason = QStringLiteral("历史展示工作区只读。");
     else if (decoder.hasError() || mixed || source.contains(QChar::ParagraphSeparator))
         m_reason = QStringLiteral("此编码、换行或段落分隔格式暂仅支持预览。");
-    else if (bytes.size() > 512 * 1024)
-        m_reason = QStringLiteral("超过 512 KiB 的文件使用只读预览。");
+    else if (bytes.size() > 8 * 1024 * 1024)
+        m_reason = QStringLiteral("超过 8 MiB 的文件暂仅支持专用查看器。");
     else if (QFileInfo::exists(m_path) && !QFileInfo(m_path).isWritable())
         m_reason = QStringLiteral("当前文件没有写入权限。");
     if (editable()) {
@@ -113,13 +118,17 @@ EditorDocument::EditorDocument(QString path, QByteArray bytes, bool readOnly, QO
     }
     source.replace("\r\n", "\n");
     source.replace('\r', '\n');
+    if(m_large)m_document.setLayoutEnabled(false);
     if (editable())
         m_document.setPlainText(source);
-    else
+    else {
         m_readOnlySource = source;
+        // 只读大文件也要有完整的分页数据，禁用撤销与写入即可，不能显示空页。
+        if(m_large){m_document.setPlainText(source);m_document.setUndoRedoEnabled(false);}
+    }
     m_document.setModified(false);
     QFile draft(draftPath());
-    if (editable() && draft.open(QIODevice::ReadOnly) && draft.size() < 8 * 1024 * 1024) {
+    if (editable() && draft.open(QIODevice::ReadOnly) && draft.size() <= 64 * 1024 * 1024) {
         const auto saved = QJsonDocument::fromJson(draft.readAll()).object();
         if (saved.value("path").toString() == m_path &&
             (saved.value("state").toInt() == Modified || saved.value("state").toInt() == Conflict)) {
@@ -136,8 +145,10 @@ EditorDocument::EditorDocument(QString path, QByteArray bytes, bool readOnly, QO
             m_conflict = m_expected != initialHash;
         }
     }
+    m_large=m_large || m_document.characterCount()>256*1024;
+    if(m_large)m_document.setLayoutEnabled(false);
     m_draftTimer.setSingleShot(true);
-    m_draftTimer.setInterval(400);
+    m_draftTimer.setInterval(m_large ? 2000 : 400);
     m_watchTimer.setSingleShot(true);
     m_watchTimer.setInterval(120);
     connect(&m_draftTimer, &QTimer::timeout, this, &EditorDocument::flushDraft);
@@ -145,6 +156,7 @@ EditorDocument::EditorDocument(QString path, QByteArray bytes, bool readOnly, QO
     connect(&m_document, &QTextDocument::contentsChanged, this, [this] {
         if (m_loading)
             return;
+        if(!m_large && m_document.characterCount()>256*1024)QTimer::singleShot(0,this,[this]{if(m_document.characterCount()>256*1024)enterLargeMode();});
         m_draftTimer.start();
         emit contentChanged();
     });
@@ -159,6 +171,8 @@ EditorDocument::EditorDocument(QString path, QByteArray bytes, bool readOnly, QO
 EditorDocument::~EditorDocument() {
     flushDraft();
     disconnect(&m_document, nullptr, this, nullptr);
+    delete m_language; m_language=nullptr;
+    delete m_page; m_page=nullptr;
     m_draftTimer.stop();
     m_watchTimer.stop();
     if (m_view && m_view->textDocument() == &m_document)
@@ -179,10 +193,10 @@ QByteArray EditorDocument::readDisk(bool *ok) const {
     if (QFileInfo(m_path).canonicalFilePath() != m_path)
         return {};
     QFile file(m_path);
-    if (file.size() > 2 * 1024 * 1024 || !file.open(QIODevice::ReadOnly))
+    if (file.size() > 8 * 1024 * 1024 || !file.open(QIODevice::ReadOnly))
         return {};
-    const auto bytes = file.read(2 * 1024 * 1024 + 1);
-    *ok = bytes.size() <= 2 * 1024 * 1024 && file.error() == QFile::NoError;
+    const auto bytes = file.read(8 * 1024 * 1024 + 1);
+    *ok = bytes.size() <= 8 * 1024 * 1024 && file.error() == QFile::NoError;
     return bytes;
 }
 void EditorDocument::report(const QString &message) {
@@ -230,8 +244,8 @@ bool EditorDocument::save(bool overwrite) {
         bytes.replace("\n", m_newline);
     if (m_bom)
         bytes.prepend("\xef\xbb\xbf");
-    if (bytes.size() > 2 * 1024 * 1024 || bytes.contains('\0')) {
-        report(QStringLiteral("编辑内容包含空字节或超过 2 MiB 保存上限。"));
+    if (bytes.size() > 8 * 1024 * 1024 || bytes.contains('\0')) {
+        report(QStringLiteral("编辑内容包含空字节或超过 8 MiB 保存上限。"));
         return false;
     }
     QSaveFile file(m_path);
@@ -264,6 +278,7 @@ bool EditorDocument::save(bool overwrite) {
     report({});
     watch();
     flushDraft();
+    emit saved();
     return true;
 }
 bool EditorDocument::reload() {
@@ -280,7 +295,7 @@ bool EditorDocument::reload() {
     QString source = decoder.decode(data);
     if (data.contains('\0') ||
         (editable() && (decoder.hasError() || source.contains(QChar::ParagraphSeparator) ||
-                        mixedEndings(data) || data.size() > 512 * 1024))) {
+                        mixedEndings(data) || data.size() > 8 * 1024 * 1024))) {
         report(QStringLiteral("磁盘文件已变成不支持的文本编码。"));
         return false;
     }
@@ -288,11 +303,15 @@ bool EditorDocument::reload() {
     m_newline = data.contains("\r\n") ? "\r\n" : data.contains('\r') ? "\r" : "\n";
     source.replace("\r\n", "\n");
     source.replace('\r', '\n');
+    if(data.size()>512*1024 || source.size()>256*1024)enterLargeMode();
     m_loading = true;
     if (editable())
         m_document.setPlainText(source);
-    else
+    else {
         m_readOnlySource = source;
+        // 只读大文件也要有完整的分页数据，禁用撤销与写入即可，不能显示空页。
+        if(m_large){m_document.setPlainText(source);m_document.setUndoRedoEnabled(false);}
+    }
     m_loading = false;
     m_expected = digest(bytes);
     m_conflict = false;
@@ -306,7 +325,7 @@ bool EditorDocument::reload() {
 }
 void EditorDocument::attach(QQuickTextDocument *view, bool dark) {
     // Qt Quick 的文本控件始终需要有效文档；解绑时交回空文档，编辑文档由插件保留。
-    if (!view)
+    if (!view || m_large)
         return;
     const bool changedView = m_view != view || view->textDocument() != &m_document;
     const bool changedTheme = m_dark != dark;
@@ -322,7 +341,16 @@ void EditorDocument::attach(QQuickTextDocument *view, bool dark) {
     if (m_highlighter)
         m_highlighter->rehighlight();
 }
+void EditorDocument::enterLargeMode() {
+    if(m_large)return;
+    m_large=true;const bool loading=m_loading;m_loading=true;
+    if(m_view && m_view->textDocument()==&m_document){m_view->setTextDocument(new QTextDocument(m_view));m_view=nullptr;}
+    m_document.setLayoutEnabled(false);
+    if(m_highlighter){m_highlighter->setDocument(nullptr);m_highlighter->deleteLater();m_highlighter=nullptr;}
+    m_loading=loading;m_draftTimer.setInterval(2000);emit modeChanged();
+}
 void EditorDocument::highlight(bool dark) {
+    if(m_large){m_dark=dark;return;}
     if (m_highlighter && m_dark == dark)
         return;
     m_dark = dark;
@@ -347,6 +375,29 @@ void EditorDocument::highlight(bool dark) {
     else
         static_cast<LexicalHighlighter *>(m_highlighter)->setDark(dark);
 #endif
+}
+bool EditorDocument::applyTextEdits(const QString &expected,const QVector<lsp::Edit> &edits) {
+    if(!editable() || state()==Conflict || text()!=expected){report(QStringLiteral("正文已变化或不可编辑，未应用语言服务修改。"));return false;}
+    QString next=expected;
+    for(auto it=edits.crbegin();it!=edits.crend();++it)next.replace(it->start,it->end-it->start,it->text);
+    if(next.toUtf8().size()>8*1024*1024){report(QStringLiteral("语言服务修改超过8MiB保存上限。"));return false;}
+    QTextCursor cursor(&m_document);cursor.beginEditBlock();
+    for(auto it=edits.crbegin();it!=edits.crend();++it){cursor.setPosition(it->start);cursor.setPosition(it->end,QTextCursor::KeepAnchor);cursor.insertText(it->text);}
+    cursor.endEditBlock();return true;
+}
+EditorPage *EditorDocument::page(){if(!m_page)m_page=new EditorPage(this);return m_page;}
+int EditorDocument::lineOffset(int line)const{return m_document.findBlockByNumber(line).position();}
+int EditorDocument::lineAt(int at)const{return m_document.findBlock(qBound(0,at,characterCount())).blockNumber();}
+bool EditorDocument::lowSurrogateAt(int at)const{return at>0 && at<characterCount() && m_document.characterAt(at).isLowSurrogate() && m_document.characterAt(at-1).isHighSurrogate();}
+QString EditorDocument::rangeText(int start,int end)const{QTextCursor cursor(const_cast<QTextDocument*>(&m_document));cursor.setPosition(qBound(0,start,characterCount()));cursor.setPosition(qBound(0,end,characterCount()),QTextCursor::KeepAnchor);return cursor.selectedText().replace(QChar::ParagraphSeparator,QLatin1Char('\n'));}
+bool EditorDocument::replaceWindow(int start,const QString &before,const QString &after){
+    if(!editable() || rangeText(start,start+before.size())!=before)return false;
+    int prefix=0,suffix=0;while(prefix<before.size() && prefix<after.size() && before[prefix]==after[prefix])++prefix;
+    if(prefix>0 && prefix<before.size() && before[prefix].isLowSurrogate())--prefix;
+    while(suffix<before.size()-prefix && suffix<after.size()-prefix && before[before.size()-suffix-1]==after[after.size()-suffix-1])++suffix;
+    if(suffix>0 && suffix<before.size() && before[before.size()-suffix].isLowSurrogate())--suffix;
+    // 只把本次差量放进完整文档撤销块，不为每个按键复制整页到撤销历史。
+    QTextCursor cursor(&m_document);cursor.beginEditBlock();cursor.setPosition(start+prefix);cursor.setPosition(start+before.size()-suffix,QTextCursor::KeepAnchor);cursor.insertText(after.mid(prefix,after.size()-prefix-suffix));cursor.endEditBlock();return true;
 }
 QString EditorDocument::draftPath() const {
     return draftFor(m_path);
@@ -374,6 +425,7 @@ bool EditorDocument::writeDraft(int draftState) {
                                                  {"newline", QString::fromLatin1(m_newline)},
                                                  {"text", text()}})
                            .toJson(QJsonDocument::Compact);
+    if (bytes.size()>64*1024*1024) { m_draftError=QStringLiteral("恢复草稿超过64MiB，请直接保存原文件。");emit stateChanged();return false; }
     if (!file.open(QIODevice::WriteOnly) || !file.setPermissions(QFile::ReadOwner | QFile::WriteOwner) ||
         file.write(bytes) != bytes.size() || !file.commit()) {
         m_draftError = QStringLiteral("恢复草稿写入失败，请及时保存原文件。");
@@ -399,7 +451,7 @@ bool EditorDocument::hasDraft(const QString &path) {
     if (path.isEmpty())
         return false;
     QFile file(draftFor(path));
-    if (!file.open(QIODevice::ReadOnly) || file.size() > 8 * 1024 * 1024)
+    if (!file.open(QIODevice::ReadOnly) || file.size() > 64 * 1024 * 1024)
         return false;
     const auto saved = QJsonDocument::fromJson(file.readAll()).object();
     const int state = saved.value("state").toInt();

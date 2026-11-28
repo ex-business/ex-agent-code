@@ -71,6 +71,11 @@ qt_add_qml_module(ex_agent_chat
         plugins/workspace_viewers/mermaid/plugin.cpp plugins/workspace_viewers/pdf/plugin.cpp
         plugins/workspace_viewers/table/plugin.cpp plugins/workspace_viewers/notebook/plugin.cpp
         plugins/workspace_editor/editor_document.h plugins/workspace_editor/editor_document.cpp
+        plugins/workspace_editor/editor_page.h plugins/workspace_editor/editor_page.cpp
+        plugins/language_services/lsp_session.h plugins/language_services/lsp_session.cpp
+        plugins/language_services/text_edits.h plugins/language_services/text_edits.cpp
+        plugins/language_services/language_document.h plugins/language_services/language_document.cpp
+        plugins/language_services/language_workspace.h plugins/language_services/language_workspace.cpp
         plugins/terminal_settings/terminal_preferences.h plugins/terminal_settings/terminal_preferences.cpp
         plugins/appearance/appearance_registry.h
         plugins/interactive_terminal/terminal_surface.h plugins/interactive_terminal/terminal_surface.cpp

@@ -45,7 +45,7 @@ ViewerDescriptor WorkspaceViewerRegistry::resolve(const QString &path) const {
     QMutexLocker lock(&m_mutex); m_sealed=true;
     const auto suffix=QFileInfo(path).suffix().toLower();
     for (const auto &plugin:m_plugins) { const auto value=plugin->descriptor(); if (value.extensions.contains(suffix)) return value; }
-    return {"source","源代码","WorkspaceSourcePlugin.qml",{}};
+    return {"source","源代码","WorkspaceSourcePlugin.qml",{},ViewerDescriptor::Text,8*1024*1024};
 }
 QVariantMap WorkspaceViewerRegistry::load(const QString &path, const QString &root) const {
     const auto canonical=QFileInfo(path).canonicalFilePath(), base=QFileInfo(root).canonicalFilePath();

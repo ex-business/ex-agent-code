@@ -7,6 +7,7 @@
 #include <QtQml/qqmlregistration.h>
 namespace exagent {
 // 工作区组织文件页签，编辑文档独立维护版本与撤销栈。
+class LanguageWorkspace;
 class WorkspaceController : public QObject {
     Q_OBJECT
     QML_NAMED_ELEMENT(WorkspaceController)
@@ -64,6 +65,7 @@ signals:
 protected:
     bool eventFilter(QObject *watched, QEvent *event) override;
 private:
+    QHash<QString,LanguageWorkspace*> m_languageHubs;
     bool m_exitApproved=false;
     struct File { QString path; QString language; EditorDocument *document=nullptr; QVariantMap image; QVariantMap viewer; };
     struct ViewState { QList<File> files; int active=-1; };

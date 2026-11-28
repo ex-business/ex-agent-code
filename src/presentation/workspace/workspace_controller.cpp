@@ -1,4 +1,6 @@
 #include "workspace_controller.h"
+#include "plugins/language_services/language_workspace.h"
+#include "plugins/language_services/text_edits.h"
 #include "plugins/workspace_viewers/viewer_registry.h"
 #include "plugins/workspace_viewers/workspace_preview.h"
 #include <QDesktopServices>
@@ -60,7 +62,9 @@ void WorkspaceController::bindFolder(const QString &path, bool preview)
     if (root != m_root || preview != m_preview) {
         // 切换会话或目录只切换视图，未保存文档和撤销栈继续由宿主管理。
         if (!m_root.isEmpty()) m_cache.insert(m_root+QString::number(m_preview),{m_files,m_active});
+        for(auto *hub:m_languageHubs)hub->setActive(false);
         m_root = root; m_preview=preview;
+        if(!preview && m_languageHubs.contains(root))m_languageHubs[root]->setActive(true);
         const auto cached=m_cache.take(m_root+QString::number(m_preview));
         m_files=cached.files; m_active=cached.active;
         m_expanded.clear();
@@ -192,9 +196,9 @@ void WorkspaceController::open(const QString &path)
     QByteArray bytes;
     if (text && QFileInfo::exists(canonical)) {
         QFile file(canonical);
-        if (file.size()>2*1024*1024 || !file.open(QIODevice::ReadOnly)) { fail(QStringLiteral("文件无法读取或超过 2 MiB 预览限制。")); return; }
-        bytes=file.read(2*1024*1024+1);
-        if (bytes.size()>2*1024*1024 || bytes.contains('\0')) { fail(QStringLiteral("此文件不支持文本预览。")); return; }
+        if (file.size()>8*1024*1024 || !file.open(QIODevice::ReadOnly)) { fail(QStringLiteral("文件无法读取或超过 8 MiB 文本限制。")); return; }
+        bytes=file.read(8*1024*1024+1);
+        if (bytes.size()>8*1024*1024 || bytes.contains('\0')) { fail(QStringLiteral("此文件不支持文本预览。")); return; }
     } else if (text && !EditorDocument::hasDraft(canonical)) { fail(QStringLiteral("文件不存在。")); return; }
     if (m_files.size() >= 8) {
         int clean=-1;
@@ -204,6 +208,26 @@ void WorkspaceController::open(const QString &path)
     }
     EditorDocument *doc=text ? new EditorDocument(canonical,bytes,m_preview,this) : nullptr;
     if (doc) {
+        if(!m_preview){
+            auto *hub=m_languageHubs.value(m_root);
+            if(!hub){
+                hub=new LanguageWorkspace(m_root,this);m_languageHubs.insert(m_root,hub);
+                connect(hub,&LanguageWorkspace::openLocation,this,[this,hub](QString path,int line,int character){
+                    if(m_preview || m_root!=hub->root())return;open(path);
+                    if(auto *target=document();target && target->path()==path){const auto offset=lsp::offset(target->text(),{{"line",line},{"character",character}});if(offset>=0)target->moveCursor(offset,offset);}
+                });
+                connect(hub,&LanguageWorkspace::documentPrepared,this,[this,hub](EditorDocument *prepared){
+                    if(m_preview || m_root!=hub->root())return;
+                    const auto relative=QDir(m_root).relativeFilePath(prepared->path());
+                    m_documents.insert(prepared);
+                    connect(prepared,&EditorDocument::stateChanged,this,[this]{emit previewChanged();});
+                    connect(prepared,&EditorDocument::contentChanged,this,[this,prepared]{if(document()==prepared)emit contentChanged();});
+                    m_files.append({relative,QFileInfo(prepared->path()).suffix().toLower(),prepared,{},WorkspaceViewerRegistry::instance().resolve(prepared->path()).map()});
+                    emit previewChanged();
+                });
+            }
+            hub->add(doc);
+        }
         m_documents.insert(doc);
         connect(doc,&EditorDocument::stateChanged,this,[this]{ emit previewChanged(); });
         connect(doc,&EditorDocument::contentChanged,this,[this,doc]{ if (document()==doc) emit contentChanged(); });
