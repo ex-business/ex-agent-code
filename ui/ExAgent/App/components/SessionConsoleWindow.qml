@@ -192,7 +192,7 @@ Window {
                     enabled: { const active = root.agent.busy; const account = root.agent.account; const binding=root.agent.terminalBinding(root.workspace); return !active && (!!binding.threadId || !!binding.source) }
                     onClicked: consoleModel.continueCodex(root.agent.terminalBinding(root.workspace))
                     ToolTip.visible: hovered
-                    ToolTip.text: Design.UiText.get(root.agent.terminalAgent ? "查看同步历史，回复请在对应终端输入" : "终端已结束回合会同步，退出后可回原生聊天发送")
+                    ToolTip.text: Design.UiText.get(root.agent.terminalAgent && !root.agent.nativeAvailable ? "查看同步历史，回复请在对应终端输入" : "终端已结束回合会同步，退出后可回原生聊天发送")
                 }
                 TerminalAction { darkChrome: true; glyph: "refresh"
                     visible: !!consoleModel.current.conversationBinding
@@ -203,10 +203,10 @@ Window {
                 TerminalAction { darkChrome: true; glyph: "back"
                     visible: !!consoleModel.current.conversationId
                     enabled: consoleModel.current.state === 0
-                    text: Design.UiText.get(root.agent.terminalAgent ? "查看聊天历史" : "返回原生聊天")
+                    text: Design.UiText.get(root.agent.terminalAgent && !root.agent.nativeAvailable ? "查看聊天历史" : "返回原生聊天")
                     onClicked: { root.agent.syncTerminalConversation(consoleModel.current.conversationBinding || ({})); root.returnRequested(consoleModel.current.conversationId) }
                     ToolTip.visible: hovered
-                    ToolTip.text: Design.UiText.get(root.agent.terminalAgent ? "返回同步历史，继续回复请使用对应终端" : "在终端输入 /exit 退出后返回")
+                    ToolTip.text: Design.UiText.get(root.agent.terminalAgent && !root.agent.nativeAvailable ? "返回同步历史，继续回复请使用对应终端" : "在终端输入 /exit 退出后返回")
                 }
                 TerminalAction { darkChrome: true; glyph: "terminal"; checkable: true;
                     id: interactive

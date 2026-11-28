@@ -28,21 +28,22 @@ RowLayout {
         Design.ContextMenu {
             id: moreMenu
             Design.ContextMenuItem { text: "粘贴"; iconName: "copy"; shortcutLabel: Qt.platform.os === "osx" ? "⌘V" : ""; enabled: root.canPaste; onTriggered: root.pasteRequested() }
-            Design.ContextMenuItem { text: Design.UiText.get("账号与用量"); iconName: "activity"; enabled: root.configurable; onTriggered: root.profilesRequested() }
+            Design.ContextMenuItem { text: Design.UiText.get("账号与用量"); iconName: "activity"; enabled: root.configurable && !root.agent.terminalAgent; onTriggered: root.profilesRequested() }
+            Design.ContextMenuItem { text: Design.UiText.get("原生 Agent 设置"); iconName: "terminal"; enabled: !!root.agent.terminalAgent && !root.agent.busy; onTriggered: root.settingsRequested() }
             Design.ContextMenuItem { text: Design.UiText.get("新聊天"); iconName: "new"; shortcutLabel: Qt.platform.os === "osx" ? "⌘N" : ""; onTriggered: root.newChatRequested() }
         }
     }
     RowLayout {
         spacing: 4
         Design.Icon { name: "shield"; color: Design.Theme.dark ? Design.Theme.warning : "#ae542c"; implicitWidth: 13; implicitHeight: 13 }
-        Text { text: root.agent.terminalAgent ? Design.UiText.get("终端续接") : !root.agent.account ? "本地" : root.agent.fullAccess ? "完全访问" : root.agent.workspaceWrite ? "工作区写入" : "只读"; color: Design.Theme.dark ? Design.Theme.warning : "#ae542c"; font.pixelSize: 12 }
+        Text { text: root.agent.terminalAgent ? (root.agent.nativeAvailable ? Design.UiText.get("原生聊天") + " · " + Design.UiText.get(root.agent.nativeSettings.fullAccess ? "完全访问" : root.agent.nativeSettings.write ? "工作区写入" : "只读") : Design.UiText.get("终端续接")) : !root.agent.account ? "本地" : root.agent.fullAccess ? "完全访问" : root.agent.workspaceWrite ? "工作区写入" : "只读"; color: Design.Theme.dark ? Design.Theme.warning : "#ae542c"; font.pixelSize: 12 }
     }
     Item { Layout.fillWidth: true }
     Button {
         id: engineButton
         HoverHandler { cursorShape: Qt.PointingHandCursor }
         Accessible.name: "会话执行设置"
-        enabled: root.configurable && !root.agent.busy && !root.agent.terminalAgent
+        enabled: root.configurable && !root.agent.busy
         onClicked: root.settingsRequested()
         background: Rectangle { radius: 7; color: engineButton.hovered ? Design.Theme.hover : "transparent" }
         contentItem: RowLayout {
@@ -59,7 +60,7 @@ RowLayout {
         running: root.agent.busy
         stopping: root.agent.stopping
         objectName: "sendMessage"
-        hasText: root.hasText && !root.agent.terminalAgent
+        hasText: root.hasText && (!root.agent.terminalAgent || root.agent.nativeAvailable)
         onTriggered: { if (root.agent.busy) root.agent.stop(); else root.sendRequested() }
     }
 }

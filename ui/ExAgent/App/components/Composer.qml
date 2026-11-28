@@ -20,6 +20,7 @@ ColumnLayout {
         controller.draft = prompt
         editor.forceActiveFocus()
     }
+    Design.NativeAgentSettings { id: nativeSettings; controller: root.controller }
     Design.AccountProfilesDialog { id: profileSettings; controller: root.controller }
     Design.AgentSettings { id: agentSettings; controller: root.controller }
     Connections {
@@ -73,7 +74,7 @@ ColumnLayout {
                     function clearSelection() { deselect() }
                     onActiveFocusChanged: if (activeFocus) SelectionCoordinator.activate(null)
                     objectName: "chatComposer"
-                    placeholderText: root.controller.agent.terminalAgent ? Design.UiText.get("在终端中继续此会话，输入内容保留为草稿") : root.controller.agent.account === 3 ? "向 OpenAI API Agent 发送消息" : "向 Codex 发送消息"
+                    placeholderText: root.controller.agent.terminalAgent ? (root.controller.agent.nativeAvailable ? Design.UiText.get("发送给") + " " + root.controller.agent.terminalAgent : Design.UiText.get("在终端中继续此会话，输入内容保留为草稿")) : root.controller.agent.account === 3 ? "向 OpenAI API Agent 发送消息" : "向 Codex 发送消息"
                     placeholderTextColor: Design.Theme.dark ? Design.Theme.muted : "#c4c4c4"
                     text: root.controller.draft
                     color: Design.Theme.text
@@ -129,7 +130,7 @@ ColumnLayout {
             Design.ComposerToolbar {
                 agent: root.controller.agent
                 configurable: root.controller.projects.writable && !root.controller.previewMode
-                onSettingsRequested: agentSettings.open()
+                onSettingsRequested: { if(root.controller.agent.terminalAgent)nativeSettings.open();else agentSettings.open() }
                 onProfilesRequested: profileSettings.open()
                 Layout.fillWidth: true
                 hasText: editor.text.trim().length > 0 && !root.controller.designCaptureBusy

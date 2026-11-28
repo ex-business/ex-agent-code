@@ -43,6 +43,11 @@ public:
     QVariantList correspondence() const;
     Q_INVOKABLE bool sendMail(const QString &target, const QString &text);
     void indexWorkspaceActivity();
+    Q_PROPERTY(bool nativeAvailable READ nativeAvailable NOTIFY changed)
+    Q_PROPERTY(QVariantMap nativeSettings READ nativeSettings NOTIFY changed)
+    bool nativeAvailable() const;
+    QVariantMap nativeSettings() const;
+    Q_INVOKABLE bool configureNative(const QString &program,const QString &model,bool write,bool full);
     Q_PROPERTY(QString terminalAgent READ terminalAgent NOTIFY changed)
     QString terminalAgent() const;
     Q_PROPERTY(bool terminalSyncing READ terminalSyncing NOTIFY changed)
@@ -122,6 +127,7 @@ private:
     ChatSession *find(const QString &id) const;
     QVariantMap config() const;
     QSet<QString> m_syncing, m_pendingTerminalSync;
+    bool submitNative(const QString &session,const QString &text,const QVariantMap &review,bool worker);
     bool save();
     void changeCredential(QString key, bool signIn);
     void dispatch();

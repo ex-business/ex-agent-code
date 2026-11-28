@@ -2,6 +2,7 @@
 #include "plugins/session_history/session_console.h"
 #include "plugins/session_history/terminal_backend.h"
 #include <QCoreApplication>
+#include <QFileInfo>
 #include <QJsonDocument>
 #include <QUuid>
 namespace exagent {
@@ -22,8 +23,11 @@ void SessionConsole::continueCodex(const QVariantMap &binding) {
           row.value("agent") == QString(provider == 2 ? "Pi" : "Claude Code"))
         descriptor = row;
     }
-    const auto program = descriptor.value("program").toString();
-    if (descriptor.isEmpty() || program.isEmpty()) {
+    const auto program = binding.value("native")
+                             .toMap()
+                             .value("program", descriptor.value("program"))
+                             .toString();
+    if (descriptor.isEmpty() || !QFileInfo(program).isExecutable()) {
       fail(QStringLiteral("对应CLI或历史绑定不可用。"));
       return;
     }
@@ -42,9 +46,13 @@ void SessionConsole::continueCodex(const QVariantMap &binding) {
       }
     }
     const auto previous = m_tabs.size();
+    auto launch = binding;
+    launch.insert("program", program);
     start(descriptor.value("agent").toString(), cwd,
-          {program, descriptor.value("flag").toString(),
-           descriptor.value("argument").toString()},
+          {QCoreApplication::applicationFilePath(), "--continue-agent-terminal",
+           QString::fromUtf8(QJsonDocument::fromVariant(launch)
+                                 .toJson(QJsonDocument::Compact)
+                                 .toBase64())},
           file, {}, binding.value("conversationId").toString());
     if (m_tabs.size() > previous) {
       auto row = current();

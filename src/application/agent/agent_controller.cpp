@@ -328,7 +328,7 @@ QVariantMap AgentController::terminalBinding(const QString& workspace) const
         if(!workspace.isEmpty() && QFileInfo(workspace).canonicalFilePath()!=QFileInfo(source.value("cwd").toString()).canonicalFilePath())return {};
         QString input,error;if(!applyInputPolicies(*s,TerminalInput,input,&error))return {};
         auto spec=source;
-        spec.insert("source",source);spec.insert("conversationId",s->id);return spec;
+        spec.insert("source",source);spec.insert("conversationId",s->id);spec.insert("native",s->history.value("nativeAgent"));return spec;
     }
     if (!s || !m_writable || busy() || m_syncing.contains(s->id) || authenticating() || !m_profiles.home(selectedProfile()).isEmpty() || account() == agent::OpenAIResponses || !account()
         || binding.value("boundAccount").toInt() != account() || binding.value("identity").toString().isEmpty()
@@ -438,6 +438,8 @@ bool AgentController::submitTo(const QString &session, const QString &text, cons
         emit failure(QStringLiteral("当前执行器无法在此任务绑定的主机运行。"));
         return false;
     }
+    if(s && !s->history.value("terminalSource").toMap().isEmpty() && !text.trimmed().isEmpty() && text.size()<=65536)
+        return submitNative(session,text,reviewNote,worker);
     if (!s || !(worker ? m_repository.writable() : m_writable) || !s->agent.value("account").toInt() || text.trimmed().isEmpty())
         return false;
     if (!s->history.value("terminalSource").toMap().isEmpty()) {
@@ -598,6 +600,7 @@ void AgentController::reconcile()
     auto *s = find(m_selected);
     if (!s || !m_writable || busy())
         return;
+    if(!s->history.value("terminalSource").toMap().isEmpty()){auto binding=s->history.value("terminalSource").toMap();binding.insert("source",binding);binding.insert("conversationId",s->id);syncTerminalConversation(binding);return;}
     if(s->agent.value("account").toInt()==agent::OpenAIResponses) {emit failure(QStringLiteral("API 中断后可发送新消息续接最近完成的响应；不会重放待审批工具。"));return;}
     for (auto it = s->messages.crbegin(); it != s->messages.crend(); ++it) {
         const auto &m = *it;
@@ -679,6 +682,10 @@ void AgentController::end(const QString &session, int state, const QString &deta
     emit changed();
     finishSupervised(session, a.id, state);
     emit runEnded(session, a.id, state, s->title);
+    if(!a.snapshot["source"].toObject().isEmpty()) {
+        auto binding=a.snapshot["source"].toObject().toVariantMap();binding.insert("source",binding);binding.insert("conversationId",session);
+        QTimer::singleShot(0,this,[this,binding]{syncTerminalConversation(binding);});
+    }
 }
 void AgentController::restore()
 {
@@ -739,6 +746,12 @@ bool AgentController::consume(const QString &, const QJsonObject &e, QString *er
         it->usage=e["usage"].toObject();
         return true;
     }
+    if(kind=="nativeCheckpoint") {
+        const auto source=it->snapshot["source"].toObject();
+        if(source.isEmpty() || source["id"]!=e["sourceId"] || !e["entries"].isArray() || e["entries"].toArray().size()>10000){*error=QStringLiteral("原生CLI检查点无效。");return false;}
+        auto marker=std::find_if(s->messages.begin(),s->messages.end(),[&](const auto &m){return m.id==it->id;});
+        if(marker!=s->messages.end()){auto row=*marker;row.activity.insert("nativeEntries",e["entries"].toArray().toVariantList());put(*s,row);save();}return true;
+    }
     if(kind=="checkpoint") {
         if(it->snapshot["account"].toInt()!=agent::OpenAIResponses || e["responseId"].toString().isEmpty()){*error=QStringLiteral("API恢复检查点无效。");return false;}
         auto binding=s->agent.value("profileBindings").toMap().value(profile).toMap();binding.insert("responseId",e["responseId"].toString());binding.insert("apiCwd",it->snapshot["cwd"].toString());updateProfileBinding(*s,profile,binding);
@@ -785,14 +798,14 @@ bool AgentController::consume(const QString &, const QJsonObject &e, QString *er
         it->turn = e["turnId"].toString();
         msg.activity.insert("turnId", it->turn);
         msg.activity.insert("taskState", int(State::Running));
-        msg.content = it->snapshot["account"].toInt()==agent::OpenAIResponses ? QStringLiteral("OpenAI API 正在执行") : QStringLiteral("Codex 正在执行");
+        msg.content = it->snapshot.contains("engine") ? it->snapshot["engine"].toString()+QStringLiteral(" 正在执行") : it->snapshot["account"].toInt()==agent::OpenAIResponses ? QStringLiteral("OpenAI API 正在执行") : QStringLiteral("Codex 正在执行");
     } else if (kind == "reasoningPhase") {
         const auto phase = e["state"].toInt(-1);
         if (phase != int(State::Running) && phase != int(State::Complete)) {
             *error = QStringLiteral("未知的思考阶段状态。");
             return false;
         }
-        msg.content = phase == int(State::Running) ? QStringLiteral("正在思考") : QStringLiteral("Codex 正在执行");
+        msg.content = phase == int(State::Running) ? QStringLiteral("正在思考") : it->snapshot.contains("engine") ? it->snapshot["engine"].toString()+QStringLiteral(" 正在执行") : QStringLiteral("Codex 正在执行");
     } else if (kind == "itemEnd") {
         if (ix == s->messages.cend())
             return true;

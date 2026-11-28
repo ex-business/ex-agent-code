@@ -14,6 +14,7 @@ export function registerActivity(pi, dir, origin) {
             const tmp = target + "." + process.pid + ".tmp";
             fs.writeFileSync(tmp,JSON.stringify({agent:"Pi",session:ctx.sessionManager.getSessionId(),
                 terminalId:path.basename(process.env.EX_SLEEP_DIR || ""),pid:process.pid,
+                ownerPid:Number(process.env.EX_TERMINAL_OWNER_PID)||process.pid,
                 status,tokens,updated:Date.now()}),{mode:0o600});
             fs.renameSync(tmp,target);
         } catch { /* 诊断快照写入失败不能中断 Agent 回合。 */ }

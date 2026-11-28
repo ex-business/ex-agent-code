@@ -15,6 +15,7 @@
 #include "services/local/service_worker.h"
 
 #include "agent/codex/thread_input.h"
+#include "agent/cli/session_binding.h"
 #include <QJsonDocument>
 #include <QGuiApplication>
 #include <QQmlApplicationEngine>
@@ -37,6 +38,10 @@ int main(int argc, char *argv[])
     if (argc >= 2 && QByteArray(argv[1]) == "computer") {
         QCoreApplication cli(argc, argv);
         return exagent::computer::runCli(cli.arguments().mid(2));
+    }
+    if(argc==3 && QByteArray(argv[1])=="--continue-agent-terminal") {
+        QCoreApplication app(argc,argv);app.setOrganizationName("EX Business");app.setApplicationName("EX Agent Code");
+        return exagent::cli::terminalContinuation(QJsonDocument::fromJson(QByteArray::fromBase64(argv[2])).object());
     }
     if (argc == 3 && QByteArray(argv[1]) == "--continue-codex-terminal") {
         QCoreApplication app(argc,argv);

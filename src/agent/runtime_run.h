@@ -6,7 +6,9 @@ enum AccountKind {
   LocalChat = 0,
   SystemCodex = 1,
   DedicatedCodex = 2,
-  OpenAIResponses = 3
+  OpenAIResponses = 3,
+  PiNative = 4,
+  ClaudeNative = 5
 };
 // 适配器只发布统一事件；聊天、审批和持久化不依赖具体模型协议。
 class RuntimeRun : public QObject {

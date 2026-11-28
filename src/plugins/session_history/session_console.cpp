@@ -4,6 +4,8 @@
 #include "plugins/agent_activity/activity_store.h"
 #include "history_provider.h"
 #include "terminal_backend.h"
+#include "agent/cli/session_binding.h"
+#include "agent/codex/thread_input.h"
 #include "terminal_hibernation.h"
 #include <QCoreApplication>
 #include <QJsonDocument>
@@ -221,8 +223,8 @@ void SessionConsole::start(const QString& title, const QString& cwd, const QStri
             args << "-e" << "EX_ACTIVITY_DIR=" + activity::directory(cwd) << "-e"
                  << "EX_SLEEP_DIR=" + hibernation::directory(id) << "-e"
                  << "EX_SLEEP_ORIGIN=" + origin;
-            launch.insert(1, "--extension");
-            launch.insert(2, extension);
+            if(launch.contains("--continue-agent-terminal"))args << "-e" << "EX_PI_TERMINAL_EXTENSION="+extension;
+            else {launch.insert(1, "--extension");launch.insert(2, extension);}
             supported = true;
         }
     }
@@ -389,6 +391,8 @@ bool SessionConsole::wake(int index)
 {
     auto row = m_tabs[index].toMap();
     auto id = row["id"].toString();
+    const auto binding=row.value("conversationBinding").toMap();
+    if(!binding.isEmpty() && !codex::threadAvailable(cli::leaseKey(QJsonObject::fromVariantMap(binding.value("source").toMap())))) {fail(QStringLiteral("原生聊天占用此会话，暂不唤醒终端。"));return false;}
     if (!hibernation::sameTranscript(row) || !QFileInfo(row["cwd"].toString()).isDir()) {
         fail(QStringLiteral("无法唤醒：原会话标识已变化，或原工作目录不可用。"));
         return false;
@@ -400,9 +404,15 @@ bool SessionConsole::wake(int index)
         const auto program = cliPath("pi"), extension = hibernation::installExtension();
         if (row["title"] == "Pi" && !program.isEmpty() && !extension.isEmpty()) {
             const auto origin = row["origin"].toString();
-            r = terminalCommand({ "new-session", "-d", "-s", id, "-x", "100", "-y", "30", "-c", row["cwd"].toString(),
-                "-e", "EX_ACTIVITY_DIR=" + activity::directory(row["cwd"].toString()), "-e", "EX_SLEEP_DIR=" + hibernation::directory(id), "-e", "EX_SLEEP_ORIGIN=" + origin, program,
-                "--extension", extension, "--session", origin });
+            QStringList command{program,"--extension",extension,"--session",origin};
+            QStringList env{"-e","EX_ACTIVITY_DIR="+activity::directory(row["cwd"].toString()),"-e","EX_SLEEP_DIR="+hibernation::directory(id),"-e","EX_SLEEP_ORIGIN="+origin};
+            if(!binding.isEmpty()) {
+                const auto configured=binding.value("native").toMap().value("program",program).toString();
+                if(QFileInfo(configured).canonicalFilePath()!=QFileInfo(program).canonicalFilePath()){fail(QStringLiteral("请从聊天重新续接并核对自定义CLI。"));return false;}
+                auto launch=binding;launch.insert("program",program);env<<"-e"<<"EX_PI_TERMINAL_EXTENSION="+extension;
+                command={QCoreApplication::applicationFilePath(),"--continue-agent-terminal",QString::fromUtf8(QJsonDocument::fromVariant(launch).toJson(QJsonDocument::Compact).toBase64())};
+            }
+            r=terminalCommand(QStringList{"new-session","-d","-s",id,"-x","100","-y","30","-c",row["cwd"].toString()}+env+command);
             if (r.ok)
                 terminalCommand({ "set-option", "-w", "-t", "=" + id + ":0", "remain-on-exit", "on" });
         }
@@ -413,6 +423,7 @@ bool SessionConsole::wake(int index)
     }
     QFile::remove(hibernation::directory(id) + "/sleep");
     row["state"] = Unknown;
+    m_notifiedHistory.remove(id);
     m_tabs[index] = row;
     save();
     emit changed();

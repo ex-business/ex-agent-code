@@ -34,7 +34,7 @@ QVariantList readPiActivity(const QVariantList &tabs, bool ownsInput)
         if (!file.open(QIODevice::ReadOnly) || file.size() > 8192) continue;
         const auto snapshot = QJsonDocument::fromJson(file.read(8192)).toVariant().toMap();
         // 旧快照可能属于另一个窗口或已退出的 Pi，不能把它重新变为可操作请求。
-        if (snapshot.value("terminalId") != id || snapshot.value("pid").toLongLong() != live[id]) continue;
+        if (snapshot.value("terminalId") != id || snapshot.value("ownerPid",snapshot.value("pid")).toLongLong() != live[id]) continue;
         const int status = snapshot.value("status", -1).toInt();
         const bool waiting = status == activity::Waiting && ownsInput;
         const bool working = status == activity::Working || status == activity::Waiting;

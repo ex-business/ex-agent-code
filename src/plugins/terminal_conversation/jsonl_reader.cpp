@@ -82,7 +82,19 @@ Snapshot readJsonl(const QVariantMap &source) {
     leaf =
         nodes.value(leaf)[provider == 2 ? "parentId" : "parentUuid"].toString();
   }
+  const auto owners = source.value("nativeOwners").toMap();
+  QHash<QString, QString> before;
+  QString next;
+  for (auto i = chain.size(); i > 0; --i) {
+    const auto key = chain[i - 1];
+    if (owners.contains(key))
+      next = owners.value(key).toString();
+    else
+      before.insert(key, next);
+  }
   for (const auto &key : chain) {
+    if (owners.contains(key))
+      continue;
     const auto row = nodes.value(key);
     const auto message = row["message"].toObject();
     const auto role = message["role"].toString();
@@ -130,7 +142,8 @@ Snapshot readJsonl(const QVariantMap &source) {
       m.status = MessageStatus::Failed;
     else if (message["stopReason"] == "aborted")
       m.status = MessageStatus::Cancelled;
-    m.activity = {{"terminalProvider", provider},
+    m.activity = {{"nativeBeforeRun", before.value(key)},
+                  {"terminalProvider", provider},
                   {"terminalThread", id},
                   {"terminalEntry", key}};
     out.messages.append(m);

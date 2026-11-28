@@ -1,5 +1,6 @@
 #include "runtime_worker.h"
 #include "codex/codex_run.h"
+#include "cli/cli_run.h"
 #include "domain/ipc/protocol.h"
 #include "openai/responses_run.h"
 #include <QCoreApplication>
@@ -8,6 +9,8 @@
 namespace exagent::agent {
 Worker::Worker(QObject *parent, QHash<int, Factory> adapters)
     : QObject(parent), m_factories(std::move(adapters)) {
+  registerAdapter(PiNative,cli::createPi);
+  registerAdapter(ClaudeNative,cli::createClaude);
   registerAdapter(SystemCodex, [](QJsonObject p, QObject *owner) {
     return new codex::Run(std::move(p), owner);
   });

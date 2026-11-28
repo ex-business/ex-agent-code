@@ -420,7 +420,7 @@ bool ChatController::sendMessage()
     const auto text = draft().trimmed();
     if (!m_storageWritable) { setError(QStringLiteral("项目目录只读，无法保存消息。")); return false; }
     if (m_current < 0 || text.isEmpty()) return false;
-    if (!m_preview && !m_sessions[m_current].history.value("terminalSource").toMap().isEmpty()) {
+    if (!m_preview && !m_agent.nativeAvailable() && !m_sessions[m_current].history.value("terminalSource").toMap().isEmpty()) {
         setError(QStringLiteral("此会话请在终端续接并输入；草稿已保留，尚未发送给Agent。"));return false;
     }
     if (designCaptureBusy()) { setError(QStringLiteral("正在准备页面截图，请稍后发送。")); return false; }
@@ -428,7 +428,7 @@ bool ChatController::sendMessage()
         setError(QStringLiteral("单条消息不能超过 64K 字符，请拆分后发送。"));
         return false;
     }
-    if (!m_preview && m_agent.account()) return m_agent.submit(text,workspacePath());
+    if (!m_preview && (m_agent.account() || m_agent.nativeAvailable())) return m_agent.submit(text,workspacePath());
     if (m_preview) {
         // 预览输入只创建新的本地会话，样例不混入真实聊天历史。
         newSession();

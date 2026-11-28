@@ -65,6 +65,15 @@ void AgentController::syncTerminalConversation(const QVariantMap &binding) {
         m.activity.value("threadId") == binding.value("threadId"))
       known.append(m.activity.value("turnId").toString());
   }
+  QVariantMap nativeOwners;
+  if (external)
+    for (const auto &m : s->messages)
+      if (m.role == MessageRole::Notice &&
+          m.activity.value("nativeSource").toMap().value("id") ==
+              binding.value("id"))
+        for (const auto &id : m.activity.value("nativeEntries").toList())
+          nativeOwners.insert(id.toString(), m.id);
+  request.insert("nativeOwners", nativeOwners);
   request.insert("knownTurns", known);
   request.insert("accountHome", m_profiles.home(profile));
   m_syncing.insert(session);
@@ -128,7 +137,10 @@ void AgentController::syncTerminalConversation(const QVariantMap &binding) {
         for (const auto &row : result.messages)
           if (!existingIds.contains(row.id)) {
             const auto anchor =
-                row.activity.value("terminalBeforeTurn").toString();
+                row.activity
+                    .value("nativeBeforeRun",
+                           row.activity.value("terminalBeforeTurn"))
+                    .toString();
             batches[anchors.value(anchor, s->messages.size())].append(row);
             existingIds.insert(row.id);
             changedRows = true;
