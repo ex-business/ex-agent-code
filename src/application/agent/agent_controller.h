@@ -43,6 +43,11 @@ public:
     QVariantList correspondence() const;
     Q_INVOKABLE bool sendMail(const QString &target, const QString &text);
     void indexWorkspaceActivity();
+    Q_PROPERTY(QString terminalAgent READ terminalAgent NOTIFY changed)
+    QString terminalAgent() const;
+    Q_PROPERTY(bool terminalSyncing READ terminalSyncing NOTIFY changed)
+    bool terminalSyncing() const {return m_syncing.contains(m_selected);}
+    Q_INVOKABLE void syncTerminalConversation(const QVariantMap &binding);
     Q_INVOKABLE QVariantMap terminalBinding(const QString& workspace) const;
     QStringList models() const { return m_models; }
     QString contextLabel() const;
@@ -108,6 +113,7 @@ signals:
     void failure(QString reason);
     void accountUpdated(bool loggedIn);
     void rowChanged(QString session, exagent::ChatMessage message);
+    void terminalHistoryChanged(QString session);
     void saved();
 
 private:
@@ -115,6 +121,7 @@ private:
         const QVariantMap &reviewNote, bool worker);
     ChatSession *find(const QString &id) const;
     QVariantMap config() const;
+    QSet<QString> m_syncing, m_pendingTerminalSync;
     bool save();
     void changeCredential(QString key, bool signIn);
     void dispatch();

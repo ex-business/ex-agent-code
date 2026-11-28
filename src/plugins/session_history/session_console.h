@@ -1,5 +1,6 @@
 #pragma once
 #include <QHash>
+#include <QSet>
 #include <QLockFile>
 #include <QObject>
 #include <QVariantList>
@@ -52,6 +53,7 @@ public:
     Q_INVOKABLE void sendNavigationKey(int key);
     Q_INVOKABLE void send(const QString& text);
 signals:
+    void conversationReady(QVariantMap binding);
     void changed();
     void tabsChanged();
     void terminalActivityChanged();
@@ -59,6 +61,9 @@ signals:
     void activityReady(QString workspace, QVariantList rows);
 
 private:
+    void refreshConversationTabs();
+    bool m_syncPolling = false;
+    QSet<QString> m_notifiedHistory;
     void start(const QString& title, const QString& cwd, const QStringList& command, const QString& origin, const QStringList& environment = {}, const QString& conversation = {});
     void save();
     void updateHibernation();

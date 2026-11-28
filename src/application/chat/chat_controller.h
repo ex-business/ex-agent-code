@@ -97,6 +97,7 @@ public:
     Q_INVOKABLE bool sendReviewNote(const QString &id);
     QString currentResourceId() const { return m_projects.catalog.selectedResource; }
     QString currentSessionId() const;
+    Q_INVOKABLE void importTerminalConversation(const QVariantMap &source);
     Q_INVOKABLE void newGroupSession(const QString &project, const QString &workspace);
     Q_INVOKABLE bool linkWorkspaceTask(const QString &project, const QString &workspace, const QString &url);
     Q_INVOKABLE void openGroup(const QString &project, const QString &workspace);

@@ -39,6 +39,7 @@ qt_add_qml_module(ex_agent_chat
     VERSION 1.0
     DEPENDENCIES QtWebEngine
     SOURCES
+        plugins/terminal_conversation/console_continuation.cpp plugins/terminal_conversation/reader_registry.cpp plugins/terminal_conversation/console_sync.cpp plugins/terminal_conversation/import_conversation.cpp plugins/terminal_conversation/jsonl_reader.cpp plugins/terminal_conversation/history_reader.cpp plugins/terminal_conversation/history_reader.h plugins/terminal_conversation/session_sync.cpp
         plugins/account_profiles/account_profiles.cpp plugins/account_profiles/account_profiles.h
         plugins/account_profiles/session_accounts.cpp plugins/account_profiles/account_commands.cpp plugins/account_profiles/account_commands.h
         plugins/diff_review/session_review.cpp

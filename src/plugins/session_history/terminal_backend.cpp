@@ -33,8 +33,10 @@ QVariantMap terminalSnapshot(const QString& id, bool withText)
         = terminalCommand({ "display-message", "-p", "-t", target, "#{session_name} #{pane_pid} #{pane_dead}" });
     const auto parts = meta.output.trimmed().split(' ');
     if (!meta.ok || parts.size() != 3 || parts[0] != id.toUtf8())
-        return { { "state", 0 } };
+        return { { "state", 0 }, { "observed", 0 } };
     QVariantMap result { { "state", parts[2] == "0" ? 1 : 0 }, { "pid", parts[1].toLongLong() } };
+    // 保留旧state兼容值；新续接只信任明确核对到的窗格，不能把查询失败当退出。
+    result.insert("observed", (parts[2]=="0" || parts[2]=="1") && parts[1].toLongLong()>0 ? 1 : 0);
     if (!withText) return result;
     const auto capture = terminalCommand({ "capture-pane", "-p", "-t", target, "-S", "-1500" });
     if (capture.ok)

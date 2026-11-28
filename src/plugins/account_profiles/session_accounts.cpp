@@ -21,6 +21,7 @@ void AgentController::updateProfileBinding(ChatSession &session,
 bool AgentController::useProfile(const QString &id, const QString &model,
                                  bool automatic) {
   auto *s = find(m_selected);
+  if(s && !s->history.value("terminalSource").toMap().isEmpty()) {emit failure(QStringLiteral("此会话使用终端账号，不能切换原生执行器。"));return false;}
   const auto p = m_profiles.profile(id);
   if (!s || !m_repository.writable() || !m_writable || p.isEmpty() ||
       p["enabled"] != 1 || model.size() > 128 ||

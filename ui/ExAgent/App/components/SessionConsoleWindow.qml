@@ -24,13 +24,14 @@ Window {
     }
     required property string workspace
     signal returnRequested(string conversation)
+    signal historyChatRequested(var source)
     required property AgentController agent
     title: "Agent 历史与终端"
     color: "#11151b"
     width: 960; height: 630
     minimumWidth: 610; minimumHeight: 390
     property bool historyOpen: false
-    SessionConsole { id: consoleModel }
+    SessionConsole { id: consoleModel; onConversationReady: binding => root.agent.syncTerminalConversation(binding) }
     AgentLauncher { id: launcher; backend: consoleModel; workspace: root.workspace }
     AgentActivityDialog { id: activityDialog; backend: consoleModel; workspace: root.workspace }
     readonly property string selectedId: consoleModel.current.id || ""
@@ -126,10 +127,10 @@ Window {
                     contentItem: Text { text: row.text; color: row.enabled ? "#d5deea" : "#8996a6"; elide: Text.ElideMiddle; font.pixelSize: 12 }
                     background: Rectangle { radius: 6; color: row.hovered ? "#29313c" : "transparent" }
                     text: modelData.agent + " · " + modelData.id.slice(0,8) + "\n" + modelData.cwd
-                    enabled: !!modelData.program
+                    enabled: true
                     ToolTip.visible: hovered
-                    ToolTip.text: modelData.program ? "在原目录续接此会话" : "尚未安装该 CLI"
-                    onClicked: consoleModel.resume(index)
+                    ToolTip.text: Design.UiText.get(modelData.program ? "打开聊天历史，可在终端续接" : "打开聊天历史，CLI尚未安装")
+                    onClicked: root.historyChatRequested(modelData)
                 }
             }
             Rectangle { Layout.fillWidth: true; implicitHeight: 1; color: "#313a45" }
@@ -188,18 +189,24 @@ Window {
             }
                 TerminalAction { darkChrome: true; glyph: "chat"; visible: enabled
                     text: "续接当前聊天"
-                    enabled: { const active = root.agent.busy; const account = root.agent.account; return !active && account > 0 && !!root.agent.terminalBinding(root.workspace).threadId }
+                    enabled: { const active = root.agent.busy; const account = root.agent.account; const binding=root.agent.terminalBinding(root.workspace); return !active && (!!binding.threadId || !!binding.source) }
                     onClicked: consoleModel.continueCodex(root.agent.terminalBinding(root.workspace))
                     ToolTip.visible: hovered
-                    ToolTip.text: "退出终端中的 Codex 后，即可回到原聊天继续发送"
+                    ToolTip.text: Design.UiText.get(root.agent.terminalAgent ? "查看同步历史，回复请在对应终端输入" : "终端已结束回合会同步，退出后可回原生聊天发送")
+                }
+                TerminalAction { darkChrome: true; glyph: "refresh"
+                    visible: !!consoleModel.current.conversationBinding
+                    enabled: consoleModel.current.state === 0 && !root.agent.terminalSyncing
+                    text: Design.UiText.get(root.agent.terminalSyncing ? "正在同步聊天" : "同步聊天")
+                    onClicked: root.agent.syncTerminalConversation(consoleModel.current.conversationBinding)
                 }
                 TerminalAction { darkChrome: true; glyph: "back"
                     visible: !!consoleModel.current.conversationId
                     enabled: consoleModel.current.state === 0
-                    text: "返回原生聊天"
-                    onClicked: root.returnRequested(consoleModel.current.conversationId)
+                    text: Design.UiText.get(root.agent.terminalAgent ? "查看聊天历史" : "返回原生聊天")
+                    onClicked: { root.agent.syncTerminalConversation(consoleModel.current.conversationBinding || ({})); root.returnRequested(consoleModel.current.conversationId) }
                     ToolTip.visible: hovered
-                    ToolTip.text: "在终端输入 /exit 退出后返回"
+                    ToolTip.text: Design.UiText.get(root.agent.terminalAgent ? "返回同步历史，继续回复请使用对应终端" : "在终端输入 /exit 退出后返回")
                 }
                 TerminalAction { darkChrome: true; glyph: "terminal"; checkable: true;
                     id: interactive

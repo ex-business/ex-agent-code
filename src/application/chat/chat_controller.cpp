@@ -47,6 +47,11 @@ ChatController::ChatController(QObject *parent)
         m_agent.select(m_preview ? QString{} : currentSessionId(),m_storageWritable && !m_preview);
     });
     connect(&m_agent,&AgentController::failure,this,&ChatController::setError);
+    connect(&m_agent,&AgentController::terminalHistoryChanged,this,[this](const QString &session) {
+        // 导入先在后台转换，现有富文本列表只接收一次批量投影。
+        if(!m_preview && currentSessionId()==session && m_current>=0)m_messages.replace(m_sessions[m_current].messages);
+        refreshSessions();emit conversationRowChanged(session,{});
+    });
     connect(&m_agent,&AgentController::saved,this,[this] {
         refreshSessions(); emit sessionChanged(); emit draftChanged();
     });
@@ -415,6 +420,9 @@ bool ChatController::sendMessage()
     const auto text = draft().trimmed();
     if (!m_storageWritable) { setError(QStringLiteral("项目目录只读，无法保存消息。")); return false; }
     if (m_current < 0 || text.isEmpty()) return false;
+    if (!m_preview && !m_sessions[m_current].history.value("terminalSource").toMap().isEmpty()) {
+        setError(QStringLiteral("此会话请在终端续接并输入；草稿已保留，尚未发送给Agent。"));return false;
+    }
     if (designCaptureBusy()) { setError(QStringLiteral("正在准备页面截图，请稍后发送。")); return false; }
     if (text.size() > 64 * 1024) {
         setError(QStringLiteral("单条消息不能超过 64K 字符，请拆分后发送。"));

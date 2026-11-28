@@ -46,6 +46,8 @@ SessionConsole::SessionConsole(QObject* parent)
     connect(maintenance, &QTimer::timeout, this, &SessionConsole::refreshTerminalActivity);
     connect(this, &SessionConsole::tabsChanged, this, &SessionConsole::refreshTerminalActivity);
     QTimer::singleShot(0, this, &SessionConsole::refreshTerminalActivity);
+    connect(maintenance, &QTimer::timeout, this, &SessionConsole::refreshConversationTabs);
+    QTimer::singleShot(0,this,&SessionConsole::refreshConversationTabs);
     maintenance->start();
     m_tabs = s.value("terminal/tabs").toList();
     m_selected = qBound(-1, s.value("terminal/selected", -1).toInt(), int(m_tabs.size()) - 1);
@@ -176,22 +178,6 @@ QString SessionConsole::launchAgent(const QString& title, const QString& cwd, co
     const auto previous = m_tabs.size();
     start(title, cwd.isEmpty() ? QDir::homePath() : cwd, launch, {}, variables);
     return previous == m_tabs.size() ? m_error : QString();
-}
-void SessionConsole::continueCodex(const QVariantMap& binding)
-{
-    const auto thread = binding.value("threadId").toString();
-    if (QUuid(thread).isNull()) { fail(QStringLiteral("当前会话没有可恢复的 Codex 线程。")); return; }
-    const auto origin = "codex:" + thread;
-    for (int i = 0; i < m_tabs.size(); ++i) {
-        const auto row = m_tabs[i].toMap();
-        if (row["origin"] == origin && terminalSnapshot(row["id"].toString())["state"].toInt() == Running) {
-            select(i);
-            return;
-        }
-    }
-    start("Codex · " + thread.left(8), binding.value("boundCwd").toString(),
-        {QCoreApplication::applicationFilePath(), "--continue-codex-terminal",
-         QString::fromLatin1(QJsonDocument::fromVariant(binding).toJson(QJsonDocument::Compact).toBase64())}, origin, {}, binding.value("conversationId").toString());
 }
 void SessionConsole::shell(const QString& cwd) { start("Shell", cwd.isEmpty() ? QDir::homePath() : cwd, TerminalPreferences::shellCommand(), {}); }
 void SessionConsole::resume(int index)

@@ -177,6 +177,7 @@ bool AgentController::save()
 bool AgentController::configureApi(const QString &model, const QString &file, bool write)
 {
     auto *s=find(m_selected);
+    if(s && !s->history.value("terminalSource").toMap().isEmpty()) {emit failure(QStringLiteral("此会话使用终端账号，不能设置原生API执行器。"));return false;}
     if(!s || !m_writable || busy() || authenticating() || model.trimmed().isEmpty() || model.size()>128 || !codex::threadAvailable(s->agent.value("threadId").toString())) return false;
     QString error;auto key=openai::credential(file,&error);const bool valid=!key.isEmpty();key.fill(0);
     if(!valid){emit failure(error);return false;}
@@ -200,6 +201,9 @@ void AgentController::configure(int account, const QString &model, bool write, b
     auto *s = find(m_selected);
     if (!s || !m_writable || busy() || account < 0 || account > 2 || model.size() > 128)
         return;
+    if (!s->history.value("terminalSource").toMap().isEmpty()) {
+        emit failure(QStringLiteral("此会话使用终端适配器，请通过续接当前聊天打开对应 Agent；尚未接入其原生执行器。"));return;
+    }
     if (!codex::threadAvailable(s->agent.value("threadId").toString())) {
         emit failure(QStringLiteral("请先退出正在使用此线程的终端，再修改会话配置。"));
         return;
@@ -316,7 +320,17 @@ QVariantMap AgentController::terminalBinding(const QString& workspace) const
 {
     auto binding = config();
     auto* s = find(m_selected);
-    if (!s || !m_writable || busy() || authenticating() || !m_profiles.home(selectedProfile()).isEmpty() || account() == agent::OpenAIResponses || !account()
+    if (s && m_writable && !m_syncing.contains(s->id) && !s->history.value("terminalSource").toMap().isEmpty()) {
+        if (workspaceAvailable && !workspaceAvailable(*s))return {};
+        const auto *owner=m_catalog.workspace(s->projectId,s->workspaceId);
+        if(owner && owner->launch.value("host","local").toString()!="local")return {};
+        auto source=s->history.value("terminalSource").toMap();
+        if(!workspace.isEmpty() && QFileInfo(workspace).canonicalFilePath()!=QFileInfo(source.value("cwd").toString()).canonicalFilePath())return {};
+        QString input,error;if(!applyInputPolicies(*s,TerminalInput,input,&error))return {};
+        auto spec=source;
+        spec.insert("source",source);spec.insert("conversationId",s->id);return spec;
+    }
+    if (!s || !m_writable || busy() || m_syncing.contains(s->id) || authenticating() || !m_profiles.home(selectedProfile()).isEmpty() || account() == agent::OpenAIResponses || !account()
         || binding.value("boundAccount").toInt() != account() || binding.value("identity").toString().isEmpty()
         || QUuid(binding.value("threadId").toString()).isNull()) return {};
     if (workspaceAvailable && !workspaceAvailable(*s)) return {};
@@ -329,6 +343,7 @@ QVariantMap AgentController::terminalBinding(const QString& workspace) const
     QVariantMap spec;
     for (const auto& key : {"threadId","boundCwd","boundAccount","identity","model","write","fullAccess"})
         spec.insert(key,binding.value(key));
+    spec.insert("profileId",selectedProfile());
     spec.insert("conversationId",s->id);
     spec.insert("program", codex::executable());
     spec.insert("home", qEnvironmentVariable("CODEX_HOME", QDir::home().filePath(".codex")));
@@ -425,11 +440,14 @@ bool AgentController::submitTo(const QString &session, const QString &text, cons
     }
     if (!s || !(worker ? m_repository.writable() : m_writable) || !s->agent.value("account").toInt() || text.trimmed().isEmpty())
         return false;
+    if (!s->history.value("terminalSource").toMap().isEmpty()) {
+        emit failure(QStringLiteral("此会话使用终端适配器，请通过续接当前聊天打开对应 Agent；尚未接入其原生执行器。"));return false;
+    }
     if (!codex::threadAvailable(s->agent.value("threadId").toString())) {
         emit failure(QStringLiteral("会话正在另一入口中使用。请先在交互终端退出 Codex，再继续聊天。"));
         return false;
     }
-    if (m_active.contains(session) || authenticating()) {
+    if (m_active.contains(session) || m_syncing.contains(session) || authenticating()) {
         emit failure(QStringLiteral("请等待当前运行或账号登录结束。"));
         return false;
     }

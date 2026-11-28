@@ -52,6 +52,7 @@ Design.WorkbenchWindow {
         id: consoleWindow
         agent: window.controller.agent
         workspace: window.controller.workspacePath
+        onHistoryChatRequested: source => { window.controller.importTerminalConversation(source); consoleWindow.close(); window.raise(); window.requestActivate() }
         onReturnRequested: conversation => {
             window.controller.selectSession(conversation)
             consoleWindow.close()
