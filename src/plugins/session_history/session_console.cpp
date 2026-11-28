@@ -1,3 +1,4 @@
+#include "terminal_scrollback.h"
 #include <QRegularExpression>
 #include "session_console.h"
 #include "plugins/terminal_settings/terminal_preferences.h"
@@ -122,6 +123,16 @@ int SessionConsole::requestScrollback(const QString& id)
     }));
     return serial;
 }
+int SessionConsole::requestHistory(const QString& id)
+{
+    const int serial=++m_scrollbackSerial;
+    QString fallback;bool known=false;
+    for(const auto &tab:m_tabs){const auto row=tab.toMap();if(row["id"]==id){known=true;fallback=row["text"].toString();break;}}
+    auto *watcher=new QFutureWatcher<QVariantMap>(this);
+    connect(watcher,&QFutureWatcher<QVariantMap>::finished,this,[this,watcher,serial]{emit historyReady(serial,watcher->result());watcher->deleteLater();});
+    watcher->setFuture(QtConcurrent::run([known,id,fallback]{return known ? terminalScrollback(id,fallback) : QVariantMap{{"text",QString()},{"error",QStringLiteral("终端页签已不存在。")},{"limited",true}};}));
+    return serial;
+}
 void SessionConsole::refreshActivity(const QString& cwd)
 {
     const auto generation = ++m_activityGeneration;
@@ -228,7 +239,8 @@ void SessionConsole::start(const QString& title, const QString& cwd, const QStri
             supported = true;
         }
     }
-    const auto r = terminalCommand(args + launch);
+    // tmux在创建窗格时固定回滚容量；先设置本应用独立服务的新窗格默认值。
+    const auto r = terminalCommand(QStringList{"set-option","-g","history-limit","20000",";"} + args + launch);
     if (!r.ok) {
         fail(QString::fromUtf8(r.output));
         return;

@@ -74,6 +74,9 @@ qt_add_qml_module(ex_agent_chat
         plugins/terminal_settings/terminal_preferences.h plugins/terminal_settings/terminal_preferences.cpp
         plugins/appearance/appearance_registry.h
         plugins/interactive_terminal/terminal_surface.h plugins/interactive_terminal/terminal_surface.cpp
+        plugins/interactive_terminal/terminal_links.h plugins/interactive_terminal/terminal_links.cpp
+        plugins/interactive_terminal/terminal_search.h plugins/interactive_terminal/terminal_search.cpp
+        plugins/session_history/terminal_scrollback.h plugins/session_history/terminal_scrollback.cpp
         plugins/session_history/session_console.h plugins/session_history/session_console.cpp
         plugins/session_history/terminal_hibernation.cpp plugins/session_history/history_provider.cpp plugins/session_history/terminal_backend.cpp
         domain/project/project_catalog.h domain/project/project_catalog.cpp

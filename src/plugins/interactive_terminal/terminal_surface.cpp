@@ -1,4 +1,5 @@
 #include "terminal_surface.h"
+#include "terminal_links.h"
 #include "plugins/session_history/history_provider.h"
 #include "plugins/session_history/terminal_backend.h"
 #include <QClipboard>
@@ -33,6 +34,11 @@ namespace exagent {
 struct TerminalSurface::Client {
 #ifdef Q_OS_MACOS
   VTerm *vt = nullptr;
+  std::unique_ptr<TerminalLinks> links;
+  struct LinkSpan {int start,end;QString url;};
+  int linkFirst=-1,linkLast=-1;
+  QVector<int> linkOffsets;
+  QVector<LinkSpan> linkSpans;
   VTermScreen *screen = nullptr;
   int master = -1;
   QProcess process;
@@ -150,6 +156,7 @@ void TerminalSurface::setTarget(const QString &id) {
   c.cols = ws.ws_col;
   c.rows = ws.ws_row;
   c.vt = vterm_new(c.rows, c.cols);
+  c.links=std::make_unique<TerminalLinks>(c.rows,c.cols);
   vterm_set_utf8(c.vt, 1);
   c.screen = vterm_obtain_screen(c.vt);
   static const VTermScreenCallbacks callbacks = [] {
@@ -205,6 +212,7 @@ void TerminalSurface::setTarget(const QString &id) {
     for (int i = 0; i < 8; ++i) {
       auto n = read(c.master, data, sizeof(data));
       if (n > 0) {
+        c.links->feed(data,n);
         vterm_input_write(c.vt, data, n);
         continue;
       }
@@ -212,6 +220,7 @@ void TerminalSurface::setTarget(const QString &id) {
         c.reader->setEnabled(false);
       break;
     }
+    c.linkFirst=-1;
     vterm_screen_flush_damage(c.screen);
     update();
   });
@@ -231,7 +240,7 @@ void TerminalSurface::setTarget(const QString &id) {
   });
   connect(&c.process, &QProcess::finished, this,
           [this] { fail(QStringLiteral("交互连接已结束，可返回记录视图。")); });
-  c.process.start(exe, {"-L", terminalSocket(), "-f", "/dev/null",
+  c.process.start(exe, {"-T", "hyperlinks", "-L", terminalSocket(), "-f", "/dev/null",
                         "set-option", "-t", "=" + id + ":0", "status", "off", ";",
                         "set-option", "-t", "=" + id, "set-clipboard", "on", ";",
                         "attach-session", "-t", "=" + id});
@@ -257,6 +266,8 @@ void TerminalSurface::resizeGrid() {
     return;
   c.cols = ws.ws_col;
   c.rows = ws.ws_row;
+  c.linkFirst=-1;
+  c.links->resize(c.rows,c.cols);
   vterm_set_size(c.vt, c.rows, c.cols);
   ioctl(c.master, TIOCSWINSZ, &ws);
   update();
@@ -341,7 +352,7 @@ void TerminalSurface::paint(QPainter *p) {
       }
       auto font = m_font;
       font.setBold(cell.attrs.bold);
-      font.setUnderline(cell.attrs.underline);
+      font.setUnderline(cell.attrs.underline || !c.links->at(y,x).isEmpty());
       font.setItalic(cell.attrs.italic);
       p->setFont(font);
       p->setPen(fg);
@@ -380,16 +391,44 @@ QString TerminalSurface::lineText(int row, int start, int end) const {
 }
 QString TerminalSurface::linkAt(const QPointF &position) const {
   const auto cell = cellAt(position);
-  const auto line = lineText(cell.y());
-  // 只识别可公开打开的网页链接，避免终端输出触发自定义协议执行。
-  static const QRegularExpression pattern(QStringLiteral(R"(https?://[^\s<>"']+)"));
-  auto matches = pattern.globalMatch(line);
-  while (matches.hasNext()) {
-    const auto match = matches.next();
-    const auto left = QFontMetrics(m_font).horizontalAdvance(line.left(match.capturedStart()));
-    const auto right = QFontMetrics(m_font).horizontalAdvance(line.left(match.capturedEnd()));
-    if (position.x() >= left && position.x() < right) return match.captured();
+#ifdef Q_OS_MACOS
+  if(!m_client || !m_client->vt || cell.x()>=m_client->cols)return {};
+  const auto explicitLink=m_client->links->at(cell.y(),cell.x());
+  VTermScreenCell hovered{};
+  if(!vterm_screen_get_cell(m_client->screen,{cell.y(),cell.x()},&hovered) || !hovered.chars[0])return {};
+  if(!explicitLink.isEmpty())return explicitLink;
+  auto &client=*m_client;
+  if(client.linkFirst<0 || cell.y()<client.linkFirst || cell.y()>client.linkLast){
+    auto *state=vterm_obtain_state(client.vt);
+    int first=cell.y(),last=first;
+    // 只连接libvterm确认的自动折行，硬换行不能拼接成另一个地址。
+    while(first>0 && vterm_state_get_lineinfo(state,first)->continuation && cell.y()-first<32)--first;
+    while(last+1<client.rows && vterm_state_get_lineinfo(state,last+1)->continuation && last-first<64)++last;
+    client.linkFirst=first;client.linkLast=last;
+    client.linkOffsets.fill(-1,(last-first+1)*client.cols);client.linkSpans.clear();
+    QString line;
+    for(int row=first;row<=last;++row)for(int col=0;col<client.cols;++col){
+      VTermScreenCell c{};if(!vterm_screen_get_cell(client.screen,{row,col},&c))continue;
+      if(c.chars[0]==UINT32_MAX)continue;
+      for(int i=0;i<qMax(1,int(c.width)) && col+i<client.cols;++i)client.linkOffsets[(row-first)*client.cols+col+i]=line.size();
+      if(!c.chars[0])line+=' ';
+      for(char32_t ch:c.chars){if(!ch)break;line+=QString::fromUcs4(&ch,1);}
+    }
+    static const QRegularExpression pattern(QStringLiteral(R"(https?://[^\s<>"']+)"));
+    auto matches=pattern.globalMatch(line);
+    while(matches.hasNext()){
+      const auto match=matches.next();auto url=match.captured();
+      while(!url.isEmpty() && QStringLiteral(".,;!，。；！").contains(url.back()))url.chop(1);
+      for(const auto &pair:{QStringLiteral("()"),QStringLiteral("[]"),QStringLiteral("{}")})
+        while(url.endsWith(pair[1]) && url.count(pair[1])>url.count(pair[0]))url.chop(1);
+      const auto safe=TerminalLinks::safeUrl(url);
+      if(!safe.isEmpty())client.linkSpans.append({int(match.capturedStart()),int(match.capturedStart()+url.size()),safe});
+    }
   }
+  // 同一段自动折行的识别结果复用到下一次输出/尺寸变化，不随鼠标每个像素重新扫描。
+  const int hit=client.linkOffsets.value((cell.y()-client.linkFirst)*client.cols+cell.x(),-1);
+  for(const auto &span:client.linkSpans)if(hit>=span.start && hit<span.end)return span.url;
+#endif
   return {};
 }
 void TerminalSurface::hoverMoveEvent(QHoverEvent *event) {

@@ -463,6 +463,17 @@
     "次窗口": "Secondary window",
     "统计容量已满：这里只显示已保留的上报记录，完整快照仍保存在对应聊天。": "Usage capacity reached: only retained reports are summarized here. Full snapshots remain in their chats.",
     "搜索账号": "Search accounts",
-    "已上报运行：": "Reported runs: "
+    "已上报运行：": "Reported runs: ",
+    "区分大小写": "Match case",
+    "全词匹配": "Whole word",
+    "正在查找…": "Searching…",
+    "正在读取…": "Loading…",
+    "没有匹配": "No matches",
+    "上一处": "Previous",
+    "下一处": "Next",
+    "第 %1 行": "Line %1",
+    "已循环": "Wrapped",
+    "最近 20000 行回滚及当前屏幕；自动折行合并，最多 4 MiB": "Latest 20,000 history rows and screen; wrapped lines joined, up to 4 MiB",
+    "已达到读取上限，仅搜索本次加载的尾部内容": "Read limit reached; searching the loaded tail only"
   }
 }

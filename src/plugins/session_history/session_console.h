@@ -40,6 +40,7 @@ public:
     Q_INVOKABLE QString draft(const QString& id) const { return m_drafts.value(id); }
     Q_INVOKABLE void setConsoleVisible(bool visible);
     Q_INVOKABLE int requestScrollback(const QString& id);
+    Q_INVOKABLE int requestHistory(const QString& id);
     Q_INVOKABLE void refreshActivity(const QString& cwd);
     Q_INVOKABLE QVariantMap readMemory(const QString& cwd, const QString& path) const;
     Q_INVOKABLE void scan(const QString& workspace);
@@ -58,6 +59,7 @@ signals:
     void tabsChanged();
     void terminalActivityChanged();
     void scrollbackReady(int serial, QString text);
+    void historyReady(int serial, QVariantMap snapshot);
     void activityReady(QString workspace, QVariantList rows);
 
 private:
